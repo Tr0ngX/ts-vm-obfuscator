@@ -1,0 +1,14 @@
+{
+  "name": "example-basic-ts",
+  "version": "1.0.0",
+  "description": "Basic TypeScript example for ts-vm-obfuscator",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "obfuscate": "ts-vm-obfuscator --profile generic --out-dir dist-obf"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@tsvm/cli": "workspace:*"
+  }
+}

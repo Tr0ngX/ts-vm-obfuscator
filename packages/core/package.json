@@ -1,0 +1,34 @@
+{
+  "name": "@tsvm/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pipeline orchestrator for ts-vm-obfuscator — ties semantic analysis, IR, transforms, bytecode, and VM together",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@tsvm/shared": "workspace:*",
+    "@tsvm/ts-semantics": "workspace:*",
+    "@tsvm/ir": "workspace:*",
+    "@tsvm/transforms": "workspace:*",
+    "@tsvm/bytecode": "workspace:*",
+    "@tsvm/vm-runtime": "workspace:*",
+    "@tsvm/react-safe": "workspace:*",
+    "@tsvm/electron-hardening": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0"
+  }
+}

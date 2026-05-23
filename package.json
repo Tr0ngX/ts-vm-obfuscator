@@ -1,0 +1,32 @@
+{
+  "name": "ts-vm-obfuscator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript semantic-aware obfuscation via custom IR, bytecode compiler, and polymorphic VM runtime",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/ts-vm-obfuscator"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "dev": "turbo run dev",
+    "clean": "turbo run clean",
+    "typecheck": "turbo run typecheck",
+    "visualizer": "pnpm --filter @tsvm/visualizer dev",
+    "cli": "pnpm --filter @tsvm/cli start"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0",
+    "tsup": "^8.4.0",
+    "@types/node": "^22.0.0"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

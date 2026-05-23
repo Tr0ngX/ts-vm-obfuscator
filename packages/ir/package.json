@@ -1,0 +1,26 @@
+{
+  "name": "@tsvm/ir",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@tsvm/shared": "workspace:*",
+    "typescript": "^5.8.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0"
+  }
+}
