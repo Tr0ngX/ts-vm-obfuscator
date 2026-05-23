@@ -16,7 +16,7 @@ class ASTLowering {
     
     // Virtualize heuristic
     const jsDoc = ts.getJSDocTags(node);
-    const isVirtualized = jsDoc.some(tag => tag.tagName.text === 'virtualize') || node.name?.text === 'calculateSecretHash';
+    const isVirtualized = jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text)) || node.name?.text === 'calculateSecretHash' || node.name?.text === 'encryptTEA';
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
     
