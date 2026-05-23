@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="TSXobf Logo" width="200px" />
+</p>
+
 # 🛡️ TSXobf — TypeScript Semantic-Aware VM Obfuscator
 
 > **Next-Generation Code Virtualization Pipeline** for securing high-value business logic in TypeScript and JavaScript ecosystems.
