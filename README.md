@@ -77,14 +77,18 @@ graph TD
 > **Semantic-Aware Compilation:**
 > TSXobf does not blindly modify strings. It parses code via the official **TypeScript Compiler API**, allowing it to seamlessly resolve module exports, scope rules, typed variables, and dependency calls during virtualization.
 
-*   **🎭 Polymorphic Virtual Machine Runtime**
-    The VM's structural logic is randomized dynamically at each compilation. Register assignments, internal evaluation loops, and **Opcodes (instruction numbers) are shuffled per build**. If an attacker decodes build A, their tool will immediately fail on build B.
-*   **🔒 Just-In-Time XOR Decryption**
-    All strings, numerical constants, and property lookups are extracted into an encrypted constant pool. These values are dynamically decrypted using a randomly generated session seed right inside the interpreter loop, leaving zero static signatures.
+*   **🎭 Polymorphic Virtual Machine Runtime (Threaded Dispatch)**
+    Rather than a basic `switch-case` interpreter loop, TSXobf generates a **Threaded Dispatch** execution engine. VM instructions map directly to an array of randomized handler functions. Unmapped/invalid opcodes are loaded with **self-defending integrity traps** to immediately crash reverse engineering tools.
+*   **🎲 1-to-N Opcode Aliasing & Shuffling**
+    To defeat statistical pattern-matching and automated signature decoders, a single canonical instruction type (e.g. `LoadConst`) is mapped to **multiple virtual opcodes** (1-to-N). Opcode mapping and handler layouts are randomized and shuffled completely per build.
+*   **🔑 Rolling XOR Key Bytecode Encryption**
+    Instruction opcodes and immediate values are encrypted within the bytecode stream. The VM dynamically decrypts bytes on the fly using a rolling XOR key that mutates after every instruction, meaning the same instruction has a different byte representation throughout the program.
+*   **🔒 JIT Lazy Constant Pool Decryption & Verification**
+    All strings, numerical constants, and property lookups are extracted into an encrypted constant pool. Decryption is performed lazily (on demand) at runtime using a dynamic session seed, with built-in integrity verification to prevent memory dumping.
 *   **🎯 Targeted Protection via JSDoc**
-    No need to sacrifice performance. Protect proprietary IP (e.g., license validators, cryptographic handlers, billing checkers) by placing a `/** @virtualize */` annotation above your functions.
+    No need to sacrifice performance. Protect proprietary IP (e.g., license validators, cryptographic handlers, billing checkers) by placing a `/** @virtualize */` annotation above your functions, while leaving normal UI and framework code at 100% native speed.
 *   **📦 Zero-Dependency Bundling**
-    The final compilation is self-contained. It yields a clean vanilla JavaScript file that runs anywhere: modern web browsers, Node.js, Cloudflare Workers, or AWS Lambda.
+    The final compilation is self-contained. It yields a clean vanilla JavaScript file that runs anywhere: modern web browsers, Node.js, Electron, Cloudflare Workers, or AWS Lambda.
 
 ---
 
@@ -104,38 +108,65 @@ export function calculateSecretHash(input: string): number {
 ```
 
 ### 2. Obfuscated Output JavaScript (`dist/build.js`)
-Your algorithms are compiled down into a secure binary block and virtual registers:
+Your algorithms are compiled down into an encrypted binary stream and virtual registers:
 
 ```javascript
 const vmFunctions = (function() {
   const seed = 1779526130061;
   
-  // Encrypted Constant Pool
+  // Encrypted Constant Pool with Lazy Decryption
   const rawCP = [{"index":0,"kind":"number","value":0},{"index":1,"kind":"string","value":"áèãêùå"}];
-  const cp = rawCP.map(c => {
-    return c.kind === 'string' ? decrypt(c.value, seed) : c.value;
-  });
+  const cpCache = [];
+  function getCP(idx) {
+    if (cpCache[idx] !== undefined) return cpCache[idx];
+    const c = rawCP[idx];
+    let val = c.kind === 'string' ? decrypt(c.value, seed) : c.value;
+    cpCache[idx] = val;
+    return val;
+  }
 
-  // Unique, Dynamic VM Interpreter custom-generated for this compile session
+  // 1-to-N Polymorphic Opcode Handlers Array
+  const handlers = new Array(256).fill(h_trap);
+  function h_105(ctx) { /* LoadConst Handler */ }
+  function h_47(ctx) { /* Move Handler */ }
+  function h_55(ctx) { /* Add Handler */ }
+  function h_trap(ctx) { throw new Error("VM Integrity Violation"); }
+  
+  // Dynamic Opcode Shuffling (Aliasing 1-to-N)
+  handlers[105] = h_105;
+  handlers[212] = h_105; // 1-to-N alias
+  handlers[47] = h_47;
+  handlers[188] = h_55;
+
+  // Polymorphic VM Interpreter
   function createExecutor(bytecodeArr) {
-    return function execute() {
-      const regs = new Array(256).fill(undefined);
-      // Arguments initialization in virtual registers...
-      while(pc < bytecode.length) {
-        const op = bytecode[pc++];
-        switch(op) {
-          case 105: regs[args[1].val] = cp[args[0].val]; break; // Randomized Opcode: LoadConst
-          case 47:  regs[args[0].val] = regs[args[1].val]; break; // Randomized Opcode: Move
-          case 55:  regs[args[2].val] = regs[args[0].val] + regs[args[1].val]; break; // Randomized Opcode: Add
-          // ... randomized VM execution instructions
-        }
+    return function execute(...fnArgs) {
+      const ctx = {
+        regs: new Array(256).fill(undefined),
+        pc: 0,
+        bytecode: bytecodeArr,
+        globalScope: typeof globalThis !== 'undefined' ? globalThis : {},
+        running: true,
+        rollingKey: seed & 0xFF
+      };
+      
+      // Load arguments into virtual registers
+      for (let i = 0; i < fnArgs.length; i++) ctx.regs[i] = fnArgs[i];
+
+      // Threaded Dispatch Loop with Rolling XOR Decryption
+      while(ctx.running && ctx.pc < ctx.bytecode.length) {
+        let op = ctx.bytecode[ctx.pc++];
+        op ^= ctx.rollingKey;
+        ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;
+        handlers[op](ctx);
       }
+      return ctx.returnValue;
     };
   }
 
   var result = {};
-  // The actual logic is now represented solely as linear bytecode data
-  result['calculateSecretHash'] = createExecutor(new Uint8Array([105,2,2,0,0,0,0,0,2,0,0,0,47,2,0,1...]));
+  // The actual logic is now represented solely as an encrypted linear bytecode stream
+  result['calculateSecretHash'] = createExecutor(new Uint8Array([73,122,89,14,244,11,8,90,201...]));
   return result;
 })();
 ```

@@ -77,14 +77,18 @@ graph TD
 > **Nhận Biết Ngữ Nghĩa (Semantic-Aware):**
 > TSXobf không chỉnh sửa mã nguồn một cách mù quáng. Nó phân tích mã thông qua **TypeScript Compiler API** chính thức, cho phép giải quyết chính xác các liên kết export/import module, tầm vực biến (scope), kiểu dữ liệu và các lệnh gọi thư viện phụ thuộc trong quá trình ảo hóa.
 
-*   **🎭 Máy Ảo Đa Hình (Polymorphic VM Runtime)**
-    Logic cấu trúc của máy ảo được ngẫu nhiên hóa động sau mỗi lần build. Thứ tự thanh ghi ảo, các vòng lặp đánh giá nội bộ và **các mã lệnh Opcode được trộn ngẫu nhiên**. Nếu kẻ tấn công bẻ khóa được bản build A, công cụ của họ sẽ lập tức vô hiệu trên bản build B.
-*   **🔒 Giải Mã XOR JIT (Just-In-Time)**
-    Tất cả các chuỗi, hằng số số học và các khóa tra cứu thuộc tính được trích xuất vào một vùng chứa hằng số (constant pool) được mã hóa. Các giá trị này chỉ được giải mã động bằng seed ngẫu nhiên ngay bên trong vòng lặp máy ảo khi cần thiết, không để lại dấu vết tĩnh nào.
+*   **🎭 Máy Ảo Đa Hình Luồng (Polymorphic VM Runtime - Threaded Dispatch)**
+    Thay vì sử dụng vòng lặp thông dịch `switch-case` thông thường, TSXobf tạo ra cơ chế thực thi **Threaded Dispatch**. Các chỉ thị VM ánh xạ trực tiếp đến một mảng các hàm xử lý (handler) được tạo ngẫu nhiên. Các opcode chưa được ánh xạ sẽ chứa các **bẫy bảo mật tự vệ (self-defending integrity traps)** nhằm lập tức làm sập các công cụ dịch ngược (decompiler).
+*   **🎲 Ánh Xạ Biệt Danh Opcode 1-to-N & Xáo Trộn**
+    Để đối phó với phân tích thống kê tần suất byte và bộ giải mã chữ ký tự động, một chỉ thị VM gốc (ví dụ: `LoadConst`) sẽ được ánh xạ vào **nhiều mã opcode ảo khác nhau** (1-to-N). Sơ đồ ánh xạ opcode và bố cục các hàm xử lý hoàn toàn được xáo trộn ngẫu nhiên sau mỗi lần biên dịch.
+*   **🔑 Mã Hóa Bytecode Với Khóa Xoay Vòng (Rolling XOR Key)**
+    Các opcode chỉ thị và giá trị toán hạng tức thời được mã hóa ngay trên luồng bytecode. Máy ảo sẽ giải mã động các byte này khi đang chạy nhờ một khóa XOR xoay vòng (rolling key) tự động biến đổi sau mỗi chỉ thị, làm cho cùng một chỉ thị gốc có các biểu diễn byte khác nhau xuyên suốt chương trình.
+*   **🔒 Giải Mã XOR JIT & Kiểm Tra Toàn Vẹn Lazy Constant Pool**
+    Tất cả các chuỗi, hằng số số học và tra cứu thuộc tính được trích xuất vào một vùng chứa hằng số (constant pool) được mã hóa. Việc giải mã được thực hiện một cách lười (lazy - chỉ khi thực sự cần thiết) bằng hạt giống phiên (session seed) ngẫu nhiên, tích hợp kiểm tra toàn vẹn bộ nhớ chống dump dữ liệu.
 *   **🎯 Bảo Vệ Chọn Lọc Qua JSDoc**
-    Bạn không cần phải đánh đổi hiệu năng của toàn bộ hệ thống. Chỉ bảo vệ các tài sản trí tuệ quan trọng (ví dụ: hàm kiểm tra bản quyền, xử lý mã hóa, kiểm tra thanh toán) bằng cách thêm chú thích `/** @virtualize */` ngay trên hàm mục tiêu. Các vùng mã khác vẫn chạy ở tốc độ bản địa.
+    Bạn không cần phải đánh đổi hiệu năng. Chỉ bảo vệ tài sản trí tuệ quan trọng (như hàm xác thực bản quyền, xử lý mật mã, API nhạy cảm) bằng cách chú thích `/** @virtualize */` ngay trên hàm mục tiêu, giữ nguyên 100% tốc độ native cho các mã nguồn UI hoặc framework thông thường.
 *   **📦 Đóng Gói Không Phụ Thuộc (Zero-Dependency)**
-    Sản phẩm biên dịch cuối cùng hoàn toàn tự chứa (self-contained). Nó tạo ra một file JavaScript thuần gọn nhẹ có thể chạy ở bất kỳ đâu: Trình duyệt, Node.js, Cloudflare Workers, hay AWS Lambda.
+    Sản phẩm biên dịch cuối cùng hoàn toàn độc lập. Nó tạo ra một file JavaScript thuần gọn nhẹ chạy được ở mọi môi trường: Trình duyệt hiện đại, Node.js, Electron, Cloudflare Workers, hay AWS Lambda.
 
 ---
 
@@ -104,38 +108,65 @@ export function calculateSecretHash(input: string): number {
 ```
 
 ### 2. Mã JavaScript Sau Khi Làm Rối (`dist/build.js`)
-Thuật toán của bạn giờ đây đã được chuyển hóa thành một khối dữ liệu nhị phân chạy trên bộ vi xử lý ảo tùy chỉnh:
+Thuật toán của bạn giờ đây đã được chuyển hóa thành một khối dữ liệu nhị phân mã hóa chạy trên bộ vi xử lý ảo tùy chỉnh:
 
 ```javascript
 const vmFunctions = (function() {
   const seed = 1779526130061;
   
-  // Vùng Hằng Số Được Mã Hóa
+  // Vùng Hằng Số Được Mã Hóa Với Cơ Chế Giải Mã Lười (Lazy Decryption)
   const rawCP = [{"index":0,"kind":"number","value":0},{"index":1,"kind":"string","value":"áèãêùå"}];
-  const cp = rawCP.map(c => {
-    return c.kind === 'string' ? decrypt(c.value, seed) : c.value;
-  });
+  const cpCache = [];
+  function getCP(idx) {
+    if (cpCache[idx] !== undefined) return cpCache[idx];
+    const c = rawCP[idx];
+    let val = c.kind === 'string' ? decrypt(c.value, seed) : c.value;
+    cpCache[idx] = val;
+    return val;
+  }
 
-  // Trình thông dịch máy ảo được sinh ngẫu nhiên cho riêng phiên build này
+  // Mảng Các Hàm Xử Lý Opcode Đa Hình 1-to-N
+  const handlers = new Array(256).fill(h_trap);
+  function h_105(ctx) { /* LoadConst Handler */ }
+  function h_47(ctx) { /* Move Handler */ }
+  function h_55(ctx) { /* Add Handler */ }
+  function h_trap(ctx) { throw new Error("VM Integrity Violation"); }
+  
+  // Xáo Trộn Opcode Động (Ánh xạ biệt danh 1-to-N)
+  handlers[105] = h_105;
+  handlers[212] = h_105; // ánh xạ biệt danh 1-to-N
+  handlers[47] = h_47;
+  handlers[188] = h_55;
+
+  // Trình Thông Dịch Máy Ảo Đa Hình
   function createExecutor(bytecodeArr) {
-    return function execute() {
-      const regs = new Array(256).fill(undefined);
-      // Khởi tạo các đối số vào thanh ghi ảo...
-      while(pc < bytecode.length) {
-        const op = bytecode[pc++];
-        switch(op) {
-          case 105: regs[args[1].val] = cp[args[0].val]; break; // Opcode ngẫu nhiên: LoadConst
-          case 47:  regs[args[0].val] = regs[args[1].val]; break; // Opcode ngẫu nhiên: Move
-          case 55:  regs[args[2].val] = regs[args[0].val] + regs[args[1].val]; break; // Opcode ngẫu nhiên: Add
-          // ... các chỉ thị máy ảo đã được xáo trộn
-        }
+    return function execute(...fnArgs) {
+      const ctx = {
+        regs: new Array(256).fill(undefined),
+        pc: 0,
+        bytecode: bytecodeArr,
+        globalScope: typeof globalThis !== 'undefined' ? globalThis : {},
+        running: true,
+        rollingKey: seed & 0xFF
+      };
+      
+      // Nạp các đối số vào thanh ghi ảo
+      for (let i = 0; i < fnArgs.length; i++) ctx.regs[i] = fnArgs[i];
+
+      // Vòng lặp Threaded Dispatch giải mã XOR xoay vòng động
+      while(ctx.running && ctx.pc < ctx.bytecode.length) {
+        let op = ctx.bytecode[ctx.pc++];
+        op ^= ctx.rollingKey;
+        ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;
+        handlers[op](ctx);
       }
+      return ctx.returnValue;
     };
   }
 
   var result = {};
-  // Toàn bộ logic thuật toán gốc giờ chỉ còn là một mảng byte nhị phân tuyến tính
-  result['calculateSecretHash'] = createExecutor(new Uint8Array([105,2,2,0,0,0,0,0,2,0,0,0,47,2,0,1...]));
+  // Toàn bộ logic thuật toán gốc giờ chỉ còn là một mảng byte nhị phân được mã hóa tuyến tính
+  result['calculateSecretHash'] = createExecutor(new Uint8Array([73,122,89,14,244,11,8,90,201...]));
   return result;
 })();
 ```
