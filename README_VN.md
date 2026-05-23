@@ -53,8 +53,8 @@ graph TD
         H & I -->|Đầu Ra| J[Kết Quả Đồng Nhất Ngữ Nghĩa]
     end
     
-    style TransformsLayer fill:#2a2b36,stroke:#ff9f43,stroke-width:2px,color:#ffffff;
-    style VMExecutionRuntime fill:#2a2b36,stroke:#10ac84,stroke-width:2px,color:#ffffff;
+    style TransformsLayer fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
+    style VMExecutionRuntime fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
 ```
 
 ---
