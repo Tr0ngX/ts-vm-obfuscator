@@ -1,26 +1,50 @@
 import type { Instruction, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
 import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind } from '@tsvm/shared';
 
-export function encodeBytecode(instructions: Instruction[], mapping: any, encoding: ImmediateEncodingScheme): Uint8Array {
+import type { VMBuildConfig } from '@tsvm/shared';
+
+export function encodeBytecode(instructions: Instruction[], mapping: any, config: VMBuildConfig): Uint8Array {
   const bytes: number[] = [];
+  let rollingKey = config.rollingKeys ? config.seed & 0xFF : 0;
 
   for (const inst of instructions) {
-    const mappedOp = mapping.forward.get(inst.opcode) ?? inst.opcode;
-    bytes.push(mappedOp);
+    let mappedOp = inst.opcode;
+    const forward = mapping.forward.get(inst.opcode);
+    if (Array.isArray(forward)) {
+      // Pick random alias if 1-to-N
+      mappedOp = forward[Math.floor(Math.random() * forward.length)];
+    } else if (forward !== undefined) {
+      mappedOp = forward;
+    }
+
+    if (config.rollingKeys) {
+      bytes.push(mappedOp ^ rollingKey);
+      rollingKey = (rollingKey + mappedOp) & 0xFF;
+    } else {
+      bytes.push(mappedOp);
+    }
 
     const ops = [...(inst.operands || [])];
     if (inst.result) {
       ops.push({ kind: OperandKind.Register, value: inst.result } as any);
     }
 
-    bytes.push(ops.length); // arg count
+    if (config.rollingKeys) {
+      bytes.push(ops.length ^ rollingKey);
+      rollingKey = (rollingKey + ops.length) & 0xFF;
+    } else {
+      bytes.push(ops.length); // arg count
+    }
 
     for (const op of ops) {
-      // Encode the kind as a numeric byte
       const kindNum = operandKindToNum(op.kind);
-      bytes.push(kindNum);
+      if (config.rollingKeys) {
+        bytes.push(kindNum ^ rollingKey);
+        rollingKey = (rollingKey + kindNum) & 0xFF;
+      } else {
+        bytes.push(kindNum);
+      }
       
-      // Encode the value as a 32-bit little-endian integer
       let val = 0;
       if (typeof op.value === 'string' && op.value.startsWith('r')) {
         val = parseInt(op.value.substring(1), 10);
@@ -28,10 +52,36 @@ export function encodeBytecode(instructions: Instruction[], mapping: any, encodi
         val = op.value;
       }
       
-      bytes.push(val & 0xFF);
-      bytes.push((val >> 8) & 0xFF);
-      bytes.push((val >> 16) & 0xFF);
-      bytes.push((val >> 24) & 0xFF);
+      if (config.immediateEncoding === ImmediateEncodingScheme.VariableLength) {
+        // LEB128 Encoding
+        let v = val;
+        do {
+          let byte = v & 0x7F;
+          v >>>= 7;
+          if (v !== 0) byte |= 0x80;
+          if (config.rollingKeys) {
+            bytes.push(byte ^ rollingKey);
+            rollingKey = (rollingKey + byte) & 0xFF;
+          } else {
+            bytes.push(byte);
+          }
+        } while (v !== 0);
+      } else {
+        // Fixed 4-byte
+        const b0 = val & 0xFF;
+        const b1 = (val >> 8) & 0xFF;
+        const b2 = (val >> 16) & 0xFF;
+        const b3 = (val >> 24) & 0xFF;
+        
+        if (config.rollingKeys) {
+          bytes.push(b0 ^ rollingKey); rollingKey = (rollingKey + b0) & 0xFF;
+          bytes.push(b1 ^ rollingKey); rollingKey = (rollingKey + b1) & 0xFF;
+          bytes.push(b2 ^ rollingKey); rollingKey = (rollingKey + b2) & 0xFF;
+          bytes.push(b3 ^ rollingKey); rollingKey = (rollingKey + b3) & 0xFF;
+        } else {
+          bytes.push(b0, b1, b2, b3);
+        }
+      }
     }
   }
 

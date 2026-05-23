@@ -71,7 +71,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       }
 
       // Encode instructions to bytecode
-      const bytecode = encodeBytecode(flatInsts, mapping, config.immediateEncoding);
+      const bytecode = encodeBytecode(flatInsts, mapping, config);
 
       functions.push({
         id: irFn.id,

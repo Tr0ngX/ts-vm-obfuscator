@@ -42,21 +42,29 @@ graph TD
 
     subgraph T["Transforms Pipeline"]
         direction TB
-        C --> D["📦 Constant Pool Extraction"]
-        D --> E["🎲 Opcode Randomization"]
-        E --> F["🧬 Control-Flow Mutation"]
+        T1["📦 Constant Pool Extraction"]
+        T2["🎲 Opcode Randomization"]
+        T3["🧬 Control-Flow Mutation"]
     end
+    
+    C --> T1
+    T1 --> T2
+    T2 --> T3
 
-    F -->|"Assembler"| G["💾 Binary Bytecode Stream"]
+    T3 -->|"Assembler"| G["💾 Binary Bytecode Stream"]
     G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
         direction TB
-        H -->|"Lazy Decode"| I["🔐 Encrypted Constant Pool"]
-        H -->|"Dispatch Loop"| J["⚙️ Polymorphic VM Interpreter"]
-        I --> K["🧩 Runtime Values"]
-        J --> K
+        R1["🔐 Encrypted Constant Pool"]
+        R2["⚙️ Polymorphic VM Interpreter"]
     end
+    
+    H -->|"Lazy Decode"| R1
+    H -->|"Dispatch Loop"| R2
+    
+    R1 --> K["🧩 Runtime Values"]
+    R2 --> K
 
     K -->|"Semantic Output"| L["✅ Equivalent Program Behavior"]
 ```

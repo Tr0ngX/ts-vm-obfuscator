@@ -1,215 +1,217 @@
 import type { BytecodeModule, VMBuildConfig, VMRuntimeBundle } from '@tsvm/shared';
-import { OpCode, ConstantEncodingScheme } from '@tsvm/shared';
+import { OpCode, ConstantEncodingScheme, ImmediateEncodingScheme } from '@tsvm/shared';
 
 export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): VMRuntimeBundle {
-  const opToMapped = new Map<OpCode, number>();
-  for (const [canonical, mapped] of (module.opcodeMapping.forward as Map<OpCode, number>).entries()) {
-    opToMapped.set(canonical, mapped);
+  const opToMapped = new Map<OpCode, number[]>();
+  for (const [canonical, mapped] of (module.opcodeMapping.forward as Map<OpCode, number | readonly number[]>).entries()) {
+    opToMapped.set(canonical, Array.isArray(mapped) ? [...mapped] : [mapped as number]);
   }
 
   const cp = JSON.stringify(module.constantPool);
 
-  const getMapped = (op: OpCode) => opToMapped.get(op) ?? op;
-
-  // Find the exported/entry-point function — not just functions[0]
   const targetFnIndex = module.entryPointIndex >= 0 ? module.entryPointIndex : 0;
   const targetFn = module.functions[targetFnIndex];
   if (!targetFn) {
     throw new Error(`No target function found at index ${targetFnIndex}`);
   }
 
-  // Collect all exported function names for module.exports
   const exportedFunctions = module.functions.filter(f => f.isEntryPoint);
 
+  // Generate handlers for 0-255
+  const handlerArrayItems: string[] = new Array(256).fill(`h_${OpCode.Trap}`);
+
+  const getAlias = (op: OpCode) => {
+    const list = opToMapped.get(op);
+    return list && list.length > 0 ? list[0] : -1;
+  };
+
+  // We will declare handler functions:
+  const handlerDeclarations: string[] = [];
+  const declareHandler = (canonical: OpCode, body: string) => {
+    const fnName = `h_${canonical}`;
+    handlerDeclarations.push(`function ${fnName}(ctx) {\n${body}\n}`);
+    const mapped = opToMapped.get(canonical) || [];
+    for (const vOp of mapped) {
+      handlerArrayItems[vOp] = fnName;
+    }
+  };
+
+  declareHandler(OpCode.Trap, `throw new Error("VM Integrity Violation");`);
+
+  const advanceArg = `
+    let kindNum = ctx.bytecode[ctx.pc++];
+    ${config.rollingKeys ? 'kindNum ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + kindNum) & 0xFF;' : ''}
+    let val = 0;
+    ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
+      let shift = 0;
+      let b;
+      do {
+        b = ctx.bytecode[ctx.pc++];
+        ${config.rollingKeys ? 'b ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b) & 0xFF;' : ''}
+        val |= (b & 0x7F) << shift;
+        shift += 7;
+      } while (b & 0x80);
+    ` : `
+      let b0 = ctx.bytecode[ctx.pc++];
+      ${config.rollingKeys ? 'b0 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b0) & 0xFF;' : ''}
+      let b1 = ctx.bytecode[ctx.pc++];
+      ${config.rollingKeys ? 'b1 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b1) & 0xFF;' : ''}
+      let b2 = ctx.bytecode[ctx.pc++];
+      ${config.rollingKeys ? 'b2 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b2) & 0xFF;' : ''}
+      let b3 = ctx.bytecode[ctx.pc++];
+      ${config.rollingKeys ? 'b3 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b3) & 0xFF;' : ''}
+      val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+    `}
+  `;
+
+  // Read arguments dynamically based on instruction encoding
+  const readArgs = `
+    let argCount = ctx.bytecode[ctx.pc++];
+    ${config.rollingKeys ? 'argCount ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + argCount) & 0xFF;' : ''}
+    const args = [];
+    for (let i = 0; i < argCount; i++) {
+      ${advanceArg}
+      args.push(val);
+    }
+  `;
+
+  declareHandler(OpCode.LoadConst, `
+    ${readArgs}
+    ctx.regs[args[1]] = getCP(args[0]);
+  `);
+  declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
+  declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
+  declareHandler(OpCode.Move, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
+  declareHandler(OpCode.LoadGlobal, `${readArgs} ctx.regs[args[1]] = ctx.globalScope[ctx.regs[args[0]]];`);
+  declareHandler(OpCode.StoreGlobal, `${readArgs} ctx.globalScope[ctx.regs[args[0]]] = ctx.regs[args[1]];`);
+  
+  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] + ctx.regs[args[1]];`);
+  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] - ctx.regs[args[1]];`);
+  declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
+  declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
+  declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
+  declareHandler(OpCode.Neg, `${readArgs} ctx.regs[args[1]] = -ctx.regs[args[0]];`);
+  
+  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] & ctx.regs[args[1]];`);
+  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] | ctx.regs[args[1]];`);
+  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] ^ ctx.regs[args[1]];`);
+  declareHandler(OpCode.Shl, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] << ctx.regs[args[1]];`);
+  declareHandler(OpCode.Shr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >> ctx.regs[args[1]];`);
+  declareHandler(OpCode.UShr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >>> ctx.regs[args[1]];`);
+  declareHandler(OpCode.Not, `${readArgs} ctx.regs[args[1]] = !ctx.regs[args[0]];`);
+  
+  declareHandler(OpCode.Eq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] == ctx.regs[args[1]];`);
+  declareHandler(OpCode.StrictEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] === ctx.regs[args[1]];`);
+  declareHandler(OpCode.Lt, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] < ctx.regs[args[1]];`);
+  declareHandler(OpCode.LtEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] <= ctx.regs[args[1]];`);
+  declareHandler(OpCode.Gt, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] > ctx.regs[args[1]];`);
+  declareHandler(OpCode.GtEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >= ctx.regs[args[1]];`);
+  
+  declareHandler(OpCode.TypeOf, `${readArgs} ctx.regs[args[1]] = typeof ctx.regs[args[0]];`);
+  declareHandler(OpCode.InstanceOf, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] instanceof ctx.regs[args[1]];`);
+  declareHandler(OpCode.PropGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(OpCode.PropSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
+  declareHandler(OpCode.ComputedGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(OpCode.ComputedSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
+  
+  declareHandler(OpCode.CallMethod, `
+    ${readArgs}
+    var obj = ctx.regs[args[0]];
+    var method = obj[ctx.regs[args[1]]];
+    var callArgs = [];
+    for (var ci = 2; ci < args.length - 1; ci++) {
+      callArgs.push(ctx.regs[args[ci]]);
+    }
+    ctx.regs[args[args.length - 1]] = method.apply(obj, callArgs);
+  `);
+  declareHandler(OpCode.Call, `
+    ${readArgs}
+    var fn = ctx.regs[args[0]];
+    var callArgs2 = [];
+    for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
+      callArgs2.push(ctx.regs[args[ci2]]);
+    }
+    ctx.regs[args[args.length - 1]] = fn.apply(null, callArgs2);
+  `);
+  
+  declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0];`);
+  declareHandler(OpCode.JmpIf, `${readArgs} ctx.pc = ctx.regs[args[0]] ? args[1] : args[2];`);
+  declareHandler(OpCode.JmpIfNot, `${readArgs} ctx.pc = !ctx.regs[args[0]] ? args[1] : args[2];`);
+  
+  declareHandler(OpCode.Return, `${readArgs} ctx.returnValue = args.length > 0 ? ctx.regs[args[0]] : undefined; ctx.running = false;`);
+  declareHandler(OpCode.ReturnVoid, `${readArgs} ctx.returnValue = undefined; ctx.running = false;`);
+  declareHandler(OpCode.Nop, `/* Junk */`);
+  declareHandler(OpCode.Halt, `ctx.running = false;`);
+
+  const antiDebugLogic = config.antiDebug ? `
+    var start = Date.now();
+    debugger;
+    if (Date.now() - start > 100) { ctx.regs[0] = null; /* Poison state */ }
+  ` : '';
+
+  const tamperDetectionLogic = config.tamperDetection ? `
+    if (execute.toString().indexOf('debugger') === -1 && ${config.antiDebug}) {
+      ctx.regs[0] = null; // function tampered
+    }
+  ` : '';
+
   const sourceCode = `
-// Polymorphic VM Runtime - Build: ${module.buildId}
+// Polymorphic Threaded VM Engine - Build: ${module.buildId}
 const vmFunctions = (function() {
   const seed = ${config.seed};
   const rawCP = ${cp};
-  const cp = rawCP.map(c => {
+  const cpCache = new Map();
+  
+  // Lazy Decryption
+  function getCP(index) {
+    if (cpCache.has(index)) return cpCache.get(index);
+    let c = rawCP[index];
+    let val = c.value;
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
       let decoded = '';
-      for (let i = 0; i < c.value.length; i++) {
-        decoded += String.fromCharCode(c.value.charCodeAt(i) ^ (seed & 0xFF));
+      for (let i = 0; i < val.length; i++) {
+        decoded += String.fromCharCode(val.charCodeAt(i) ^ (seed & 0xFF));
       }
-      return decoded;
+      val = decoded;
     }
-    return c.value;
-  });
+    cpCache.set(index, val);
+    return val;
+  }
+
+  ${handlerDeclarations.join('\n\n')}
+
+  const handlers = [
+    ${handlerArrayItems.join(',\n    ')}
+  ];
 
   function createExecutor(bytecodeArr) {
     return function execute() {
-      const fnArgs = Array.prototype.slice.call(arguments);
-      let pc = 0;
-      const bytecode = bytecodeArr;
-      const regs = new Array(256).fill(undefined);
-      for (let i = 0; i < fnArgs.length; i++) {
-        regs[i] = fnArgs[i];
-      }
-      
-      const globalScope = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global;
-      
-      while(pc < bytecode.length) {
-        const op = bytecode[pc++];
-        const argCount = bytecode[pc++];
-        const args = [];
-        for (let i = 0; i < argCount; i++) {
-          const kind = bytecode[pc++];
-          const b0 = bytecode[pc++];
-          const b1 = bytecode[pc++];
-          const b2 = bytecode[pc++];
-          const b3 = bytecode[pc++];
-          var val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
-          args.push({ kind: kind, val: val });
-        }
+      ${antiDebugLogic}
+      ${tamperDetectionLogic}
 
-        switch(op) {
-          case ${getMapped(OpCode.LoadConst)}:
-            regs[args[1].val] = cp[args[0].val];
-            break;
-          case ${getMapped(OpCode.LoadLocal)}:
-            regs[args[1].val] = regs[args[0].val];
-            break;
-          case ${getMapped(OpCode.StoreLocal)}:
-            regs[args[0].val] = regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Move)}:
-            regs[args[1].val] = regs[args[0].val];
-            break;
-          case ${getMapped(OpCode.LoadGlobal)}:
-            regs[args[1].val] = globalScope[regs[args[0].val]];
-            break;
-          case ${getMapped(OpCode.StoreGlobal)}:
-            globalScope[regs[args[0].val]] = regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Add)}:
-            regs[args[2].val] = regs[args[0].val] + regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Sub)}:
-            regs[args[2].val] = regs[args[0].val] - regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Mul)}:
-            regs[args[2].val] = regs[args[0].val] * regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Div)}:
-            regs[args[2].val] = regs[args[0].val] / regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Mod)}:
-            regs[args[2].val] = regs[args[0].val] % regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Neg)}:
-            regs[args[1].val] = -regs[args[0].val];
-            break;
-          case ${getMapped(OpCode.BitAnd)}:
-            regs[args[2].val] = regs[args[0].val] & regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.BitOr)}:
-            regs[args[2].val] = regs[args[0].val] | regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.BitXor)}:
-            regs[args[2].val] = regs[args[0].val] ^ regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Shl)}:
-            regs[args[2].val] = regs[args[0].val] << regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Shr)}:
-            regs[args[2].val] = regs[args[0].val] >> regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.UShr)}:
-            regs[args[2].val] = regs[args[0].val] >>> regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Not)}:
-            regs[args[1].val] = !regs[args[0].val];
-            break;
-          case ${getMapped(OpCode.Eq)}:
-            regs[args[2].val] = regs[args[0].val] == regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.StrictEq)}:
-            regs[args[2].val] = regs[args[0].val] === regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Lt)}:
-            regs[args[2].val] = regs[args[0].val] < regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.LtEq)}:
-            regs[args[2].val] = regs[args[0].val] <= regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.Gt)}:
-            regs[args[2].val] = regs[args[0].val] > regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.GtEq)}:
-            regs[args[2].val] = regs[args[0].val] >= regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.TypeOf)}:
-            regs[args[1].val] = typeof regs[args[0].val];
-            break;
-          case ${getMapped(OpCode.InstanceOf)}:
-            regs[args[2].val] = regs[args[0].val] instanceof regs[args[1].val];
-            break;
-          case ${getMapped(OpCode.PropGet)}:
-            regs[args[2].val] = regs[args[0].val][regs[args[1].val]];
-            break;
-          case ${getMapped(OpCode.PropSet)}:
-            regs[args[0].val][regs[args[1].val]] = regs[args[2].val];
-            break;
-          case ${getMapped(OpCode.ComputedGet)}:
-            regs[args[2].val] = regs[args[0].val][regs[args[1].val]];
-            break;
-          case ${getMapped(OpCode.ComputedSet)}:
-            regs[args[0].val][regs[args[1].val]] = regs[args[2].val];
-            break;
-          case ${getMapped(OpCode.CallMethod)}: {
-            var obj = regs[args[0].val];
-            var method = obj[regs[args[1].val]];
-            var callArgs = [];
-            for (var ci = 2; ci < args.length - 1; ci++) {
-              callArgs.push(regs[args[ci].val]);
-            }
-            regs[args[args.length - 1].val] = method.apply(obj, callArgs);
-            break;
-          }
-          case ${getMapped(OpCode.Call)}: {
-            var fn = regs[args[0].val];
-            var callArgs2 = [];
-            for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
-              callArgs2.push(regs[args[ci2].val]);
-            }
-            regs[args[args.length - 1].val] = fn.apply(null, callArgs2);
-            break;
-          }
-          case ${getMapped(OpCode.Jmp)}:
-            pc = args[0].val;
-            break;
-          case ${getMapped(OpCode.JmpIf)}:
-            if (regs[args[0].val]) {
-              pc = args[1].val;
-            } else {
-              pc = args[2].val;
-            }
-            break;
-          case ${getMapped(OpCode.JmpIfNot)}:
-            if (!regs[args[0].val]) {
-              pc = args[1].val;
-            } else {
-              pc = args[2].val;
-            }
-            break;
-          case ${getMapped(OpCode.Return)}:
-            if (args.length > 0) {
-              return regs[args[0].val];
-            }
-            return;
-          case ${getMapped(OpCode.ReturnVoid)}:
-            return;
-          case ${getMapped(OpCode.Nop)}:
-            break;
-          case ${getMapped(OpCode.Halt)}:
-            return;
-          case ${getMapped(OpCode.Trap)}:
-            throw new Error('VM trap reached — unreachable code executed');
-          default:
-            break;
-        }
+      const fnArgs = Array.prototype.slice.call(arguments);
+      const ctx = {
+        pc: 0,
+        bytecode: bytecodeArr,
+        regs: new Array(256).fill(undefined),
+        globalScope: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
+        running: true,
+        returnValue: undefined,
+        rollingKey: ${config.rollingKeys ? 'seed & 0xFF' : '0'}
+      };
+
+      for (let i = 0; i < fnArgs.length; i++) {
+        ctx.regs[i] = fnArgs[i];
       }
+      
+      // Threaded Dispatch Loop
+      while(ctx.running && ctx.pc < ctx.bytecode.length) {
+        let op = ctx.bytecode[ctx.pc++];
+        ${config.rollingKeys ? 'op ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;' : ''}
+        handlers[op](ctx);
+      }
+      
+      return ctx.returnValue;
     };
   }
 

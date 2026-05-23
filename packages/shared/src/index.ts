@@ -178,6 +178,14 @@ export interface VMBuildConfig {
   readonly traceMode: boolean;
   readonly deterministicReplay: boolean;
   readonly seed: number;
+
+  // New polymorphic engine features
+  readonly threadedDispatch?: boolean;
+  readonly tamperDetection?: boolean;
+  readonly antiDebug?: boolean;
+  readonly opcodeAliasing?: boolean;
+  readonly junkInsertion?: boolean;
+  readonly rollingKeys?: boolean;
 }
 
 export interface ObfuscationProfile {
@@ -485,7 +493,7 @@ export const BYTECODE_MAGIC = 0x54534F42; // 'TSOB'
 export const BYTECODE_VERSION = 1;
 
 export interface OpcodeMapping {
-  readonly forward: ReadonlyMap<OpCode, number>;
+  readonly forward: ReadonlyMap<OpCode, number | readonly number[]>;
   readonly reverse: ReadonlyMap<number, OpCode>;
   readonly seed: number;
 }

@@ -16,7 +16,6 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
 
   const rng = new SeededRandom(seed);
   
-  // Extract all valid opcode numbers
   const opcodes: OpCode[] = [];
   for (const key in OpCode) {
     if (!isNaN(Number(key))) {
@@ -24,23 +23,29 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
     }
   }
 
-  // Generate an array of numbers from 0 to 255 for available bytes
   const availableSlots: number[] = [];
   for (let i = 0; i < 256; i++) {
     availableSlots.push(i);
   }
 
-  // Shuffle available slots using Fisher-Yates and the PRNG
   rng.shuffle(availableSlots);
 
-  // Assign random slots to opcodes
+  // Distribute 256 slots across the available opcodes (1-to-N aliasing)
   for (let i = 0; i < opcodes.length; i++) {
     const canonical = opcodes[i]!;
-    // Ensure we have enough slots (we only have 256 byte values, which is enough for < 256 opcodes)
-    const mapped = availableSlots[i]!;
+    // Assign at least 1, up to 5 aliases depending on remaining slots
+    const aliasCount = i === opcodes.length - 1 ? availableSlots.length : Math.max(1, rng.nextRange(1, 5));
+    const mapped: number[] = [];
     
-    (mapping.forward as Map<OpCode, number>).set(canonical, mapped);
-    (mapping.reverse as Map<number, OpCode>).set(mapped, canonical);
+    for (let j = 0; j < aliasCount; j++) {
+      if (availableSlots.length > 0) {
+        const slot = availableSlots.pop()!;
+        mapped.push(slot);
+        (mapping.reverse as Map<number, OpCode>).set(slot, canonical);
+      }
+    }
+    
+    (mapping.forward as Map<OpCode, number | readonly number[]>).set(canonical, mapped);
   }
 
   return mapping;

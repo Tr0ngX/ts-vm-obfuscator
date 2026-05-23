@@ -42,21 +42,29 @@ graph TD
 
     subgraph T["Transforms Pipeline"]
         direction TB
-        C --> D["📦 Trích Xuất Constant Pool"]
-        D --> E["🎲 Ngẫu Nhiên Hóa Opcode"]
-        E --> F["🧬 Biến Đổi Dòng Điều Khiển"]
+        T1["📦 Trích Xuất Constant Pool"]
+        T2["🎲 Ngẫu Nhiên Hóa Opcode"]
+        T3["🧬 Biến Đổi Dòng Điều Khiển"]
     end
+    
+    C --> T1
+    T1 --> T2
+    T2 --> T3
 
-    F -->|"Assembler"| G["💾 Bytecode Nhị Phân"]
+    T3 -->|"Assembler"| G["💾 Bytecode Nhị Phân"]
     G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
         direction TB
-        H -->|"Lazy Decode"| I["🔐 Mã Hóa Constant Pool"]
-        H -->|"Dispatch Loop"| J["⚙️ Máy Ảo Đa Hình (Interpreter)"]
-        I --> K["🧩 Giá Trị Runtime"]
-        J --> K
+        R1["🔐 Mã Hóa Constant Pool"]
+        R2["⚙️ Máy Ảo Đa Hình (Interpreter)"]
     end
+    
+    H -->|"Lazy Decode"| R1
+    H -->|"Dispatch Loop"| R2
+    
+    R1 --> K["🧩 Giá Trị Runtime"]
+    R2 --> K
 
     K -->|"Semantic Output"| L["✅ Kết Quả Đồng Nhất Ngữ Nghĩa"]
 ```
