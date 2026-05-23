@@ -31,7 +31,7 @@ graph TD
     A[TypeScript Source Code] -->|TS Compiler API| B[Semantic AST Analysis]
     B -->|Filter JSDoc @virtualize| C[Register-Based IR]
     
-    subgraph Transforms Layer [Transforms Layer]
+    subgraph TransformsLayer ["Transforms Layer"]
         C -->|Pass 1| D[Constant Pool Extraction]
         D -->|Pass 2| E[Opcode Randomizer]
     end
@@ -39,14 +39,14 @@ graph TD
     E -->|Assembler| F[Binary Bytecode Stream - Uint8Array]
     F -->|Polymorphic Packager| G[Production JS Bundle]
     
-    subgraph VM Execution Runtime [VM Execution Runtime]
+    subgraph VMExecutionRuntime ["VM Execution Runtime"]
         G -->|Dynamic Decryption| H[Decrypted Constant Pool]
         G -->|Binary Execution| I[Polymorphic VM Interpreter]
         H & I -->|Output| J[Semantic Equivalent Results]
     end
     
-    style TransformsLayer fill:#2a2b36,stroke:#ff9f43,stroke-width:2px;
-    style VMExecutionRuntime fill:#2a2b36,stroke:#10ac84,stroke-width:2px;
+    style TransformsLayer fill:#2a2b36,stroke:#ff9f43,stroke-width:2px,color:#ffffff;
+    style VMExecutionRuntime fill:#2a2b36,stroke:#10ac84,stroke-width:2px,color:#ffffff;
 ```
 
 ---
