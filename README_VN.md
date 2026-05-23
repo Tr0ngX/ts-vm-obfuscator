@@ -59,9 +59,6 @@ graph TD
     end
 
     K -->|"Semantic Output"| L["✅ Kết Quả Đồng Nhất Ngữ Nghĩa"]
-
-    style T fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
-    style R fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
 ```
 
 ---
