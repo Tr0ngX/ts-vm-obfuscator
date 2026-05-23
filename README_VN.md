@@ -36,25 +36,32 @@ TSXobf hoạt động giống như một compiler backend. Nó tiếp nhận mã
 
 ```mermaid
 graph TD
-    A[TypeScript Source Code] -->|TS Compiler API| B[Phân Tích Cú Pháp AST Ngữ Nghĩa]
-    B -->|Lọc thẻ @virtualize| C[Intermediate Representation - Register IR]
-    
-    subgraph TransformsLayer ["Transforms Layer"]
-        C -->|Pass 1| D[Trích Xuất Hằng Số & Constant Pool]
-        D -->|Pass 2| E[Ngẫu Nhiên Hóa Mã Lệnh Opcode]
+
+    A["⚡ Nguồn TypeScript"] -->|"TS Compiler API"| B["🔍 Phân Tích Cú Pháp AST"]
+    B -->|"Bộ lọc @virtualize"| C["🧠 Register-Based IR"]
+
+    subgraph T["Transforms Pipeline"]
+        direction TB
+        C --> D["📦 Trích Xuất Constant Pool"]
+        D --> E["🎲 Ngẫu Nhiên Hóa Opcode"]
+        E --> F["🧬 Biến Đổi Dòng Điều Khiển"]
     end
 
-    E -->|Assembler| F[Bytecode Nhị Phân - Uint8Array]
-    F -->|Polymorphic Packager| G[Production JS Bundle]
-    
-    subgraph VMExecutionRuntime ["VM Execution Runtime"]
-        G -->|Giải Mã Động JIT| H[Constant Pool Đã Giải Mã]
-        G -->|Thực Thi Nhị Phân| I[Trình Thông Dịch Máy Ảo Đa Hình]
-        H & I -->|Đầu Ra| J[Kết Quả Đồng Nhất Ngữ Nghĩa]
+    F -->|"Assembler"| G["💾 Bytecode Nhị Phân"]
+    G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
+
+    subgraph R["VM Execution Runtime"]
+        direction TB
+        H -->|"Lazy Decode"| I["🔐 Mã Hóa Constant Pool"]
+        H -->|"Dispatch Loop"| J["⚙️ Máy Ảo Đa Hình (Interpreter)"]
+        I --> K["🧩 Giá Trị Runtime"]
+        J --> K
     end
-    
-    style TransformsLayer fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
-    style VMExecutionRuntime fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
+
+    K -->|"Semantic Output"| L["✅ Kết Quả Đồng Nhất Ngữ Nghĩa"]
+
+    style T fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
+    style R fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
 ```
 
 ---

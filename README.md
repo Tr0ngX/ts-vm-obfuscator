@@ -36,25 +36,32 @@ TSXobf works as a compiler backend. It takes your TypeScript code, compiles targ
 
 ```mermaid
 graph TD
-    A[TypeScript Source Code] -->|TS Compiler API| B[Semantic AST Analysis]
-    B -->|Filter JSDoc @virtualize| C[Register-Based IR]
-    
-    subgraph TransformsLayer ["Transforms Layer"]
-        C -->|Pass 1| D[Constant Pool Extraction]
-        D -->|Pass 2| E[Opcode Randomizer]
+
+    A["⚡ TypeScript Source"] -->|"TS Compiler API"| B["🔍 Semantic AST Analysis"]
+    B -->|"@virtualize Filter"| C["🧠 Register-Based IR"]
+
+    subgraph T["Transforms Pipeline"]
+        direction TB
+        C --> D["📦 Constant Pool Extraction"]
+        D --> E["🎲 Opcode Randomization"]
+        E --> F["🧬 Control-Flow Mutation"]
     end
 
-    E -->|Assembler| F[Binary Bytecode Stream - Uint8Array]
-    F -->|Polymorphic Packager| G[Production JS Bundle]
-    
-    subgraph VMExecutionRuntime ["VM Execution Runtime"]
-        G -->|Dynamic Decryption| H[Decrypted Constant Pool]
-        G -->|Binary Execution| I[Polymorphic VM Interpreter]
-        H & I -->|Output| J[Semantic Equivalent Results]
+    F -->|"Assembler"| G["💾 Binary Bytecode Stream"]
+    G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
+
+    subgraph R["VM Execution Runtime"]
+        direction TB
+        H -->|"Lazy Decode"| I["🔐 Encrypted Constant Pool"]
+        H -->|"Dispatch Loop"| J["⚙️ Polymorphic VM Interpreter"]
+        I --> K["🧩 Runtime Values"]
+        J --> K
     end
-    
-    style TransformsLayer fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
-    style VMExecutionRuntime fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
+
+    K -->|"Semantic Output"| L["✅ Equivalent Program Behavior"]
+
+    style T fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
+    style R fill:#2a2b36,stroke:#007acc,stroke-width:2px,color:#ffffff;
 ```
 
 ---
