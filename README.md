@@ -89,18 +89,22 @@ graph TD
 
     subgraph T["Transforms Pipeline"]
         direction TB
-        T1["📦 Constant Pool Extraction"]
-        T2["🎲 Opcode Randomization"]
-        T3["🧬 Control-Flow Mutation"]
-        T4["🗑️ StripDebugPass"]
+        T1["🗑️ StripDebugPass"]
+        T2["📦 StringPoolEncodingPass"]
+        T3["🧩 SymbolIndirectionPass"]
+        T4["👻 DeadCodeInjectionPass"]
+        T5["🧬 ControlFlowFlatteningPass"]
+        T6["🎲 GenericConfusionPass"]
     end
     
     C --> T1
     T1 --> T2
     T2 --> T3
     T3 --> T4
+    T4 --> T5
+    T5 --> T6
 
-    T4 -->|"Assembler"| G["💾 Binary Bytecode Stream"]
+    T6 -->|"Assembler"| G["💾 Binary Bytecode Stream"]
     G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
