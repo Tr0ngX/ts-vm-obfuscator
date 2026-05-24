@@ -35,13 +35,40 @@ export class GenericConfusionPass implements TransformPass {
               nodesTransformed++;
               
               // Inject a confusion preamble before the call
+              // We use high registers to avoid colliding with locals/args temporarily
+              const tempReg1 = `r250`;
+              const tempReg2 = `r251`;
+              const tempReg3 = `r252`;
+              
+              // 1. Copy the function reference (inst.operands[0]) to tempReg1
               newInstructions.push({
-                opcode: OpCode.Nop,
-                operands: [],
-                metadata: { genericConfusion: true, reason: 'simulated_generic_dispatch' }
+                opcode: OpCode.Move,
+                operands: [
+                  inst.operands[0]!,
+                  { kind: OperandKind.Register, value: tempReg1 }
+                ],
+                metadata: { genericConfusion: true }
               });
               
-              // Optionally scramble arguments if it's a generic identity function, etc.
+              // 2. TypeOf tempReg1 -> tempReg2
+              newInstructions.push({
+                opcode: OpCode.TypeOf,
+                operands: [
+                  { kind: OperandKind.Register, value: tempReg1 },
+                  { kind: OperandKind.Register, value: tempReg2 }
+                ]
+              });
+              
+              // 3. Eq tempReg1, tempReg2 -> tempReg3 (dummy comparison)
+              newInstructions.push({
+                opcode: OpCode.Eq,
+                operands: [
+                  { kind: OperandKind.Register, value: tempReg1 },
+                  { kind: OperandKind.Register, value: tempReg2 },
+                  { kind: OperandKind.Register, value: tempReg3 }
+                ]
+              });
+              
               // We just push the original call
               newInstructions.push(inst);
             } else {

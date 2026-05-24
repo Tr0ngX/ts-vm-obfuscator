@@ -11,6 +11,17 @@ function calculateSecretHash(input) {
   return hash;
 }
 
+function encryptTEA(v0, v1, k0, k1, k2, k3) {
+  let sum = 0;
+  const delta = 0x9e3779b9;
+  for (let i = 0; i < 32; i++) {
+    sum = (sum + delta) | 0;
+    v0 = (v0 + (((v1 << 4) + k0) ^ (v1 + sum) ^ ((v1 >>> 5) + k1))) | 0;
+    v1 = (v1 + (((v0 << 4) + k2) ^ (v0 + sum) ^ ((v0 >>> 5) + k3))) | 0;
+  }
+  return (v0 ^ v1) | 0;
+}
+
 const testInput = 'hello-world';
 const expectedHash = calculateSecretHash(testInput);
 console.log('Expected hash:', expectedHash);
@@ -37,14 +48,26 @@ const mod = require('./dist-obf/' + buildFile);
 const obfuscatedHash = mod.calculateSecretHash(testInput);
 console.log('Obfuscated hash:', obfuscatedHash);
 
+const expectedTEA = encryptTEA(12345, 67890, 1, 2, 3, 4);
+const obfuscatedTEA = mod.encryptTEA(12345, 67890, 1, 2, 3, 4);
+console.log('Expected TEA:', expectedTEA);
+console.log('Obfuscated TEA:', obfuscatedTEA);
+
 // Step 4: Verify semantic equivalence
-if (obfuscatedHash === expectedHash) {
-  console.log('\n✅ SUCCESS: Obfuscated function produces correct output!');
+if (obfuscatedHash === expectedHash && expectedTEA === obfuscatedTEA) {
+  console.log('\n✅ SUCCESS: Obfuscated functions produce correct output!');
   console.log(`   calculateSecretHash('${testInput}') = ${obfuscatedHash}`);
+  console.log(`   encryptTEA = MATCHED`);
 } else {
   console.error('\n❌ FAILURE: Output mismatch!');
-  console.error(`   Expected: ${expectedHash}`);
-  console.error(`   Got:      ${obfuscatedHash}`);
+  if (obfuscatedHash !== expectedHash) {
+    console.error(`   Hash Expected: ${expectedHash}`);
+    console.error(`   Hash Got:      ${obfuscatedHash}`);
+  }
+  if (expectedTEA !== obfuscatedTEA) {
+    console.error(`   TEA Expected: ${expectedTEA}`);
+    console.error(`   TEA Got:      ${obfuscatedTEA}`);
+  }
   process.exit(1);
 }
 

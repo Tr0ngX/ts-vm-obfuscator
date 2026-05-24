@@ -104,6 +104,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
     { name: 'TypeLevelFakePathPass', enabled: true, options: {} },
     { name: 'DecoratorAwareLoweringPass', enabled: true, options: {} },
     { name: 'FunctionVirtualizationPass', enabled: true, options: {} },
+    { name: 'StripDebugPass', enabled: true, options: {} },
   ] as const;
 
   switch (target) {

@@ -36,7 +36,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
   };
 
-  declareHandler(OpCode.Trap, `throw new Error("VM Integrity Violation");`);
+  declareHandler(OpCode.Trap, `throw new Error('VM Integrity Violation at PC ' + (ctx.pc - 1) + ', raw op: ' + ctx.bytecode[ctx.pc - 1]);`);
 
   const advanceArg = `
     let kindNum = ctx.bytecode[ctx.pc++];
@@ -82,7 +82,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
   declareHandler(OpCode.Move, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
-  declareHandler(OpCode.LoadGlobal, `${readArgs} ctx.regs[args[1]] = ctx.globalScope[ctx.regs[args[0]]];`);
+  declareHandler(OpCode.LoadGlobal, `
+    ${readArgs}
+    const propName = ctx.regs[args[0]];
+    ctx.regs[args[1]] = (typeof result !== 'undefined' && result[propName] !== undefined)
+      ? result[propName]
+      : ctx.globalScope[propName];
+  `);
   declareHandler(OpCode.StoreGlobal, `${readArgs} ctx.globalScope[ctx.regs[args[0]]] = ctx.regs[args[1]];`);
   
   declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] + ctx.regs[args[1]];`);
@@ -134,24 +140,39 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ctx.regs[args[args.length - 1]] = fn.apply(null, callArgs2);
   `);
   
-  declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0];`);
-  declareHandler(OpCode.JmpIf, `${readArgs} ctx.pc = ctx.regs[args[0]] ? args[1] : args[2];`);
-  declareHandler(OpCode.JmpIfNot, `${readArgs} ctx.pc = !ctx.regs[args[0]] ? args[1] : args[2];`);
+  declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0]; ${config.rollingKeys ? 'ctx.rollingKey = args[1];' : ''}`);
+  declareHandler(OpCode.JmpIf, `${readArgs} ctx.pc = ctx.regs[args[0]] ? args[1] : args[2]; ${config.rollingKeys ? 'ctx.rollingKey = ctx.regs[args[0]] ? args[3] : args[4];' : ''}`);
+  declareHandler(OpCode.JmpIfNot, `${readArgs} ctx.pc = !ctx.regs[args[0]] ? args[1] : args[2]; ${config.rollingKeys ? 'ctx.rollingKey = !ctx.regs[args[0]] ? args[3] : args[4];' : ''}`);
   
   declareHandler(OpCode.Return, `${readArgs} ctx.returnValue = args.length > 0 ? ctx.regs[args[0]] : undefined; ctx.running = false;`);
   declareHandler(OpCode.ReturnVoid, `${readArgs} ctx.returnValue = undefined; ctx.running = false;`);
-  declareHandler(OpCode.Nop, `/* Junk */`);
+  declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `ctx.running = false;`);
 
   const antiDebugLogic = config.antiDebug ? `
-    var start = Date.now();
+    // Anti-Debug Heuristics
+    var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugger;
-    if (Date.now() - start > 100) { ctx.regs[0] = null; /* Poison state */ }
+    var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (_dbg_end - _dbg_start > 100) { 
+       // Corrupt state silently
+       ctx.regs[1] = NaN; 
+       ctx.pc = Math.max(0, ctx.pc - 2); 
+    }
   ` : '';
 
   const tamperDetectionLogic = config.tamperDetection ? `
-    if (execute.toString().indexOf('debugger') === -1 && ${config.antiDebug}) {
-      ctx.regs[0] = null; // function tampered
+    // Integrity checks for native functions and self
+    var _isNative = function(fn) { return /\\{\\s*\\[native code\\]\\s*\\}/.test('' + fn); };
+    var fnStr = execute.toString();
+    if (
+      (fnStr.indexOf('debugger') === -1 && ${config.antiDebug}) || 
+      fnStr.length < 100 || 
+      !_isNative(Math.sin)
+    ) {
+      // Data corruption on tamper
+      ctx.globalScope = {}; 
+      ctx.regs[0] = null; 
     }
   ` : '';
 
@@ -186,9 +207,6 @@ const vmFunctions = (function() {
 
   function createExecutor(bytecodeArr) {
     return function execute() {
-      ${antiDebugLogic}
-      ${tamperDetectionLogic}
-
       const fnArgs = Array.prototype.slice.call(arguments);
       const ctx = {
         pc: 0,
@@ -199,6 +217,9 @@ const vmFunctions = (function() {
         returnValue: undefined,
         rollingKey: ${config.rollingKeys ? 'seed & 0xFF' : '0'}
       };
+
+      ${antiDebugLogic}
+      ${tamperDetectionLogic}
 
       for (let i = 0; i < fnArgs.length; i++) {
         ctx.regs[i] = fnArgs[i];

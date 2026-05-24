@@ -7,3 +7,6 @@ export * from './passes/type-level-fake-path.js';
 export * from './passes/symbol-indirection.js';
 export * from './passes/string-pool-encoding.js';
 export * from './passes/function-virtualization.js';
+export * from './passes/dead-code-injection.js';
+export * from './passes/control-flow-flattening.js';
+export * from './passes/strip-debug.js';

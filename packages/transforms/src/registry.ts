@@ -7,6 +7,9 @@ import { TypeLevelFakePathPass } from './passes/type-level-fake-path.js';
 import { SymbolIndirectionPass } from './passes/symbol-indirection.js';
 import { StringPoolEncodingPass } from './passes/string-pool-encoding.js';
 import { FunctionVirtualizationPass } from './passes/function-virtualization.js';
+import { DeadCodeInjectionPass } from './passes/dead-code-injection.js';
+import { ControlFlowFlatteningPass } from './passes/control-flow-flattening.js';
+import { StripDebugPass } from './passes/strip-debug.js';
 
 export class TransformRegistry {
   private passes: Map<string, TransformPass> = new Map();
@@ -21,6 +24,9 @@ export class TransformRegistry {
       'SymbolIndirectionPass': SymbolIndirectionPass,
       'StringPoolEncodingPass': StringPoolEncodingPass,
       'FunctionVirtualizationPass': FunctionVirtualizationPass,
+      'DeadCodeInjectionPass': DeadCodeInjectionPass,
+      'ControlFlowFlatteningPass': ControlFlowFlatteningPass,
+      'StripDebugPass': StripDebugPass,
     };
 
     for (const passConfig of profile.transforms) {

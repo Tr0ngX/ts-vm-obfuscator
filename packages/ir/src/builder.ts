@@ -106,23 +106,36 @@ class ASTLowering {
         [ts.SyntaxKind.PercentToken]: OpCode.Mod,
         [ts.SyntaxKind.LessThanLessThanToken]: OpCode.Shl,
         [ts.SyntaxKind.GreaterThanGreaterThanToken]: OpCode.Shr,
+        [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken]: OpCode.UShr,
         [ts.SyntaxKind.BarToken]: OpCode.BitOr,
         [ts.SyntaxKind.AmpersandToken]: OpCode.BitAnd,
         [ts.SyntaxKind.CaretToken]: OpCode.BitXor,
         [ts.SyntaxKind.LessThanToken]: OpCode.Lt,
         [ts.SyntaxKind.GreaterThanToken]: OpCode.Gt,
+        [ts.SyntaxKind.LessThanEqualsToken]: OpCode.LtEq,
+        [ts.SyntaxKind.GreaterThanEqualsToken]: OpCode.GtEq,
         [ts.SyntaxKind.EqualsEqualsToken]: OpCode.Eq,
-        [ts.SyntaxKind.EqualsEqualsEqualsToken]: OpCode.Eq,
-        [ts.SyntaxKind.ExclamationEqualsToken]: OpCode.Eq,
-        [ts.SyntaxKind.ExclamationEqualsEqualsToken]: OpCode.Eq,
+        [ts.SyntaxKind.EqualsEqualsEqualsToken]: OpCode.StrictEq,
+        [ts.SyntaxKind.ExclamationEqualsToken]: OpCode.Eq, // Wait, not in OpCode enum, typically mapped to Not after Eq?
+        [ts.SyntaxKind.ExclamationEqualsEqualsToken]: OpCode.StrictEq,
+        [ts.SyntaxKind.InKeyword]: OpCode.In,
+        [ts.SyntaxKind.InstanceOfKeyword]: OpCode.InstanceOf,
       };
       
       const isCompound = expr.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken && expr.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken;
       if (isCompound) {
         const cmpMap: Record<number, OpCode> = {
-          [ts.SyntaxKind.BarEqualsToken]: OpCode.BitOr,
           [ts.SyntaxKind.PlusEqualsToken]: OpCode.Add,
           [ts.SyntaxKind.MinusEqualsToken]: OpCode.Sub,
+          [ts.SyntaxKind.AsteriskEqualsToken]: OpCode.Mul,
+          [ts.SyntaxKind.SlashEqualsToken]: OpCode.Div,
+          [ts.SyntaxKind.PercentEqualsToken]: OpCode.Mod,
+          [ts.SyntaxKind.LessThanLessThanEqualsToken]: OpCode.Shl,
+          [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken]: OpCode.Shr,
+          [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken]: OpCode.UShr,
+          [ts.SyntaxKind.AmpersandEqualsToken]: OpCode.BitAnd,
+          [ts.SyntaxKind.BarEqualsToken]: OpCode.BitOr,
+          [ts.SyntaxKind.CaretEqualsToken]: OpCode.BitXor,
         };
         const opc = cmpMap[expr.operatorToken.kind] || OpCode.Add;
         this.currentBlock.addInstruction(opc, [{ kind: OperandKind.Register, value: leftReg }, { kind: OperandKind.Register, value: rightReg }], resReg);
@@ -135,9 +148,15 @@ class ASTLowering {
       
       if (opMap[expr.operatorToken.kind]) {
         this.currentBlock.addInstruction(opMap[expr.operatorToken.kind]!, [{ kind: OperandKind.Register, value: leftReg }, { kind: OperandKind.Register, value: rightReg }], resReg);
+        
+        if (expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+          const notReg = this.fnBuilder.allocRegister();
+          this.currentBlock.addInstruction(OpCode.Not, [{ kind: OperandKind.Register, value: resReg }], notReg);
+          return notReg;
+        }
+        
         return resReg;
       }
-      return resReg;
     }
     
     if (ts.isPropertyAccessExpression(expr)) {
