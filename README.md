@@ -2,153 +2,158 @@
   <img src="assets/logo.png" alt="TSXobf Logo" width="200px" />
 </p>
 
-# 🛡️ TSXobf — TypeScript Semantic-Aware VM Obfuscator
+# TSXobf
 
-> **Next-Generation Code Virtualization Pipeline** for securing high-value business logic in TypeScript and JavaScript ecosystems.
+TypeScript semantic-aware obfuscation pipeline built around selective virtualization. Instead of scrambling every AST node, TSXobf lowers chosen functions to IR, compiles them to custom bytecode, and executes them inside a generated JavaScript VM runtime.
 
----
-🌐 **Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
----
+Languages: [English](README.md) | [Tiếng Việt](README_VN.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue.svg)](https://www.typescriptlang.org/)
-[![Architecture](https://img.shields.io/badge/Architecture-Register--Based%20VM-orange.svg)]()
+## What It Does
 
-Unlike traditional obfuscators that rely on easily-reversible AST transformations (like variable renaming, dead code injection, or control flow flattening), **TSXobf** introduces a professional-grade **Compiler Backend** that compiles your proprietary TypeScript algorithms down to custom bytecode and executes them inside a dynamically randomized **Polymorphic Virtual Machine (VM)**.
+TSXobf is designed for high-value business logic such as license checks, billing rules, cryptographic helpers, and integrity-sensitive algorithms.
 
-## Key Features
+The main pipeline is:
 
-- **Semantic-Aware Compilation:** Uses the official TypeScript Compiler API to seamlessly resolve module exports, scope rules, typed variables, and dependency calls.
-- **Polymorphic Virtual Machine Runtime:** Generates a Threaded Dispatch execution engine with randomized handlers and integrity traps.
-- **1-to-N Opcode Aliasing & Shuffling:** Defeats statistical pattern-matching by mapping one instruction type to multiple virtual opcodes, randomized per build.
-- **Rolling XOR Key Encryption:** Instruction opcodes and immediate values are encrypted within the bytecode stream and dynamically decrypted.
-- **JIT Constant Pool Decryption:** Strings, numerical constants, and property lookups are extracted into an encrypted constant pool and decrypted lazily.
-- **Targeted Protection via JSDoc:** Protect only critical functions by placing a `/** @virtualize */` annotation above them, maintaining 100% native speed for UI/framework code.
-- **StripDebugPass:** Automatically strips all `console.log`, `console.warn`, and `console.error` calls to remove debug literals from the production constant pool.
-- **Zero-Dependency Bundling:** Outputs a clean, standalone JavaScript file that runs anywhere (Browsers, Node.js, Electron, Workers).
+1. TypeScript project analysis
+2. Semantic graph construction
+3. IR lowering
+4. Transform passes
+5. Bytecode compilation
+6. VM runtime generation
+7. Output bundle emission
 
----
+Virtualization is selective, not whole-program. Functions are typically opted in with `/** @virtualize */`.
 
-## Tech Stack
+## Current Technical Capabilities
 
-- **Language**: TypeScript 5+
-- **Monorepo Manager**: pnpm
-- **Bundler**: tsup
-- **IR & Bytecode Backend**: Custom Register-Based TSVM
+- TypeScript project analysis through the TypeScript Compiler API
+- Register-based IR lowering for selected functions
+- VM bytecode compilation with remapped opcodes
+- Generated JS runtime with threaded dispatch and integrity trap handlers
+- Constant-pool based lowering with runtime decoding
+- React-safe and Electron-oriented profile switches
+- Strip-debug transform in the obfuscation pipeline
 
----
+IR lowering now covers these important runtime-safe constructs:
 
-## Prerequisites
+- Array literals like `[1, 2, 3]`
+- Object literals with `PropertyAssignment` and `ShorthandPropertyAssignment`
+- Element access like `arr[i]`
+- Property assignment like `obj.x = y`
+- Computed assignment like `arr[i] = y`
+- Basic `if / else` branch lowering
+- `while` loops
+- Prefix unary expressions (e.g. `!x`, `-x`, `typeof x`)
+- `delete` operator expressions
 
-- Node.js 20 or higher
-- pnpm (highly recommended for workspaces)
+The VM runtime now includes handlers for:
 
----
+- `ArrayNew`
+- `ObjectNew`
+- `ComputedGet`
+- `ComputedSet`
+- `Delete`
 
-## Getting Started
+## Current Limits
 
-### 1. Clone the Repository
+This repo is still a serious prototype rather than a fully general JS/TS VM compiler.
 
-```bash
-git clone https://github.com/yourusername/TSXobf.git
-cd TSXobf
+Notable limits:
+
+- Object literal method declarations such as `{ f() {} }` are not yet documented as supported inside virtualized regions.
+- Function expressions and arrow functions embedded inside object literals are not part of the verified support set.
+- Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
+- `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
+
+## Workspace Layout
+
+```text
+packages/core                 Pipeline orchestrator
+packages/ts-semantics         TS project analysis and semantic graph
+packages/ir                   AST to IR lowering
+packages/transforms           Obfuscation and virtualization passes
+packages/bytecode             IR to bytecode compiler and encoder
+packages/vm-runtime           Generated VM runtime builder
+packages/shared               Shared types and config
+packages/cli                  CLI entrypoint
+packages/react-safe           React safety rules
+packages/electron-hardening   Electron-oriented hardening hooks
+packages/benchmark            Benchmark helpers
+examples/basic-ts             Main baseline sample
+examples/st                   Complex structure regression sample
 ```
 
-### 2. Install Dependencies
+## Requirements
+
+- Node.js 20+
+- pnpm
+
+## Install And Build
 
 ```bash
 pnpm install
-```
-
-### 3. Compile Workspace
-
-```bash
 pnpm build
 ```
 
-### 4. Run the Obfuscator CLI
+## CLI Usage
 
-Provide the compiler with the target TypeScript configuration:
+Build the CLI first, then run it against a target `tsconfig.json`.
 
 ```bash
 node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile generic
 ```
 
-The protected production files will be built and output into the `dist-obf/` directory with a timestamped build signature (e.g., `build_1779526130061_index_ts.js`).
-Supported profiles: `default` (alias of `generic`), `generic`, `react`, `electron`, `library`.
+Supported profiles:
 
----
+- `default` -> alias of `generic`
+- `generic`
+- `react`
+- `electron`
+- `library`
 
-## Architecture
+The CLI also supports `--seed <number>`, and that seed is applied to both the obfuscation profile and VM config.
 
-TSXobf works as a compiler backend. It takes your TypeScript code, compiles target functions into a register-based Intermediate Representation (IR), applies security passes, and packages them into a lightweight JS interpreter.
+## Verification
 
-```mermaid
-graph TD
-    A["⚡ TypeScript Source"] -->|"TS Compiler API"| B["🔍 Semantic AST Analysis"]
-    B -->|"@virtualize Filter"| C["🧠 Register-Based IR"]
+### Baseline Regression
 
-    subgraph T["Transforms Pipeline"]
-        direction TB
-        T1["🗑️ StripDebugPass"]
-        T2["📦 StringPoolEncodingPass"]
-        T3["🧩 SymbolIndirectionPass"]
-        T4["👻 DeadCodeInjectionPass"]
-        T5["🧬 ControlFlowFlatteningPass"]
-        T6["🎲 GenericConfusionPass"]
-    end
-    
-    C --> T1
-    T1 --> T2
-    T2 --> T3
-    T3 --> T4
-    T4 --> T5
-    T5 --> T6
+This verifies the existing `examples/basic-ts` sample and compares obfuscated output against native behavior:
 
-    T6 -->|"Assembler"| G["💾 Binary Bytecode Stream"]
-    G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
-
-    subgraph R["VM Execution Runtime"]
-        direction TB
-        R1["🔐 Encrypted Constant Pool"]
-        R2["⚙️ Polymorphic VM Interpreter"]
-    end
-    
-    H -->|"Lazy Decode"| R1
-    H -->|"Dispatch Loop"| R2
-    
-    R1 --> K["🧩 Runtime Values"]
-    R2 --> K
-
-    K -->|"Semantic Output"| L["✅ Equivalent Program Behavior"]
+```bash
+pnpm test
 ```
 
-### Directory Structure
+That command currently does all of the following:
 
-```
-├── apps/
-│   └── visualizer/        # Web-based visualizer for IR and bytecode (Demo UI)
-├── packages/
-│   ├── cli/               # CLI entry point to run the obfuscation pipeline
-│   ├── core/              # Pipeline orchestrator (End-to-End flow)
-│   ├── ts-semantics/      # TypeScript project analysis and semantic graph building
-│   ├── ir/                # Intermediate Representation (IR) lowerer
-│   ├── transforms/        # Ordered obfuscation and virtualization passes (e.g. StripDebugPass)
-│   ├── bytecode/          # IR to bytecode compiler, encoder, decoder, mapping
-│   ├── vm-runtime/        # Polymorphic VM / runtime source generator
-│   ├── shared/            # Shared types and configuration models
-│   ├── react-safe/        # React-specific safety rules for virtualization
-│   ├── electron-hardening/# Electron-specific hardening hooks
-│   └── benchmark/         # Performance benchmarking helpers
-├── examples/
-│   └── basic-ts/          # Sample project containing `@virtualize` functions (Hash, TEA)
-└── test-pipeline.js       # End-to-End semantic validation script
+1. Runs the workspace Vitest suites from the root config
+2. Builds the workspace
+3. Runs `node test-pipeline.js`
+
+### Complex Structure Regression
+
+This verifies the newer array/object/index/branch support in `examples/st`.
+
+Build an obfuscated bundle:
+
+```bash
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist
 ```
 
-### Code Example
+Then compare native vs obfuscated execution:
 
-**1. Original Code (`examples/basic-ts/src/index.ts`)**
-```typescript
+```bash
+node examples/st/run-obf.js
+```
+
+Expected success output:
+
+```text
+OK runComplexStructures matched native output for all flags.
+```
+
+## Example Virtualized Function
+
+```ts
 /** @virtualize */
 export function calculateSecretHash(input: string): number {
   let hash = 0;
@@ -160,92 +165,36 @@ export function calculateSecretHash(input: string): number {
 }
 ```
 
-**2. Obfuscated Output JavaScript (`dist-obf/...`)**
-```javascript
-const vmFunctions = (function() {
-  const seed = 1779526130061;
-  // Encrypted Constant Pool, 1-to-N Handlers, and Threaded Dispatch Loop...
-  
-  function createExecutor(bytecodeArr) {
-    return function execute(...fnArgs) {
-       // Register-based VM executing encrypted bytecode...
-    }
-  }
+After lowering and compilation, the original function body is replaced by VM bytecode plus a generated runtime bundle.
 
-  var result = {};
-  result['calculateSecretHash'] = createExecutor(new Uint8Array([73,122,89,14,244,11,8,90,201...]));
-  return result;
-})();
-```
+## Entry Points
 
----
+- CLI: `packages/cli/src/cli.ts`
+- Pipeline: `packages/core/src/index.ts`
+- VM builder: `packages/vm-runtime/src/polymorphic-builder.ts`
+- Baseline verifier: `test-pipeline.js`
+- Complex verifier: `examples/st/run-obf.js`
 
-## Environment Variables
+## Recommended Development Flow
 
-This project does not require any specific environment variables for core compilation. 
-However, you can configure TSXobf pipeline behaviors via CLI flags or programmatic config in `ObfuscationPipeline`.
+If you are changing pipeline behavior:
 
----
+1. Update or add tests first
+2. Run targeted Vitest cases
+3. Run `pnpm test`
+4. If touching complex expression lowering, rerun the `examples/st` verification flow
 
-## Available Scripts
+## Status
 
-| Command | Description |
-|---|---|
-| `pnpm install` | Install all workspace dependencies |
-| `pnpm build` | Compile all workspace packages (core, cli, transforms, etc.) |
-| `pnpm test` | Run the workspace Vitest suites from the root config and the end-to-end semantic equivalence check |
-| `pnpm typecheck` | Run TypeScript typechecking across all packages |
-| `pnpm visualizer` | Start the local visualizer application (Mock UI) |
-| `node test-pipeline.js` | Run the integrated semantic equivalence end-to-end test (Hash & TEA) |
+The repo currently verifies:
 
----
+- Baseline semantic equivalence for `examples/basic-ts`
+- Complex array/object/index/branch behavior for `examples/st`
+- CLI option parsing for profile and seed
+- VM runtime generation for the newer allocation handlers
 
-## Testing
+It does not claim broad support for arbitrary JavaScript syntax inside every virtualized function yet.
 
-TSXobf includes strict semantic validation to ensure the VM interpreter produces the exact same results as native Node.js V8 execution.
+## License
 
-### Running End-to-End Tests
-
-```bash
-# Validates standard Hash and complex Tiny Encryption Algorithm (TEA) arithmetic
-node test-pipeline.js
-```
-
-### Running Unit Tests
-
-```bash
-pnpm test
-```
-
----
-
-## Deployment
-
-TSXobf is a build-time compiler tool. It is executed during your CI/CD pipeline right after your TypeScript build step, before the final bundling process (e.g. Webpack/Rollup).
-
-1. Add TSXobf as a `devDependency`.
-2. Wrap your sensitive algorithms with `/** @virtualize */`.
-3. In your CI/CD, run TSXobf on your `.ts` source files.
-4. Replace the original sources with the VM-compiled files before shipping to production.
-
----
-
-## Troubleshooting
-
-### VM Integrity Violation
-
-**Error:** `VM Integrity Violation at PC X`
-
-**Solution:** This typically means the bytecode stream got desynchronized due to an unmapped opcode, or an incorrect `argCount` parsing in the VM runtime. Ensure that you have run `pnpm build` after modifying any `polymorphic-builder.ts` handlers or `compiler.ts` logic.
-
-### Missing Braces causing TypeError
-
-**Error:** `TypeError: Cannot read properties of undefined (reading 'apply')`
-
-**Solution:** Check the TypeScript source code for missing curly braces `{}` in `for`, `while`, or `if` statements. The AST parser might aggressively merge function calls if block scopes are ambiguous, causing incorrect register mappings during virtualization.
-
----
-
-## 🛡️ License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT. See [LICENSE](LICENSE).

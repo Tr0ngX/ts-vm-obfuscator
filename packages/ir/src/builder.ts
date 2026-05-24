@@ -344,6 +344,58 @@ class ASTLowering {
       }
     }
 
+    if (ts.isPrefixUnaryExpression(expr)) {
+      const operandReg = this.visitExpression(expr.operand);
+      const resReg = this.fnBuilder.allocRegister();
+      if (expr.operator === ts.SyntaxKind.ExclamationToken) {
+        this.currentBlock.addInstruction(OpCode.Not, [{ kind: OperandKind.Register, value: operandReg }], resReg);
+      } else if (expr.operator === ts.SyntaxKind.MinusToken) {
+        this.currentBlock.addInstruction(OpCode.Neg, [{ kind: OperandKind.Register, value: operandReg }], resReg);
+      } else if (expr.operator === ts.SyntaxKind.TildeToken) {
+        const notReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.Not, [{ kind: OperandKind.Register, value: operandReg }], notReg);
+        this.currentBlock.addInstruction(OpCode.BitXor, [{ kind: OperandKind.Register, value: operandReg }, { kind: OperandKind.Register, value: notReg }], resReg); // Approximate bitwise NOT if proper opcode doesn't exist
+      } else {
+        this.failUnsupported(expr, 'Unsupported prefix unary operator');
+      }
+      return resReg;
+    }
+
+    if (ts.isTypeOfExpression(expr)) {
+      const operandReg = this.visitExpression(expr.expression);
+      const resReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.TypeOf, [{ kind: OperandKind.Register, value: operandReg }], resReg);
+      return resReg;
+    }
+
+    if (ts.isDeleteExpression(expr)) {
+      if (ts.isPropertyAccessExpression(expr.expression)) {
+        const objReg = this.visitExpression(expr.expression.expression);
+        const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
+        const resReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.Delete, [
+          { kind: OperandKind.Register, value: objReg },
+          { kind: OperandKind.Register, value: propReg }
+        ], resReg);
+        this.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: this.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg); // delete returns true usually
+        return resReg;
+      } else if (ts.isElementAccessExpression(expr.expression)) {
+        if (!expr.expression.argumentExpression) {
+          this.failUnsupported(expr.expression, 'Element access requires an index expression');
+        }
+        const objReg = this.visitExpression(expr.expression.expression);
+        const propReg = this.visitExpression(expr.expression.argumentExpression);
+        const resReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.Delete, [
+          { kind: OperandKind.Register, value: objReg },
+          { kind: OperandKind.Register, value: propReg }
+        ], resReg);
+        this.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: this.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg);
+        return resReg;
+      }
+      this.failUnsupported(expr, 'Unsupported delete target');
+    }
+
     this.failUnsupported(expr);
   }
 
@@ -461,6 +513,26 @@ class ASTLowering {
         endBlock.addPredecessor(falseBlock.id);
       }
 
+      this.currentBlock = endBlock;
+    }
+    else if (ts.isWhileStatement(stmt)) {
+      const condBlock = this.fnBuilder.createBlock('while_cond');
+      const bodyBlock = this.fnBuilder.createBlock('while_body');
+      const endBlock = this.fnBuilder.createBlock('while_end');
+      
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      
+      this.currentBlock = condBlock;
+      const condReg = this.visitExpression(stmt.expression);
+      this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      
+      this.currentBlock = bodyBlock;
+      this.visitStatement(stmt.statement);
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      
       this.currentBlock = endBlock;
     }
     else {

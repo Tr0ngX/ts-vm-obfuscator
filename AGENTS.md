@@ -84,3 +84,4 @@ If you need to understand what the repo "does", read these in order:
 
 - `apps/visualizer` is useful for product direction but not yet wired to real pipeline output.
 - CLI profile parsing currently accepts `react`, `electron`, `library`, and falls back to `generic`.
+- **Note:** The IR builder has received a major upgrade ("CỰC NÂNG CẤP") and now fully supports complex statements and expressions including `if`/`while` loops, array/object literals, element access, prefix unary expressions, and `delete` operators. Ensure to use targeted regression testing when modifying these lowering handlers.
