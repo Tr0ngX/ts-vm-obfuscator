@@ -149,10 +149,11 @@ export interface TransformPassConfig {
 }
 
 export interface VirtualizationConfig {
-  readonly mode: 'none' | 'selected' | 'annotated';
+  readonly mode: 'none' | 'selected' | 'annotated' | 'whole_program';
   readonly annotations: readonly string[];
   readonly maxFunctionSize: number;
   readonly excludePatterns: readonly string[];
+  readonly compatibilityFallback?: boolean;
 }
 
 export enum ConstantEncodingScheme {
@@ -190,7 +191,7 @@ export interface VMBuildConfig {
 
 export interface ObfuscationProfile {
   readonly name: string;
-  readonly target: 'generic' | 'react' | 'electron' | 'library';
+  readonly target: 'generic' | 'react' | 'electron' | 'library' | 'universal';
   readonly transforms: readonly TransformPassConfig[];
   readonly virtualization: VirtualizationConfig;
   readonly vm: VMBuildConfig;
@@ -201,6 +202,18 @@ export interface ObfuscationProfile {
   readonly electronHarden: boolean;
   readonly deterministic: boolean;
   readonly seed: number;
+}
+
+export type FunctionExecutionTier = 'vm_safe' | 'js_lowered' | 'native_fallback';
+
+export interface FunctionCapabilityReport {
+  readonly filePath: string;
+  readonly functionName: string;
+  readonly tier: FunctionExecutionTier;
+  readonly startLine: number;
+  readonly startColumn: number;
+  readonly syntaxKinds: readonly string[];
+  readonly reasons: readonly string[];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -840,4 +853,5 @@ export interface BuildManifest {
   readonly seed: number;
   readonly diagnostics: readonly Diagnostic[];
   readonly metrics: readonly BenchmarkMetric[];
+  readonly functionReports?: readonly FunctionCapabilityReport[];
 }

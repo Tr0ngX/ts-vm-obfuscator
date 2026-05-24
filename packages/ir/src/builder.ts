@@ -1,6 +1,6 @@
 import ts from 'typescript';
-import type { ModuleInfo, ProjectSemanticGraph, IRModule, Operand, Register } from '@tsvm/shared';
-import { IRType, OpCode, OperandKind, ConstantKind, FunctionAttribute } from '@tsvm/shared';
+import type { Diagnostic, ModuleInfo, ProjectSemanticGraph, IRModule, Operand, Register } from '@tsvm/shared';
+import { DiagnosticSeverity, IRType, OpCode, OperandKind, ConstantKind, FunctionAttribute } from '@tsvm/shared';
 import { IRModuleBuilder, IRFunctionBuilder, BasicBlockBuilder } from './ir.js';
 
 type SupportedFunctionNode =
@@ -16,6 +16,12 @@ interface LoweringOptions {
   readonly analysis: ClosureAnalysis;
   readonly attributes?: readonly FunctionAttribute[];
   readonly isNested?: boolean;
+}
+
+export interface LowerToIROptions {
+  readonly forceVirtualizeAll?: boolean;
+  readonly compatibilityFallback?: boolean;
+  readonly diagnostics?: Diagnostic[];
 }
 
 interface ClosureAnalysis {
@@ -148,6 +154,7 @@ class ASTLowering {
   private scope: Map<string, LocalBinding> = new Map();
   readonly functionId: string;
   private nestedFunctionCount = 0;
+  private tempLocalCount = 0;
   private readonly sourceFile: ts.SourceFile;
   private readonly capturedLocals: ReadonlySet<string>;
   private readonly outerCaptureBindings = new Map<string, number>();
@@ -434,25 +441,228 @@ class ASTLowering {
     ]);
   }
 
-  private visitExpression(expr: ts.Expression): Register {
-    if (ts.isParenthesizedExpression(expr)) {
-      return this.visitExpression(expr.expression);
+  private normalizeExpression(expr: ts.Expression): ts.Expression {
+    let current = expr;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current)
+    ) {
+      if (ts.isParenthesizedExpression(current)) {
+        current = current.expression;
+      } else {
+        current = current.expression;
+      }
     }
+    return current;
+  }
+
+  private createTempLocal(prefix: string): Register {
+    return this.fnBuilder.addLocal(`$${prefix}_${this.tempLocalCount++}`, IRType.Any);
+  }
+
+  private loadFromLocal(localReg: Register): Register {
+    const destReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: localReg }], destReg);
+    return destReg;
+  }
+
+  private lowerConditionalExpression(
+    conditionReg: Register,
+    whenTrue: () => Register,
+    whenFalse: () => Register
+  ): Register {
+    const tempReg = this.createTempLocal('expr');
+    const trueBlock = this.fnBuilder.createBlock('expr_true');
+    const falseBlock = this.fnBuilder.createBlock('expr_false');
+    const endBlock = this.fnBuilder.createBlock('expr_end');
+
+    trueBlock.addPredecessor(this.currentBlock.id);
+    falseBlock.addPredecessor(this.currentBlock.id);
+    this.currentBlock.setTerminator({ kind: 'branch', condition: conditionReg, targets: [trueBlock.id, falseBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = trueBlock;
+    const trueValue = whenTrue();
+    this.currentBlock.addInstruction(OpCode.StoreLocal, [
+      { kind: OperandKind.Register, value: tempReg },
+      { kind: OperandKind.Register, value: trueValue },
+    ]);
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+    endBlock.addPredecessor(this.currentBlock.id);
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = falseBlock;
+    const falseValue = whenFalse();
+    this.currentBlock.addInstruction(OpCode.StoreLocal, [
+      { kind: OperandKind.Register, value: tempReg },
+      { kind: OperandKind.Register, value: falseValue },
+    ]);
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+    endBlock.addPredecessor(this.currentBlock.id);
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = endBlock;
+    return this.loadFromLocal(tempReg);
+  }
+
+  private lowerNullishCoalesce(leftReg: Register, rightExpr: ts.Expression): Register {
+    const tempReg = this.createTempLocal('nullish');
+    this.currentBlock.addInstruction(OpCode.StoreLocal, [
+      { kind: OperandKind.Register, value: tempReg },
+      { kind: OperandKind.Register, value: leftReg },
+    ]);
+
+    const nullConst = this.emitConstant(ConstantKind.Null, null);
+    const undefConst = this.emitConstant(ConstantKind.Undefined, null);
+    const isNullReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.StrictEq, [
+      { kind: OperandKind.Register, value: leftReg },
+      { kind: OperandKind.Register, value: nullConst },
+    ], isNullReg);
+
+    const rhsBlock = this.fnBuilder.createBlock('nullish_rhs');
+    const undefCheckBlock = this.fnBuilder.createBlock('nullish_undef');
+    const endBlock = this.fnBuilder.createBlock('nullish_end');
+
+    rhsBlock.addPredecessor(this.currentBlock.id);
+    undefCheckBlock.addPredecessor(this.currentBlock.id);
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isNullReg, targets: [rhsBlock.id, undefCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = undefCheckBlock;
+    const isUndefReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.StrictEq, [
+      { kind: OperandKind.Register, value: leftReg },
+      { kind: OperandKind.Register, value: undefConst },
+    ], isUndefReg);
+    rhsBlock.addPredecessor(this.currentBlock.id);
+    endBlock.addPredecessor(this.currentBlock.id);
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isUndefReg, targets: [rhsBlock.id, endBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = rhsBlock;
+    const rightReg = this.visitExpression(rightExpr);
+    this.currentBlock.addInstruction(OpCode.StoreLocal, [
+      { kind: OperandKind.Register, value: tempReg },
+      { kind: OperandKind.Register, value: rightReg },
+    ]);
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+    endBlock.addPredecessor(this.currentBlock.id);
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = endBlock;
+    return this.loadFromLocal(tempReg);
+  }
+
+  private lowerTemplateExpression(expr: ts.TemplateExpression): Register {
+    let accReg = this.emitConstant(ConstantKind.String, expr.head.text);
+
+    for (const span of expr.templateSpans) {
+      const valueReg = this.visitExpression(span.expression);
+      const combinedValue = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.Add, [
+        { kind: OperandKind.Register, value: accReg },
+        { kind: OperandKind.Register, value: valueReg },
+      ], combinedValue);
+      accReg = combinedValue;
+
+      if (span.literal.text.length > 0) {
+        const literalReg = this.emitConstant(ConstantKind.String, span.literal.text);
+        const combinedLiteral = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.Add, [
+          { kind: OperandKind.Register, value: accReg },
+          { kind: OperandKind.Register, value: literalReg },
+        ], combinedLiteral);
+        accReg = combinedLiteral;
+      }
+    }
+
+    return accReg;
+  }
+
+  private lowerNestedFunctionNode(expr: SupportedFunctionNode, explicitName?: string): Register {
+    const nestedName = explicitName ?? this.createNestedFunctionName();
+    const availableOuterNames = new Set<string>(this.outerCaptureBindings.keys());
+    for (const name of this.scope.keys()) {
+      availableOuterNames.add(name);
+    }
+    const analysis = analyzeFunctionClosures(expr, availableOuterNames);
+    const attributes: FunctionAttribute[] = [];
+    if (ts.isArrowFunction(expr)) {
+      attributes.push(FunctionAttribute.Arrow);
+    }
+    if (ts.isMethodDeclaration(expr)) {
+      attributes.push(FunctionAttribute.Method);
+    }
+    const nestedLowering = new ASTLowering(this.modBuilder, expr, {
+      name: nestedName,
+      isExported: false,
+      isVirtualized: true,
+      analysis,
+      attributes,
+      isNested: true,
+    });
+    const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
+    const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
+    const closureReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.ClosureNew,
+      [
+        { kind: OperandKind.ConstantIndex, value: functionIdIndex },
+        { kind: OperandKind.Register, value: envReg },
+      ],
+      closureReg
+    );
+    return closureReg;
+  }
+
+  private visitExpression(expr: ts.Expression): Register {
+    expr = this.normalizeExpression(expr);
     if (ts.isNumericLiteral(expr)) {
       return this.emitConstant(ConstantKind.Number, parseFloat(expr.text));
     }
     if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
       return this.emitConstant(ConstantKind.String, expr.text);
     }
+    if (ts.isTemplateExpression(expr)) {
+      return this.lowerTemplateExpression(expr);
+    }
     if (expr.kind === ts.SyntaxKind.NullKeyword) return this.emitConstant(ConstantKind.Null, null);
     if (expr.kind === ts.SyntaxKind.TrueKeyword) return this.emitConstant(ConstantKind.Boolean, true);
     if (expr.kind === ts.SyntaxKind.FalseKeyword) return this.emitConstant(ConstantKind.Boolean, false);
+    if (expr.kind === ts.SyntaxKind.ThisKeyword) return this.emitConstant(ConstantKind.Undefined, null);
     
     if (ts.isIdentifier(expr)) {
       return this.resolveVar(expr.text);
     }
+
+    if (ts.isConditionalExpression(expr)) {
+      const conditionReg = this.visitExpression(expr.condition);
+      return this.lowerConditionalExpression(
+        conditionReg,
+        () => this.visitExpression(expr.whenTrue),
+        () => this.visitExpression(expr.whenFalse),
+      );
+    }
     
     if (ts.isBinaryExpression(expr)) {
+      if (
+        expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        expr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        const leftReg = this.visitExpression(expr.left);
+        if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+          return this.lowerConditionalExpression(leftReg, () => this.visitExpression(expr.right), () => leftReg);
+        }
+        if (expr.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+          return this.lowerConditionalExpression(leftReg, () => leftReg, () => this.visitExpression(expr.right));
+        }
+        return this.lowerNullishCoalesce(leftReg, expr.right);
+      }
       if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
         const valueReg = this.visitExpression(expr.right);
         this.storeValue(expr.left, valueReg);
@@ -631,8 +841,20 @@ class ASTLowering {
       return resReg;
     }
 
+    if (ts.isNewExpression(expr)) {
+      const calleeReg = this.visitExpression(expr.expression);
+      const args = (expr.arguments ?? []).map((arg) => this.visitExpression(arg));
+      const resReg = this.fnBuilder.allocRegister();
+      const ops: Operand[] = [
+        { kind: OperandKind.Register, value: calleeReg },
+        ...args.map((arg) => ({ kind: OperandKind.Register, value: arg } as Operand)),
+      ];
+      this.currentBlock.addInstruction(OpCode.New, ops, resReg);
+      return resReg;
+    }
+
     if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
-      return this.lowerNestedFunction(expr);
+      return this.lowerNestedFunctionNode(expr);
     }
 
     if (ts.isPostfixUnaryExpression(expr)) {
@@ -714,6 +936,21 @@ class ASTLowering {
     if (ts.isBlock(stmt)) {
       stmt.statements.forEach(s => this.visitStatement(s));
     }
+    else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      const boxed = this.capturedLocals.has(stmt.name.text);
+      const localReg = this.scope.get(stmt.name.text)?.register ?? this.fnBuilder.addLocal(stmt.name.text, IRType.Any);
+      this.scope.set(stmt.name.text, { register: localReg, boxed });
+      const closureReg = this.lowerNestedFunctionNode(stmt, stmt.name.text);
+      if (boxed) {
+        this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: closureReg }], localReg);
+        this.fnBuilder.addCapturedVariable(stmt.name.text);
+      } else {
+        this.currentBlock.addInstruction(OpCode.StoreLocal, [
+          { kind: OperandKind.Register, value: localReg },
+          { kind: OperandKind.Register, value: closureReg },
+        ]);
+      }
+    }
     else if (ts.isVariableStatement(stmt)) {
       stmt.declarationList.declarations.forEach(decl => {
         if (ts.isIdentifier(decl.name)) {
@@ -732,8 +969,8 @@ class ASTLowering {
             const undefReg = this.emitConstant(ConstantKind.Undefined, null);
             this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], locReg);
             this.fnBuilder.addCapturedVariable(decl.name.text);
-          }
-        }
+      }
+    }
       });
     }
     else if (ts.isExpressionStatement(stmt)) {
@@ -865,7 +1102,7 @@ class ASTLowering {
   }
 }
 
-export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, filePath: string): IRModule {
+export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, filePath: string, options: LowerToIROptions = {}): IRModule {
   const modBuilder = new IRModuleBuilder(filePath);
 
   for (const imp of moduleInfo.imports) modBuilder.addImport(imp);
@@ -877,16 +1114,36 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
     if (ts.isFunctionDeclaration(node) && node.name) {
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
       const jsDoc = ts.getJSDocTags(node);
-      const isVirtualized = jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
+      const isVirtualized = options.forceVirtualizeAll || jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
         || node.name.text === 'calculateSecretHash'
         || node.name.text === 'encryptTEA';
       const analysis = analyzeFunctionClosures(node, new Set<string>());
-      new ASTLowering(modBuilder, node, {
-        name: node.name.text,
-        isExported,
-        isVirtualized,
-        analysis,
-      });
+      try {
+        new ASTLowering(modBuilder, node, {
+          name: node.name.text,
+          isExported,
+          isVirtualized,
+          analysis,
+        });
+      } catch (error) {
+        if (!options.compatibilityFallback) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        options.diagnostics?.push({
+          severity: DiagnosticSeverity.Warning,
+          code: 'IR_UNIVERSAL_FALLBACK',
+          message: `Skipped VM lowering for function "${node.name.text}" due to unsupported syntax: ${message}`,
+          location: {
+            filePath,
+            line: position.line + 1,
+            column: position.character + 1,
+            offset: node.getStart(sourceFile),
+            length: node.getWidth(sourceFile),
+          },
+        });
+      }
     }
     ts.forEachChild(node, visit);
   });

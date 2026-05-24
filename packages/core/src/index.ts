@@ -40,7 +40,9 @@ import type {
   SymbolAlias,
   ElectronAuditReport,
   ReactComponentInfo,
+  FunctionCapabilityReport,
 } from '@tsvm/shared';
+import { buildUniversalBundle } from './universal-bundler.js';
 
 export { SeededRandom } from '@tsvm/shared';
 
@@ -86,6 +88,7 @@ export interface PipelineResult {
   readonly benchmarkResults?: BenchmarkSuiteResult;
   readonly electronAudit?: ElectronAuditReport;
   readonly reactComponents?: readonly ReactComponentInfo[];
+  readonly functionReports?: readonly FunctionCapabilityReport[];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -166,6 +169,28 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
           annotations: [],
           maxFunctionSize: 0,
           excludePatterns: [],
+        },
+        vm: createDefaultVMConfig(baseSeed),
+        preservePatterns: ['**/*.d.ts', '**/*.test.*'],
+        preserveExports: true,
+        preserveDecorators: true,
+        reactSafe: false,
+        electronHarden: false,
+        deterministic: false,
+        seed: baseSeed,
+      };
+
+    case 'universal':
+      return {
+        name: 'universal-compat',
+        target: 'universal',
+        transforms: baseTransforms,
+        virtualization: {
+          mode: 'whole_program',
+          annotations: [],
+          maxFunctionSize: 2_000,
+          excludePatterns: [],
+          compatibilityFallback: true,
         },
         vm: createDefaultVMConfig(baseSeed),
         preservePatterns: ['**/*.d.ts', '**/*.test.*'],
@@ -274,12 +299,23 @@ export class ObfuscationPipeline {
     // ── Stage 2: IR Lowering ──
     this.emit('ir_lowering' as PipelineStage, 'Lowering to IR...');
     let irModules: IRModule[];
+    let functionReports: FunctionCapabilityReport[] | undefined;
     try {
-      const { lowerToIR } = await import('@tsvm/ir');
+      const { analyzeFunctionCapabilities, lowerToIR } = await import('@tsvm/ir');
       const t0 = Date.now();
       irModules = [];
+      if (this.options.profile.target === 'universal') {
+        functionReports = [];
+      }
       for (const [filePath, moduleInfo] of semanticGraph.modules) {
-        const irModule = lowerToIR(moduleInfo, semanticGraph, filePath);
+        if (functionReports) {
+          functionReports.push(...analyzeFunctionCapabilities(filePath));
+        }
+        const irModule = lowerToIR(moduleInfo, semanticGraph, filePath, {
+          forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program',
+          compatibilityFallback: this.options.profile.virtualization.compatibilityFallback,
+          diagnostics: this.diagnostics,
+        });
         irModules.push(irModule);
       }
       this.emit('ir_lowering' as PipelineStage, `Lowered ${irModules.length} modules to IR`, Date.now() - t0);
@@ -346,6 +382,7 @@ export class ObfuscationPipeline {
     // ── Stage 5: Bytecode Compilation ──
     this.emit('bytecode_compilation' as PipelineStage, 'Compiling to bytecode...');
     let bytecodeModules: BytecodeModule[];
+    const bytecodeSourceFiles = new Map<string, string>();
     try {
       const { compileToBytecode } = await import('@tsvm/bytecode');
       const t0 = Date.now();
@@ -355,6 +392,7 @@ export class ObfuscationPipeline {
         if (virtualizedFunctions.length > 0) {
           const bcModule = compileToBytecode(irModule, this.options.profile.vm);
           bytecodeModules.push(bcModule);
+          bytecodeSourceFiles.set(bcModule.buildId, irModule.sourceFile);
         }
       }
       this.emit(
@@ -382,6 +420,35 @@ export class ObfuscationPipeline {
     } catch (error: unknown) {
       this.emitError('vm_build' as PipelineStage, 'VM build failed', error);
       return this.failResult(buildId, startTime, { semanticGraph, irModules, bytecodeModules });
+    }
+
+    if (this.options.profile.target === 'universal') {
+      const vmBundleByFile = new Map<string, VMRuntimeBundle>();
+      for (const bundle of vmBundles) {
+        const matchedPath = bytecodeSourceFiles.get(bundle.buildId);
+        if (matchedPath) {
+          vmBundleByFile.set(matchedPath, bundle);
+        }
+      }
+
+      const universalBundles: VMRuntimeBundle[] = [];
+      for (const [filePath, moduleInfo] of semanticGraph.modules) {
+        const reportsForFile = functionReports?.filter((report) => report.filePath === filePath) ?? [];
+        if (moduleInfo.exports.length === 0 && reportsForFile.length === 0) {
+          continue;
+        }
+        universalBundles.push(
+          buildUniversalBundle(
+            `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
+            moduleInfo,
+            semanticGraph.compilerOptions,
+            reportsForFile,
+            vmBundleByFile.get(filePath),
+          ),
+        );
+      }
+      vmBundles = universalBundles;
+      this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} universal compatibility bundles`);
     }
 
     // ── Stage 7: Electron Hardening (if enabled) ──
@@ -412,6 +479,7 @@ export class ObfuscationPipeline {
       seed: this.options.profile.seed,
       diagnostics: this.diagnostics,
       metrics: [],
+      functionReports,
     };
 
     return {
@@ -425,6 +493,7 @@ export class ObfuscationPipeline {
       benchmarkResults,
       electronAudit,
       reactComponents,
+      functionReports,
     };
   }
 
@@ -444,6 +513,7 @@ export class ObfuscationPipeline {
         seed: this.options.profile.seed,
         diagnostics: this.diagnostics,
         metrics: [],
+        functionReports: [],
       },
       diagnostics: this.diagnostics,
       ...partial,

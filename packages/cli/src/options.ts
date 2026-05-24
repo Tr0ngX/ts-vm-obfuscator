@@ -1,4 +1,4 @@
-export const SUPPORTED_PROFILE_TARGETS = ['generic', 'react', 'electron', 'library'] as const;
+export const SUPPORTED_PROFILE_TARGETS = ['generic', 'react', 'electron', 'library', 'universal'] as const;
 export type SupportedProfileTarget = (typeof SUPPORTED_PROFILE_TARGETS)[number];
 
 const PROFILE_ALIASES: Record<string, SupportedProfileTarget> = {
@@ -7,6 +7,7 @@ const PROFILE_ALIASES: Record<string, SupportedProfileTarget> = {
   react: 'react',
   electron: 'electron',
   library: 'library',
+  universal: 'universal',
 };
 
 export function parseSeed(seedOption?: string): number {

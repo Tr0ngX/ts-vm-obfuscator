@@ -5,6 +5,7 @@ describe('CLI helpers', () => {
   it('maps the default profile alias to generic', () => {
     expect(resolveProfileTarget('default')).toBe('generic');
     expect(resolveProfileTarget('react')).toBe('react');
+    expect(resolveProfileTarget('universal')).toBe('universal');
   });
 
   it('applies the provided seed to both profile and VM config', () => {

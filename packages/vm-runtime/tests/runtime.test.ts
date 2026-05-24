@@ -181,6 +181,37 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.nestedCounter(5)).toBe(16);
   });
 
+  it('should execute the syntax-pack regression fixture', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 17,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 17,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+    expect(moduleShim.exports.syntaxPack(false, null)).toBe('no:ANON:empty:1');
+  });
+
   it('should inject anti-debug and tamper logic when enabled', () => {
     const dummyModule: BytecodeModule = {
       magic: 0x54534F42,

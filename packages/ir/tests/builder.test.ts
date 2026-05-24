@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { lowerToIR } from '../src/builder.js';
-import { FunctionAttribute, OpCode, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
+import { DiagnosticSeverity, FunctionAttribute, OpCode, type Diagnostic, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
+import { analyzeFunctionCapabilities } from '../src/capabilities.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,5 +96,42 @@ describe('IR builder', () => {
     expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
       /Unsupported AST in IR builder: .* at .*nested-capture-failure\.ts:\d+:\d+ near /
     );
+  });
+
+  it('lowers the syntax-pack regression fixture', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'syntax-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'syntaxPack');
+
+    expect(fn).toBeDefined();
+    const instructions = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+
+    expect(instructions).toContain(OpCode.New);
+    expect(instructions).toContain(OpCode.ClosureNew);
+    expect(instructions).toContain(OpCode.LoadLocal);
+    expect(instructions).toContain(OpCode.Call);
+    expect(fn!.blocks.some((block) => block.terminator.kind === 'branch')).toBe(true);
+  });
+
+  it('analyzes function capabilities for universal tiering', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
+    const reports = analyzeFunctionCapabilities(filePath);
+
+    expect(reports.find((report) => report.functionName === 'supportedAdd')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'unsupportedTryCatch')?.tier).toBe('js_lowered');
+  });
+
+  it('skips unsupported functions in compatibility fallback mode', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
+    const diagnostics: Diagnostic[] = [];
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, {
+      forceVirtualizeAll: true,
+      compatibilityFallback: true,
+      diagnostics,
+    });
+
+    expect(module.functions.some((candidate) => candidate.name === 'supportedAdd')).toBe(true);
+    expect(module.functions.some((candidate) => candidate.name === 'unsupportedTryCatch')).toBe(false);
+    expect(diagnostics.some((diag) => diag.code === 'IR_UNIVERSAL_FALLBACK' && diag.severity === DiagnosticSeverity.Warning)).toBe(true);
   });
 });

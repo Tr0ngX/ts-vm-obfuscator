@@ -24,7 +24,7 @@ export function createProgram() {
     .version('0.1.0')
     .requiredOption('-p, --project <path>', 'path to tsconfig.json')
     .option('-o, --out <dir>', 'output directory', 'dist-obf')
-    .option('--profile <type>', 'obfuscation profile (default, generic, react, electron, library)', 'default')
+    .option('--profile <type>', 'obfuscation profile (default, generic, react, electron, library, universal)', 'default')
     .option('--seed <number>', 'random seed for polymorphic generation')
     .action(async (options) => {
       const spinner = ora('Initializing pipeline...').start();
@@ -52,6 +52,11 @@ export function createProgram() {
 
         spinner.text = 'Writing output...';
         await fs.mkdir(outDir, { recursive: true });
+
+        if (result.manifest.functionReports && result.manifest.functionReports.length > 0) {
+          const reportPath = path.join(outDir, `${result.manifest.buildId}.report.json`);
+          await fs.writeFile(reportPath, JSON.stringify(result.manifest.functionReports, null, 2), 'utf-8');
+        }
 
         if (result.vmBundles) {
           for (const bundle of result.vmBundles) {

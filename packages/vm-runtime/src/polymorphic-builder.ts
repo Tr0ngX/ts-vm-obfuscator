@@ -150,6 +150,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
     ctx.regs[args[args.length - 1]] = fn.apply(null, callArgs2);
   `);
+  declareHandler(OpCode.New, `
+    ${readArgs}
+    var ctor = ctx.regs[args[0]];
+    var ctorArgs = [];
+    for (var ni = 1; ni < args.length - 1; ni++) {
+      ctorArgs.push(ctx.regs[args[ni]]);
+    }
+    ctx.regs[args[args.length - 1]] = typeof Reflect !== 'undefined' && Reflect.construct
+      ? Reflect.construct(ctor, ctorArgs)
+      : new (Function.prototype.bind.apply(ctor, [null].concat(ctorArgs)))();
+  `);
   
   declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0]; ${config.rollingKeys ? 'ctx.rollingKey = args[1];' : ''}`);
   declareHandler(OpCode.JmpIf, `${readArgs} ctx.pc = ctx.regs[args[0]] ? args[1] : args[2]; ${config.rollingKeys ? 'ctx.rollingKey = ctx.regs[args[0]] ? args[3] : args[4];' : ''}`);

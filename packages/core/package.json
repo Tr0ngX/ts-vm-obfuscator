@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsup ./src/index.ts --format esm --dts --clean",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -25,10 +25,10 @@
     "@tsvm/bytecode": "workspace:*",
     "@tsvm/vm-runtime": "workspace:*",
     "@tsvm/react-safe": "workspace:*",
-    "@tsvm/electron-hardening": "workspace:*"
+    "@tsvm/electron-hardening": "workspace:*",
+    "typescript": "^5.8.0"
   },
   "devDependencies": {
-    "tsup": "^8.4.0",
-    "typescript": "^5.8.0"
+    "tsup": "^8.4.0"
   }
 }
