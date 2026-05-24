@@ -122,6 +122,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.ArrayNew, `${readArgs} ctx.regs[args[0]] = [];`);
   declareHandler(OpCode.ObjectNew, `${readArgs} ctx.regs[args[0]] = {};`);
   declareHandler(OpCode.Delete, `${readArgs} delete ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(OpCode.ClosureNew, `
+    ${readArgs}
+    ctx.regs[args[1]] = getExecutorById(getCP(args[0]));
+  `);
   
   declareHandler(OpCode.CallMethod, `
     ${readArgs}
@@ -208,6 +212,24 @@ const vmFunctions = (function() {
     ${handlerArrayItems.join(',\n    ')}
   ];
 
+  const functionBytecodes = {
+${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join(',')}])`).join(',\n')}
+  };
+  const executorCache = Object.create(null);
+
+  function getExecutorById(functionId) {
+    if (executorCache[functionId]) {
+      return executorCache[functionId];
+    }
+    const bytecode = functionBytecodes[functionId];
+    if (!bytecode) {
+      throw new Error('Unknown VM function id: ' + functionId);
+    }
+    const executor = createExecutor(bytecode);
+    executorCache[functionId] = executor;
+    return executor;
+  }
+
   function createExecutor(bytecodeArr) {
     return function execute() {
       const fnArgs = Array.prototype.slice.call(arguments);
@@ -240,7 +262,7 @@ const vmFunctions = (function() {
   }
 
   var result = {};
-${exportedFunctions.map(fn => `  result['${fn.name}'] = createExecutor(new Uint8Array([${fn.bytecode.join(',')}]));`).join('\n')}
+${exportedFunctions.map(fn => `  result['${fn.name}'] = getExecutorById('${fn.id}');`).join('\n')}
   return result;
 })();
 

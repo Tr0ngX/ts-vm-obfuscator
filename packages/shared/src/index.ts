@@ -275,6 +275,7 @@ export enum OpCode {
   Return = 0x43,
   ReturnVoid = 0x44,
   TailCall = 0x45,
+  ClosureNew = 0x46,
 
   // Object/Array
   PropGet = 0x50,
@@ -361,6 +362,7 @@ export enum FunctionAttribute {
   ReactHook = 'react_hook',
   Exported = 'exported',
   Virtualized = 'virtualized',
+  Nested = 'nested',
 }
 
 export interface IRParam {

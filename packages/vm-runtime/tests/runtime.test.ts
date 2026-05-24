@@ -56,6 +56,65 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('ctx.regs[args[0]] = {};');
   });
 
+  it('should emit a ClosureNew handler backed by the VM function table', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534F42,
+      version: 1,
+      buildId: 'closure-test',
+      opcodeMapping: {
+        seed: 9,
+        forward: new Map([
+          [OpCode.LoadConst, 10],
+          [OpCode.ClosureNew, 11],
+          [OpCode.Return, 12],
+        ]),
+        reverse: new Map([
+          [10, OpCode.LoadConst],
+          [11, OpCode.ClosureNew],
+          [12, OpCode.Return],
+        ]),
+      },
+      constantPool: [],
+      functions: [
+        {
+          id: 'outer',
+          name: 'outer',
+          paramCount: 0,
+          localCount: 0,
+          maxRegisters: 2,
+          bytecode: new Uint8Array([12, 0]),
+          isEntryPoint: true,
+        },
+        {
+          id: 'inner',
+          name: 'outer$closure$0',
+          paramCount: 0,
+          localCount: 0,
+          maxRegisters: 2,
+          bytecode: new Uint8Array([12, 0]),
+          isEntryPoint: false,
+        },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'closure-test', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 9,
+    });
+
+    expect(bundle.fullSource).toContain('function getExecutorById(functionId)');
+    expect(bundle.fullSource).toContain("throw new Error('Unknown VM function id: ' + functionId);");
+    expect(bundle.fullSource).toContain('ctx.regs[args[1]] = getExecutorById(getCP(args[0]));');
+  });
+
   it('should inject anti-debug and tamper logic when enabled', () => {
     const dummyModule: BytecodeModule = {
       magic: 0x54534F42,

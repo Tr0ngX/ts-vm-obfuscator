@@ -1,5 +1,5 @@
 import type { IRModule, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, ConstantPoolEntry } from '@tsvm/shared';
-import { OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
+import { FunctionAttribute, OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
 
@@ -263,7 +263,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         paramCount: irFn.params.length,
         localCount: irFn.locals.length,
         maxRegisters: maxRegs,
-        isEntryPoint: irFn.isVirtualized || irFn.isExported
+        isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported)
       });
     }
   }

@@ -3,23 +3,47 @@ import type { ModuleInfo, ProjectSemanticGraph, IRModule, Operand, Register } fr
 import { IRType, OpCode, OperandKind, ConstantKind, FunctionAttribute } from '@tsvm/shared';
 import { IRModuleBuilder, IRFunctionBuilder, BasicBlockBuilder } from './ir.js';
 
+type SupportedFunctionNode =
+  | ts.FunctionDeclaration
+  | ts.FunctionExpression
+  | ts.ArrowFunction
+  | ts.MethodDeclaration;
+
+interface LoweringOptions {
+  readonly name: string;
+  readonly isExported: boolean;
+  readonly isVirtualized: boolean;
+  readonly inheritedScopeNames?: ReadonlySet<string>;
+  readonly attributes?: readonly FunctionAttribute[];
+  readonly isNested?: boolean;
+}
+
 class ASTLowering {
   private fnBuilder: IRFunctionBuilder;
   private currentBlock: BasicBlockBuilder;
   private scope: Map<string, Register> = new Map();
+  readonly functionId: string;
+  private nestedFunctionCount = 0;
+  private readonly inheritedScopeNames: ReadonlySet<string>;
+  private readonly sourceFile: ts.SourceFile;
 
-  constructor(public readonly modBuilder: IRModuleBuilder, node: ts.FunctionDeclaration, name: string, isExported: boolean) {
-    this.fnBuilder = new IRFunctionBuilder(modBuilder.getNextFunctionId(), name, IRType.Any);
-    if (isExported) {
+  constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
+    this.functionId = modBuilder.getNextFunctionId();
+    this.fnBuilder = new IRFunctionBuilder(this.functionId, options.name, IRType.Any);
+    this.inheritedScopeNames = options.inheritedScopeNames ?? new Set<string>();
+    this.sourceFile = node.getSourceFile();
+    if (options.isExported) {
       this.fnBuilder.addAttribute(FunctionAttribute.Exported);
     }
-    
-    // Virtualize heuristic
-    const jsDoc = ts.getJSDocTags(node);
-    const isVirtualized = jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text)) || node.name?.text === 'calculateSecretHash' || node.name?.text === 'encryptTEA';
+    if (options.isNested) {
+      this.fnBuilder.addAttribute(FunctionAttribute.Nested);
+    }
+    for (const attribute of options.attributes ?? []) {
+      this.fnBuilder.addAttribute(attribute);
+    }
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
-    
+
     node.parameters.forEach(p => {
       if (ts.isIdentifier(p.name)) {
         const reg = this.fnBuilder.addParam(p.name.text, IRType.Any);
@@ -28,7 +52,12 @@ class ASTLowering {
     });
 
     if (node.body) {
-      this.visitStatement(node.body);
+      if (ts.isBlock(node.body)) {
+        this.visitStatement(node.body);
+      } else {
+        const valueReg = this.visitExpression(node.body);
+        this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valueReg });
+      }
     }
 
     if (this.shouldEmitFallthroughReturn()) {
@@ -40,13 +69,17 @@ class ASTLowering {
     if (!this.isSyntheticDeadBlock(this.currentBlock)) {
       this.fnBuilder.addBlock(this.currentBlock.build());
     }
-    this.modBuilder.addFunction(this.fnBuilder.build(isVirtualized, isExported));
+    this.modBuilder.addFunction(this.fnBuilder.build(options.isVirtualized, options.isExported));
   }
 
   private failUnsupported(node: ts.Node, detail?: string): never {
     const kind = ts.SyntaxKind[node.kind];
-    const message = detail ? `${kind}: ${detail}` : kind;
-    throw new Error(`Unsupported AST in IR builder: ${message}`);
+    const snippet = node.getText(this.sourceFile).replace(/\s+/g, ' ').slice(0, 80);
+    const { line, character } = this.sourceFile.getLineAndCharacterOfPosition(node.getStart(this.sourceFile));
+    const message = detail ? `${kind} (${detail})` : kind;
+    throw new Error(
+      `Unsupported AST in IR builder: ${message} at ${this.sourceFile.fileName}:${line + 1}:${character + 1} near "${snippet}"`
+    );
   }
 
   private isSyntheticDeadBlock(block: BasicBlockBuilder): boolean {
@@ -80,11 +113,70 @@ class ASTLowering {
       this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: reg }], destReg);
       return destReg;
     }
+    if (this.inheritedScopeNames.has(name)) {
+      this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Nested function captures outer local "${name}"`);
+    }
     // Assume global
     const strReg = this.emitConstant(ConstantKind.String, name);
     const destReg = this.fnBuilder.allocRegister();
     this.currentBlock.addInstruction(OpCode.LoadGlobal, [{ kind: OperandKind.Register, value: strReg }], destReg);
     return destReg;
+  }
+
+  private findIdentifierNode(name: string): ts.Identifier | undefined {
+    let match: ts.Identifier | undefined;
+    const visit = (node: ts.Node) => {
+      if (match) {
+        return;
+      }
+      if (ts.isIdentifier(node) && node.text === name) {
+        match = node;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    if (this.node.body) {
+      ts.forEachChild(this.node.body, visit);
+    }
+    return match;
+  }
+
+  private createNestedFunctionName(): string {
+    const suffix = this.nestedFunctionCount++;
+    return `${this.fnBuilder.name}$closure$${suffix}`;
+  }
+
+  private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
+    const nestedName = this.createNestedFunctionName();
+    const inheritedScopeNames = new Set<string>(this.inheritedScopeNames);
+    for (const name of this.scope.keys()) {
+      inheritedScopeNames.add(name);
+    }
+    const attributes: FunctionAttribute[] = [];
+    if (ts.isArrowFunction(expr)) {
+      attributes.push(FunctionAttribute.Arrow);
+    }
+    if (ts.isMethodDeclaration(expr)) {
+      attributes.push(FunctionAttribute.Method);
+    }
+    const nestedLowering = new ASTLowering(this.modBuilder, expr, {
+      name: nestedName,
+      isExported: false,
+      isVirtualized: true,
+      inheritedScopeNames,
+      attributes,
+      isNested: true,
+    });
+    const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
+    const closureReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.ClosureNew,
+      [
+        { kind: OperandKind.ConstantIndex, value: functionIdIndex },
+      ],
+      closureReg
+    );
+    return closureReg;
   }
 
   private storeValue(target: ts.Expression, valueReg: Register): void {
@@ -300,6 +392,18 @@ class ASTLowering {
           continue;
         }
 
+        if (ts.isMethodDeclaration(property)) {
+          const valueReg = this.lowerNestedFunction(property);
+          if (ts.isComputedPropertyName(property.name)) {
+            const nameReg = this.visitExpression(property.name.expression);
+            this.emitObjectPropertyAssignment(objectReg, nameReg, valueReg, true);
+          } else {
+            const nameReg = this.emitConstant(ConstantKind.String, this.getPropertyNameText(property.name));
+            this.emitObjectPropertyAssignment(objectReg, nameReg, valueReg);
+          }
+          continue;
+        }
+
         this.failUnsupported(property, 'Unsupported object literal property kind');
       }
 
@@ -328,6 +432,10 @@ class ASTLowering {
         this.currentBlock.addInstruction(OpCode.Call, ops, resReg);
       }
       return resReg;
+    }
+
+    if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+      return this.lowerNestedFunction(expr);
     }
 
     if (ts.isPostfixUnaryExpression(expr)) {
@@ -552,7 +660,15 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
   ts.forEachChild(sourceFile, function visit(node) {
     if (ts.isFunctionDeclaration(node) && node.name) {
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
-      new ASTLowering(modBuilder, node, node.name.text, isExported);
+      const jsDoc = ts.getJSDocTags(node);
+      const isVirtualized = jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
+        || node.name.text === 'calculateSecretHash'
+        || node.name.text === 'encryptTEA';
+      new ASTLowering(modBuilder, node, {
+        name: node.name.text,
+        isExported,
+        isVirtualized,
+      });
     }
     ts.forEachChild(node, visit);
   });
