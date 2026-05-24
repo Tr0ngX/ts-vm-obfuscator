@@ -12,7 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup ./src/index.ts --format esm --dts --clean",
+    "test": "pnpm --dir ../.. exec vitest run packages/react-safe/tests/**/*.test.ts --config vitest.config.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

@@ -119,6 +119,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.PropSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
   declareHandler(OpCode.ComputedGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
   declareHandler(OpCode.ComputedSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
+  declareHandler(OpCode.ArrayNew, `${readArgs} ctx.regs[args[0]] = [];`);
+  declareHandler(OpCode.ObjectNew, `${readArgs} ctx.regs[args[0]] = {};`);
+  declareHandler(OpCode.Delete, `${readArgs} delete ctx.regs[args[0]][ctx.regs[args[1]]];`);
   
   declareHandler(OpCode.CallMethod, `
     ${readArgs}

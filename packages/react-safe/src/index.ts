@@ -1,35 +1,64 @@
-import type { IRFunction, IRModule } from '@tsvm/shared';
-import { FunctionAttribute } from '@tsvm/shared';
+import type { Diagnostic, IRFunction, ReactComponentInfo } from '@tsvm/shared';
+import { DiagnosticSeverity, FunctionAttribute, ReactZoneSafety } from '@tsvm/shared';
 
-// Ensures that a function is safe to be obfuscated without breaking React's rules (hooks, etc.)
+function isHookLikeFunction(fn: IRFunction): boolean {
+  return fn.attributes.includes(FunctionAttribute.ReactHook) || fn.name.startsWith('use');
+}
+
+function isReactComponentLike(fn: IRFunction): boolean {
+  return (
+    fn.attributes.includes(FunctionAttribute.ReactComponent) ||
+    (/^[A-Z]/.test(fn.name) && (fn.name.includes('Provider') || fn.name.includes('Context')))
+  );
+}
+
 export function checkReactSafety(fn: IRFunction): boolean {
-  if (fn.attributes.includes(FunctionAttribute.ReactHook)) {
-    // Hooks cannot be safely virtualized without careful preservation of call order
-    return false;
-  }
-  
-  // Detect custom hooks
-  if (fn.name.startsWith('use')) {
-    return false;
-  }
+  return !isHookLikeFunction(fn) && !isReactComponentLike(fn);
+}
 
-  // Detect likely React components (Capitalized name returning JSX)
-  // In a real semantic graph we'd check if return type is JSX.Element
-  if (/^[A-Z]/.test(fn.name) && (fn.name.includes('Provider') || fn.name.includes('Context'))) {
-    return false; // Components shouldn't be virtualized completely to keep devtools working
-  }
+export function collectReactComponentInfo(
+  functions: readonly IRFunction[],
+  filePath: string,
+): ReactComponentInfo[] {
+  return functions
+    .filter((fn) => isHookLikeFunction(fn) || isReactComponentLike(fn))
+    .map((fn) => {
+      const hooks = isHookLikeFunction(fn) ? [fn.name] : [];
+      const safety = checkReactSafety(fn) ? ReactZoneSafety.FullySafe : ReactZoneSafety.Forbidden;
 
-  return true;
+      return {
+        name: fn.name,
+        filePath,
+        isClassComponent: false,
+        isFunctionComponent: isReactComponentLike(fn),
+        hooks,
+        renderBlockId: fn.blocks[0]?.id,
+        eventHandlers: [],
+        memoizedCallbacks: [],
+        safeZones: new Map([[fn.id, safety]]),
+      };
+    });
+}
+
+export function createReactSafetyDiagnostics(
+  functions: readonly IRFunction[],
+  filePath: string,
+): Diagnostic[] {
+  return functions
+    .filter((fn) => !checkReactSafety(fn))
+    .map((fn) => ({
+      severity: DiagnosticSeverity.Warning,
+      code: 'REACT_SAFE_VIRTUALIZATION_DISABLED',
+      message: `Disabled virtualization for React-sensitive function "${fn.name}" in ${filePath}.`,
+    }));
 }
 
 export function enforceReactProfile(functions: readonly IRFunction[]) {
   let disabledCount = 0;
   for (const fn of functions) {
-    if (!checkReactSafety(fn)) {
-      if (fn.isVirtualized) {
-        (fn as any).isVirtualized = false;
-        disabledCount++;
-      }
+    if (!checkReactSafety(fn) && fn.isVirtualized) {
+      (fn as { isVirtualized: boolean }).isVirtualized = false;
+      disabledCount++;
     }
   }
   return disabledCount;

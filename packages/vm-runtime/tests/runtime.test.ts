@@ -7,6 +7,55 @@ describe('VM Runtime', () => {
     expect(true).toBe(true);
   });
 
+  it('should emit handlers for array and object allocations', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534F42,
+      version: 1,
+      buildId: 'alloc-test',
+      opcodeMapping: {
+        seed: 7,
+        forward: new Map([
+          [OpCode.ArrayNew, 10],
+          [OpCode.ObjectNew, 11],
+          [OpCode.Return, 12],
+        ]),
+        reverse: new Map([
+          [10, OpCode.ArrayNew],
+          [11, OpCode.ObjectNew],
+          [12, OpCode.Return],
+        ]),
+      },
+      constantPool: [],
+      functions: [
+        {
+          id: 'f1',
+          name: 'alloc',
+          paramCount: 0,
+          localCount: 0,
+          maxRegisters: 2,
+          bytecode: new Uint8Array([10, 1, 0, 0, 11, 1, 1, 1, 12, 1, 0]),
+          isEntryPoint: true,
+        },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'alloc-test', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 7,
+    });
+
+    expect(bundle.fullSource).toContain('ctx.regs[args[0]] = [];');
+    expect(bundle.fullSource).toContain('ctx.regs[args[0]] = {};');
+  });
+
   it('should inject anti-debug and tamper logic when enabled', () => {
     const dummyModule: BytecodeModule = {
       magic: 0x54534F42,
@@ -50,4 +99,3 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('ctx.globalScope = {};');
   });
 });
-

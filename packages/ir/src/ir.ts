@@ -126,6 +126,10 @@ export class IRFunctionBuilder {
     this.blocks.push(block);
   }
 
+  getBlockCount(): number {
+    return this.blocks.length;
+  }
+
   build(isVirtualized = true, isExported = false): IRFunction {
     return {
       id: this.id,
@@ -163,6 +167,18 @@ export class BasicBlockBuilder {
     if (!this.predecessors.includes(id)) {
       this.predecessors.push(id);
     }
+  }
+
+  getInstructionCount(): number {
+    return this.instructions.length;
+  }
+
+  getPredecessorCount(): number {
+    return this.predecessors.length;
+  }
+
+  getTerminatorKind(): TerminatorInstruction['kind'] | undefined {
+    return this.terminator?.kind;
   }
 
   build(): BasicBlock {

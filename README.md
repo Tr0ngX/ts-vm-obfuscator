@@ -40,7 +40,7 @@ Unlike traditional obfuscators that rely on easily-reversible AST transformation
 
 ## Prerequisites
 
-- Node.js 18 or higher
+- Node.js 20 or higher
 - pnpm (highly recommended for workspaces)
 
 ---
@@ -71,10 +71,11 @@ pnpm build
 Provide the compiler with the target TypeScript configuration:
 
 ```bash
-node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf
+node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile generic
 ```
 
 The protected production files will be built and output into the `dist-obf/` directory with a timestamped build signature (e.g., `build_1779526130061_index_ts.js`).
+Supported profiles: `default` (alias of `generic`), `generic`, `react`, `electron`, `library`.
 
 ---
 
@@ -192,7 +193,7 @@ However, you can configure TSXobf pipeline behaviors via CLI flags or programmat
 |---|---|
 | `pnpm install` | Install all workspace dependencies |
 | `pnpm build` | Compile all workspace packages (core, cli, transforms, etc.) |
-| `pnpm test` | Run the workspace unit and integration test suite |
+| `pnpm test` | Run the workspace Vitest suites from the root config and the end-to-end semantic equivalence check |
 | `pnpm typecheck` | Run TypeScript typechecking across all packages |
 | `pnpm visualizer` | Start the local visualizer application (Mock UI) |
 | `node test-pipeline.js` | Run the integrated semantic equivalence end-to-end test (Hash & TEA) |

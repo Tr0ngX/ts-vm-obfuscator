@@ -293,12 +293,17 @@ export class ObfuscationPipeline {
     if (this.options.profile.reactSafe) {
       this.emit('transform_execution' as PipelineStage, 'Running React safety analysis...');
       try {
-        const { enforceReactProfile } = await import('@tsvm/react-safe');
-        reactComponents = []; // We don't have detailed extraction in the mock yet
+        const { collectReactComponentInfo, createReactSafetyDiagnostics, enforceReactProfile } = await import('@tsvm/react-safe');
+        reactComponents = [];
         for (const irModule of irModules) {
+          reactComponents.push(...collectReactComponentInfo(irModule.functions, irModule.sourceFile));
+          this.diagnostics.push(...createReactSafetyDiagnostics(irModule.functions, irModule.sourceFile));
           enforceReactProfile(irModule.functions);
         }
-        this.emit('transform_execution' as PipelineStage, `Applied React safety profile`);
+        this.emit(
+          'transform_execution' as PipelineStage,
+          `Applied React safety profile to ${reactComponents.length} React-sensitive functions`,
+        );
       } catch (error: unknown) {
         this.emitError('transform_execution' as PipelineStage, 'React safety analysis failed', error);
         return this.failResult(buildId, startTime, { semanticGraph, irModules });

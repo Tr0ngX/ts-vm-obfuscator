@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "pnpm exec vitest run --config vitest.config.mjs && pnpm build && node test-pipeline.js",
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
