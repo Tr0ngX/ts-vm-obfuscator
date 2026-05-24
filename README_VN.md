@@ -2,12 +2,12 @@
   <img src="assets/logo.png" alt="TSXobf Logo" width="200px" />
 </p>
 
-# 🛡️ TSXobf — Trình Làm Rối Mã Nguồn TypeScript Dựa Trên Máy Ảo (Semantic-Aware VM Obfuscator)
+# TSXobf — Trình Làm Rối Mã Nguồn TypeScript Dựa Trên Máy Ảo
 
 > **Hệ thống ảo hóa mã nguồn thế hệ mới** giúp bảo vệ tuyệt đối các logic nghiệp vụ quan trọng trong hệ sinh thái TypeScript và JavaScript.
 
 ---
-🌐 **Ngôn ngữ:** [English (Tiếng Anh)](README.md) | [Tiếng Việt](README_VN.md)
+**Ngôn ngữ:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -16,85 +16,161 @@
 
 Khác với các công cụ làm rối (obfuscator) truyền thống vốn phụ thuộc vào các phép biến đổi AST dễ bị đảo ngược (như đổi tên biến, tiêm mã chết hay làm phẳng dòng điều khiển cơ bản), **TSXobf** giới thiệu một **Compiler Backend** chuyên nghiệp. Trình biên dịch này dịch các thuật toán TypeScript của bạn thành mã bytecode tùy chỉnh và thực thi chúng bên trong một **Máy ảo đa hình (Polymorphic VM)** được ngẫu nhiên hóa động theo từng phiên build.
 
----
+Hệ thống được thiết kế dành cho logic nghiệp vụ giá trị cao như kiểm tra bản quyền, thanh toán, hỗ trợ mật mã, và các thuật toán cần tính bảo mật toàn vẹn. Quá trình ảo hóa diễn ra có chọn lọc chứ không tác động toàn bộ ứng dụng. Các hàm thông thường được chọn lọc bằng cách thêm chú thích `/** @virtualize */`.
 
-## 💎 Điểm Khác Biệt Công Nghệ: Obfuscator Truyền Thống vs. TSXobf
+## Tính Năng Nổi Bật
 
-| Tiêu Chí Bảo Mật | Obfuscator Truyền Thống (ví dụ: `javascript-obfuscator`, `js-confuser`) | TSXobf (Semantic VM Obfuscator) |
-| :--- | :--- | :--- |
-| **Cơ Chế Bảo Vệ Chính** | Xáo trộn từ vựng, mã hóa chuỗi thô, làm phẳng khối lệnh. | **Ảo hóa mã nguồn (Virtualization)** — biên dịch logic thành chỉ thị máy ảo nhị phân. |
-| **Khả Năng Kháng Trình Giải Mã** | Rất yếu trước các công cụ phân tích AST tự động (như `webcrack`, `ArachneJS`). | **Miễn dịch thực tế**; kẻ tấn công bắt buộc phải viết trình phân tích giải mã riêng cho từng file build. |
-| **Khôi Phục Logic Tĩnh** | Chuỗi và luồng thực thi dễ dàng bị khôi phục qua phương pháp thực thi ký hiệu (symbolic execution). | Chỉ để lộ mảng byte nhị phân động; toàn bộ logic thuật toán được ẩn giấu sâu bên trong trình thông dịch VM. |
-| **Ảnh Hưởng Hiệu Năng** | Gây sụt giảm hiệu năng toàn cục do lồng quá nhiều hàm bọc (wrappers). | **Tối ưu hóa cục bộ**; chỉ những hàm quan trọng được ảo hóa, mã nguồn còn lại chạy với 100% tốc độ gốc. |
-| **Tính Đa Hình Của Mã Nguồn** | Sinh ra các cấu trúc mã giống nhau giữa các lần biên dịch khác nhau. | **Thay đổi sơ đồ lệnh (Opcode) và cách phân bổ thanh ghi** ngẫu nhiên sau mỗi lần biên dịch. |
+- **Nhận Biết Ngữ Nghĩa (Semantic-Aware):** Phân tích mã thông qua TypeScript Compiler API chính thức để giải quyết chính xác các liên kết export/import, tầm vực biến, kiểu dữ liệu và lệnh gọi.
+- **Máy Ảo Đa Hình Luồng (Polymorphic VM Runtime):** Tạo cơ chế thực thi Threaded Dispatch với các hàm xử lý mã máy được ngẫu nhiên hóa kèm bẫy bảo mật tự vệ.
+- **Ánh Xạ Biệt Danh Opcode 1-to-N & Xáo Trộn:** Đánh lừa phân tích thống kê bằng cách ánh xạ một chỉ thị máy ảo sang nhiều mã opcode ảo khác nhau, sắp xếp ngẫu nhiên mỗi lần build.
+- **Mã Hóa Bytecode Với Khóa Xoay Vòng (Rolling XOR Key):** Các opcode và hằng số được mã hóa trực tiếp trong bytecode và giải mã động khi chạy.
+- **Giải Mã JIT Constant Pool:** Chuỗi, hằng số và thuộc tính truy cập được trích xuất vào constant pool mã hóa và giải mã lazy (lười).
+- **Bảo Vệ Chọn Lọc Qua JSDoc:** Giữ nguyên hiệu năng nguyên bản 100% cho UI/framework, chỉ ảo hóa logic cốt lõi bằng chú thích `/** @virtualize */`.
+- **StripDebugPass:** Tự động xóa mọi lệnh gọi `console.log`, `console.warn`, và `console.error` để xóa dấu vết gỡ lỗi khỏi production.
+- **Đóng Gói Không Phụ Thuộc (Zero-Dependency):** Biên dịch ra một file JavaScript độc lập chạy ở bất kỳ đâu (Trình duyệt, Node.js, Electron, Workers).
 
----
+## Nền Tảng Công Nghệ
 
-## 📐 Kiến Trúc Hệ Thống
+- **Ngôn ngữ**: TypeScript 5+
+- **Quản lý Monorepo**: pnpm
+- **Đóng gói**: tsup
+- **IR & Bytecode Backend**: Register-Based TSVM tùy chỉnh
 
-TSXobf hoạt động giống như một compiler backend. Nó tiếp nhận mã nguồn TypeScript, biên dịch các hàm mục tiêu thành dạng **Biểu diễn Trung gian (IR)** dựa trên thanh ghi, áp dụng các bước biến đổi bảo mật nâng cao và đóng gói chúng cùng trình thông dịch JS siêu nhẹ.
+## Yêu Cầu Hệ Thống
+
+- Node.js 20 trở lên
+- pnpm (Khuyến nghị sử dụng cho workspaces)
+
+## Hướng Dẫn Bắt Đầu
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
+cd ts-vm-obfuscator
+```
+
+### 2. Cài Đặt Thư Viện
+
+```bash
+pnpm install
+```
+
+### 3. Build Workspace
+
+```bash
+pnpm build
+```
+
+### 4. Chạy CLI Làm Rối Mã Nguồn
+
+Cung cấp file cấu hình TypeScript của dự án mục tiêu:
+
+```bash
+node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile generic
+```
+
+File production đã được bảo vệ sẽ được sinh ra ở thư mục `dist-obf/` với hậu tố thời gian (ví dụ: `build_1779526130061_index_ts.js`).
+Các profile được hỗ trợ: `default` (tương đương `generic`), `generic`, `react`, `electron`, `library`.
+
+## Kiến Trúc Hệ Thống
+
+TSXobf hoạt động như một compiler backend. Nó tiếp nhận TypeScript, biên dịch các hàm mục tiêu sang dạng Biểu Diễn Trung Gian (IR) dựa trên thanh ghi, chạy qua bộ lọc bảo mật, và đóng gói vào trình thông dịch JS nhẹ.
 
 ```mermaid
 graph TD
-
-    A["⚡ Nguồn TypeScript"] -->|"TS Compiler API"| B["🔍 Phân Tích Cú Pháp AST"]
-    B -->|"Bộ lọc @virtualize"| C["🧠 Register-Based IR"]
+    A["Nguồn TypeScript"] -->|"TS Compiler API"| B["Phân Tích Cú Pháp AST"]
+    B -->|"Bộ lọc @virtualize"| C["Register-Based IR"]
 
     subgraph T["Transforms Pipeline"]
         direction TB
-        T1["📦 Trích Xuất Constant Pool"]
-        T2["🎲 Ngẫu Nhiên Hóa Opcode"]
-        T3["🧬 Biến Đổi Dòng Điều Khiển"]
+        T1["StripDebugPass"]
+        T2["StringPoolEncodingPass"]
+        T3["SymbolIndirectionPass"]
+        T4["DeadCodeInjectionPass"]
+        T5["ControlFlowFlatteningPass"]
+        T6["GenericConfusionPass"]
     end
     
     C --> T1
     T1 --> T2
     T2 --> T3
+    T3 --> T4
+    T4 --> T5
+    T5 --> T6
 
-    T3 -->|"Assembler"| G["💾 Bytecode Nhị Phân"]
-    G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
+    T6 -->|"Assembler"| G["Bytecode Nhị Phân"]
+    G -->|"Polymorphic Packaging"| H["Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
         direction TB
-        R1["🔐 Mã Hóa Constant Pool"]
-        R2["⚙️ Máy Ảo Đa Hình (Interpreter)"]
+        R1["Constant Pool Mã Hóa"]
+        R2["Máy Ảo Đa Hình (Interpreter)"]
     end
     
     H -->|"Lazy Decode"| R1
     H -->|"Dispatch Loop"| R2
     
-    R1 --> K["🧩 Giá Trị Runtime"]
+    R1 --> K["Giá Trị Runtime"]
     R2 --> K
 
-    K -->|"Semantic Output"| L["✅ Kết Quả Đồng Nhất Ngữ Nghĩa"]
+    K -->|"Semantic Output"| L["Kết Quả Đồng Nhất Ngữ Nghĩa"]
 ```
 
----
+### Các Khả Năng Kỹ Thuật Hiện Tại
 
-## 🚀 Các Tính Năng Nổi Bật
+- Phân tích TypeScript thông qua TypeScript Compiler API.
+- IR dựa trên thanh ghi (Register-based IR) cho các hàm được chọn.
+- Biên dịch VM bytecode với opcode đã được tái ánh xạ (remapped opcodes).
+- Sinh runtime JavaScript tích hợp Threaded Dispatch và bẫy báo lỗi.
+- Lowering qua constant-pool và giải mã runtime.
+- Hỗ trợ switch profile an toàn cho React và Electron.
+- Transform xóa debug (Strip-debug) trong chu trình làm rối.
 
-> [!IMPORTANT]
-> **Nhận Biết Ngữ Nghĩa (Semantic-Aware):**
-> TSXobf không chỉnh sửa mã nguồn một cách mù quáng. Nó phân tích mã thông qua **TypeScript Compiler API** chính thức, cho phép giải quyết chính xác các liên kết export/import module, tầm vực biến (scope), kiểu dữ liệu và các lệnh gọi thư viện phụ thuộc trong quá trình ảo hóa.
+**Hệ thống IR hiện đã bao phủ các cấu trúc quan trọng (an toàn cho runtime):**
+- Mảng (Array literals) ví dụ `[1, 2, 3]`
+- Đối tượng (Object literals) bao gồm `PropertyAssignment` và `ShorthandPropertyAssignment`
+- Truy cập phần tử qua ngoặc vuông ví dụ `arr[i]`
+- Gán thuộc tính ví dụ `obj.x = y`
+- Gán phần tử động ví dụ `arr[i] = y`
+- Phân nhánh cơ bản `if / else`
+- Vòng lặp `while`
+- Biểu thức Prefix unary (ví dụ `!x`, `-x`, `~x`, `typeof x`)
+- Biểu thức toán tử `delete`
 
-*   **🎭 Máy Ảo Đa Hình Luồng (Polymorphic VM Runtime - Threaded Dispatch)**
-    Thay vì sử dụng vòng lặp thông dịch `switch-case` thông thường, TSXobf tạo ra cơ chế thực thi **Threaded Dispatch**. Các chỉ thị VM ánh xạ trực tiếp đến một mảng các hàm xử lý (handler) được tạo ngẫu nhiên. Các opcode chưa được ánh xạ sẽ chứa các **bẫy bảo mật tự vệ (self-defending integrity traps)** nhằm lập tức làm sập các công cụ dịch ngược (decompiler).
-*   **🎲 Ánh Xạ Biệt Danh Opcode 1-to-N & Xáo Trộn**
-    Để đối phó với phân tích thống kê tần suất byte và bộ giải mã chữ ký tự động, một chỉ thị VM gốc (ví dụ: `LoadConst`) sẽ được ánh xạ vào **nhiều mã opcode ảo khác nhau** (1-to-N). Sơ đồ ánh xạ opcode và bố cục các hàm xử lý hoàn toàn được xáo trộn ngẫu nhiên sau mỗi lần biên dịch.
-*   **🔑 Mã Hóa Bytecode Với Khóa Xoay Vòng (Rolling XOR Key)**
-    Các opcode chỉ thị và giá trị toán hạng tức thời được mã hóa ngay trên luồng bytecode. Máy ảo sẽ giải mã động các byte này khi đang chạy nhờ một khóa XOR xoay vòng (rolling key) tự động biến đổi sau mỗi chỉ thị, làm cho cùng một chỉ thị gốc có các biểu diễn byte khác nhau xuyên suốt chương trình.
-*   **🔒 Giải Mã XOR JIT & Kiểm Tra Toàn Vẹn Lazy Constant Pool**
-    Tất cả các chuỗi, hằng số số học và tra cứu thuộc tính được trích xuất vào một vùng chứa hằng số (constant pool) được mã hóa. Việc giải mã được thực hiện một cách lười (lazy - chỉ khi thực sự cần thiết) bằng hạt giống phiên (session seed) ngẫu nhiên, tích hợp kiểm tra toàn vẹn bộ nhớ chống dump dữ liệu.
-*   **🎯 Bảo Vệ Chọn Lọc Qua JSDoc**
-    Bạn không cần phải đánh đổi hiệu năng. Chỉ bảo vệ tài sản trí tuệ quan trọng (như hàm xác thực bản quyền, xử lý mật mã, API nhạy cảm) bằng cách chú thích `/** @virtualize */` ngay trên hàm mục tiêu, giữ nguyên 100% tốc độ native cho các mã nguồn UI hoặc framework thông thường.
-*   **📦 Đóng Gói Không Phụ Thuộc (Zero-Dependency)**
-    Sản phẩm biên dịch cuối cùng hoàn toàn độc lập. Nó tạo ra một file JavaScript thuần gọn nhẹ chạy được ở mọi môi trường: Trình duyệt hiện đại, Node.js, Electron, Cloudflare Workers, hay AWS Lambda.
+**VM runtime đã tích hợp các handlers cho:**
+- `ArrayNew`
+- `ObjectNew`
+- `ComputedGet`
+- `ComputedSet`
+- `Delete`
 
----
+### Cấu Trúc Monorepo
 
-## 🔎 Minh Họa Mã Nguồn Trước/Sau Làm Rối
+```text
+├── apps/
+│   └── visualizer/            # UI minh họa cho IR và bytecode (Demo UI)
+├── packages/
+│   ├── cli/                   # Giao diện CLI chạy pipeline làm rối
+│   ├── core/                  # Bộ điều phối luồng xử lý (Pipeline orchestrator)
+│   ├── ts-semantics/          # Phân tích dự án TS và xây dựng semantic graph
+│   ├── ir/                    # Bộ biên dịch AST thành IR
+│   ├── transforms/            # Các bước bảo vệ và ảo hóa mã nguồn
+│   ├── bytecode/              # Biên dịch IR sang bytecode nhị phân
+│   ├── vm-runtime/            # Khởi tạo lõi máy ảo VM
+│   ├── shared/                # Khai báo biến chung và model config
+│   ├── react-safe/            # Các quy tắc an toàn dành riêng cho React
+│   ├── electron-hardening/    # Cấu hình làm cứng ứng dụng Electron
+│   └── benchmark/             # Công cụ đo đạc hiệu năng
+├── examples/
+│   ├── basic-ts/              # Dự án mẫu cơ bản (Hash, TEA)
+│   └── st/                    # Dự án mẫu kiểm thử cấu trúc phức tạp
+└── test-pipeline.js           # Script xác thực End-to-End độ chính xác ngữ nghĩa
+```
 
-### 1. Mã Nguồn TypeScript Gốc (`src/index.ts`)
+## Minh Họa Mã Nguồn
+
+**1. Mã gốc (`examples/basic-ts/src/index.ts`)**
 ```typescript
 /** @virtualize */
 export function calculateSecretHash(input: string): number {
@@ -107,122 +183,90 @@ export function calculateSecretHash(input: string): number {
 }
 ```
 
-### 2. Mã JavaScript Sau Khi Làm Rối (`dist/build.js`)
-Thuật toán của bạn giờ đây đã được chuyển hóa thành một khối dữ liệu nhị phân mã hóa chạy trên bộ vi xử lý ảo tùy chỉnh:
-
+**2. Output JavaScript sau khi làm rối (`dist-obf/...`)**
 ```javascript
 const vmFunctions = (function() {
   const seed = 1779526130061;
+  // Constant Pool đã mã hóa, các hàm xử lý 1-to-N, và Vòng lặp Threaded Dispatch...
   
-  // Vùng Hằng Số Được Mã Hóa Với Cơ Chế Giải Mã Lười (Lazy Decryption)
-  const rawCP = [{"index":0,"kind":"number","value":0},{"index":1,"kind":"string","value":"áèãêùå"}];
-  const cpCache = [];
-  function getCP(idx) {
-    if (cpCache[idx] !== undefined) return cpCache[idx];
-    const c = rawCP[idx];
-    let val = c.kind === 'string' ? decrypt(c.value, seed) : c.value;
-    cpCache[idx] = val;
-    return val;
-  }
-
-  // Mảng Các Hàm Xử Lý Opcode Đa Hình 1-to-N
-  const handlers = new Array(256).fill(h_trap);
-  function h_105(ctx) { /* LoadConst Handler */ }
-  function h_47(ctx) { /* Move Handler */ }
-  function h_55(ctx) { /* Add Handler */ }
-  function h_trap(ctx) { throw new Error("VM Integrity Violation"); }
-  
-  // Xáo Trộn Opcode Động (Ánh xạ biệt danh 1-to-N)
-  handlers[105] = h_105;
-  handlers[212] = h_105; // ánh xạ biệt danh 1-to-N
-  handlers[47] = h_47;
-  handlers[188] = h_55;
-
-  // Trình Thông Dịch Máy Ảo Đa Hình
   function createExecutor(bytecodeArr) {
     return function execute(...fnArgs) {
-      const ctx = {
-        regs: new Array(256).fill(undefined),
-        pc: 0,
-        bytecode: bytecodeArr,
-        globalScope: typeof globalThis !== 'undefined' ? globalThis : {},
-        running: true,
-        rollingKey: seed & 0xFF
-      };
-      
-      // Nạp các đối số vào thanh ghi ảo
-      for (let i = 0; i < fnArgs.length; i++) ctx.regs[i] = fnArgs[i];
-
-      // Vòng lặp Threaded Dispatch giải mã XOR xoay vòng động
-      while(ctx.running && ctx.pc < ctx.bytecode.length) {
-        let op = ctx.bytecode[ctx.pc++];
-        op ^= ctx.rollingKey;
-        ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;
-        handlers[op](ctx);
-      }
-      return ctx.returnValue;
-    };
+       // VM chạy bytecode đã mã hóa thông qua các thanh ghi ảo...
+    }
   }
 
   var result = {};
-  // Toàn bộ logic thuật toán gốc giờ chỉ còn là một mảng byte nhị phân được mã hóa tuyến tính
   result['calculateSecretHash'] = createExecutor(new Uint8Array([73,122,89,14,244,11,8,90,201...]));
   return result;
 })();
 ```
 
----
+Sau khi biên dịch, thân hàm gốc sẽ được thay thế hoàn toàn bởi chuỗi byte nhị phân chạy trên lõi VM sinh kèm.
 
-## ⚡ Hướng Dẫn Nhanh
+## Kiểm Thử (Verification & Testing)
 
-### Yêu Cầu Hệ Thống
-*   Node.js (>= 18)
-*   `pnpm` (Khuyên dùng cho monorepo)
+TSXobf bao gồm cơ chế đánh giá độ chính xác toàn diện, đảm bảo kết quả từ máy ảo đồng nhất tuyệt đối với môi trường native Node.js V8.
 
-### 1. Cài Đặt & Biên Dịch Trình Làm Rối
+### Kiểm Thử Mẫu Cơ Bản (Baseline Regression)
+
+Kiểm thử chạy dự án `examples/basic-ts` và so sánh giá trị đầu ra:
+
 ```bash
-# Clone dự án từ GitHub
-git clone https://github.com/yourusername/TSXobf.git
-cd TSXobf
-
-# Cài đặt các thư viện phụ thuộc
-pnpm install
-
-# Build tất cả các package trong monorepo
-pnpm build
+pnpm test
 ```
 
-### 2. Chạy Trình Làm Rối CLI
-Cung cấp file cấu hình TypeScript của dự án mục tiêu để tiến hành làm rối:
+Lệnh này sẽ tự động:
+1. Chạy tất cả các unit tests Vitest trong workspace
+2. Build lại workspace
+3. Chạy lệnh `node test-pipeline.js`
+
+### Kiểm Thử Cấu Trúc Phức Tạp (Complex Structure)
+
+Xác minh các hỗ trợ Array/Object/Index/Branch logic cho dự án `examples/st`.
+
+Build mã bảo mật:
 ```bash
-node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist
 ```
-File JavaScript đã bảo vệ sẽ được sinh ra trong thư mục `dist-obf/` với tên file định dạng: `build_<session_id>.js`.
 
-### 3. Chạy Thử Nghiệm Kiểm Tra Lỗi
-Chạy kịch bản kiểm thử tích hợp để tự động so sánh tính đồng nhất ngữ nghĩa giữa hàm ảo hóa chạy trên VM và hàm gốc:
+Đánh giá Native vs Obfuscated:
 ```bash
-node test-pipeline.js
+node examples/st/run-obf.js
 ```
+Kết quả thành công mong đợi: `OK runComplexStructures matched native output for all flags.`
 
-> [!TIP]
-> **Tùy Biến Nâng Cao:**
-> Bạn có thể tinh chỉnh các luật biến đổi mã, cơ chế mã hóa constant pool và cách dịch chỉ thị bytecode trực tiếp tại các thư mục `packages/transforms/` và `packages/bytecode/`.
+## Khuyến Nghị Quy Trình Lập Trình
 
----
+Nếu bạn thay đổi cơ chế biên dịch, hãy tuân theo:
+1. Viết hoặc cập nhật thêm test case.
+2. Chạy từng Vitest case nhắm mục tiêu.
+3. Chạy lệnh tổng `pnpm test`.
+4. Nếu liên đới tới việc biên dịch AST biểu thức phức tạp, hãy chạy lại lệnh verification của `examples/st`.
 
-## 🛠️ Chi Tiết Các Gói Thành Phần
+## Trạng Thái & Giới Hạn Hiện Tại
 
-Hệ sinh thái TSXobf được chia nhỏ thành các gói dịch vụ độc lập trong monorepo:
+Đây là một trình biên dịch chuyên nghiệp và đang ở trong trạng thái **SUPER UPGRADE (Siêu Nâng Cấp)**, hoàn toàn vượt qua các bài kiểm thử logic phức tạp. Tuy nhiên, dự án không cam kết hỗ trợ toàn bộ cú pháp dị thường của JavaScript bên trong hàm bảo mật.
 
-*   **`packages/ir`**: Tổng hợp sơ đồ điều khiển và xây dựng cấu trúc Biểu diễn Trung gian (IR) dựa trên thanh ghi từ các khối cây AST.
-*   **`packages/transforms`**: Lớp bảo mật. Thực hiện trích xuất hằng số, mã hóa chuỗi dữ liệu, đổi tên ký hiệu và sinh tập lệnh opcode ngẫu nhiên.
-*   **`packages/bytecode`**: Trình biên dịch mã máy. Chuyển đổi cấu trúc IR sang dạng mảng byte nhị phân tuyến tính.
-*   **`packages/vm-runtime`**: Đóng gói mã nguồn. Tích hợp bytecode nhị phân vào lõi trình thông dịch VM đa hình động.
-*   **`packages/cli`**: Giao diện dòng lệnh giúp kết nối các bước biên dịch và tối ưu hóa quy trình làm việc.
+Một số giới hạn cần biết:
+- Khai báo phương thức bên trong object literal (ví dụ `{ f() {} }`) chưa được tài liệu hóa là hỗ trợ.
+- Các hàm mũi tên (arrow functions) và biểu thức hàm lồng trong object chưa nằm trong nhóm hỗ trợ được verified.
+- Cú pháp AST không được hỗ trợ nay sẽ lập tức ném lỗi (fail loudly) thay vì tự động đẩy ra register rỗng sai lệch.
+- `apps/visualizer` hiện vẫn là bản demo chưa kết nối thực tế với runtime gốc.
 
----
+## Xử Lý Sự Cố (Troubleshooting)
 
-## 🛡️ Bản Quyền
+### VM Integrity Violation
 
-Dự án được phân phối dưới giấy phép MIT License - xem file [LICENSE](LICENSE) để biết thêm chi tiết.
+**Lỗi:** `VM Integrity Violation at PC X`
+
+**Giải pháp:** Thường xảy ra do mất đồng bộ luồng bytecode (chỉ thị opcode chưa được map hoặc sai số đếm argument). Hãy chắc chắn bạn đã chạy lệnh `pnpm build` nếu vừa sửa đổi `polymorphic-builder.ts` hoặc `compiler.ts`.
+
+### Lỗi Dấu Ngoặc (TypeError)
+
+**Lỗi:** `TypeError: Cannot read properties of undefined (reading 'apply')`
+
+**Giải pháp:** Kiểm tra mã TypeScript xem có thiếu ngoặc nhọn `{}` trong các vòng lặp `for`, `while` hoặc câu lệnh `if` không. Parser AST đôi khi gộp các hàm sai do thiếu phạm vi khối lệnh rõ ràng, làm hư cấu trúc ghi thanh ghi ảo (registers).
+
+## Bản Quyền
+
+Dự án được phân phối theo giấy phép MIT. Xem tệp [LICENSE](LICENSE) để biết chi tiết.

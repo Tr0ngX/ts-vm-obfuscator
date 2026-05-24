@@ -2,12 +2,12 @@
   <img src="assets/logo.png" alt="TSXobf Logo" width="200px" />
 </p>
 
-# 🛡️ TSXobf — TypeScript Semantic-Aware VM Obfuscator
+# TSXobf — TypeScript Semantic-Aware VM Obfuscator
 
 > **Next-Generation Code Virtualization Pipeline** for securing high-value business logic in TypeScript and JavaScript ecosystems.
 
 ---
-🌐 **Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
+**Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -18,7 +18,7 @@ Unlike traditional obfuscators that rely on easily-reversible AST transformation
 
 It is designed for high-value business logic such as license checks, billing rules, cryptographic helpers, and integrity-sensitive algorithms. Virtualization is selective, not whole-program. Functions are typically opted in with `/** @virtualize */`.
 
-## ✨ Key Features
+## Key Features
 
 - **Semantic-Aware Compilation:** Uses the official TypeScript Compiler API to seamlessly resolve module exports, scope rules, typed variables, and dependency calls.
 - **Polymorphic Virtual Machine Runtime:** Generates a Threaded Dispatch execution engine with randomized handlers and integrity traps.
@@ -29,19 +29,19 @@ It is designed for high-value business logic such as license checks, billing rul
 - **StripDebugPass:** Automatically strips all `console.log`, `console.warn`, and `console.error` calls to remove debug literals from the production constant pool.
 - **Zero-Dependency Bundling:** Outputs a clean, standalone JavaScript file that runs anywhere (Browsers, Node.js, Electron, Workers).
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Language**: TypeScript 5+
 - **Monorepo Manager**: pnpm
 - **Bundler**: tsup
 - **IR & Bytecode Backend**: Custom Register-Based TSVM
 
-## 📦 Prerequisites
+## Prerequisites
 
 - Node.js 20 or higher
 - pnpm (highly recommended for workspaces)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone the Repository
 
@@ -73,23 +73,23 @@ node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf 
 The protected production files will be built and output into the `dist-obf/` directory with a timestamped build signature (e.g., `build_1779526130061_index_ts.js`).
 Supported profiles: `default` (alias of `generic`), `generic`, `react`, `electron`, `library`.
 
-## 🏗 Architecture
+## Architecture
 
 TSXobf works as a compiler backend. It takes your TypeScript code, compiles target functions into a register-based Intermediate Representation (IR), applies security passes, and packages them into a lightweight JS interpreter.
 
 ```mermaid
 graph TD
-    A["⚡ TypeScript Source"] -->|"TS Compiler API"| B["🔍 Semantic AST Analysis"]
-    B -->|"@virtualize Filter"| C["🧠 Register-Based IR"]
+    A["TypeScript Source"] -->|"TS Compiler API"| B["Semantic AST Analysis"]
+    B -->|"@virtualize Filter"| C["Register-Based IR"]
 
     subgraph T["Transforms Pipeline"]
         direction TB
-        T1["🗑️ StripDebugPass"]
-        T2["📦 StringPoolEncodingPass"]
-        T3["🧩 SymbolIndirectionPass"]
-        T4["👻 DeadCodeInjectionPass"]
-        T5["🧬 ControlFlowFlatteningPass"]
-        T6["🎲 GenericConfusionPass"]
+        T1["StripDebugPass"]
+        T2["StringPoolEncodingPass"]
+        T3["SymbolIndirectionPass"]
+        T4["DeadCodeInjectionPass"]
+        T5["ControlFlowFlatteningPass"]
+        T6["GenericConfusionPass"]
     end
     
     C --> T1
@@ -99,22 +99,22 @@ graph TD
     T4 --> T5
     T5 --> T6
 
-    T6 -->|"Assembler"| G["💾 Binary Bytecode Stream"]
-    G -->|"Polymorphic Packaging"| H["📁 Production JS Bundle"]
+    T6 -->|"Assembler"| G["Binary Bytecode Stream"]
+    G -->|"Polymorphic Packaging"| H["Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
         direction TB
-        R1["🔐 Encrypted Constant Pool"]
-        R2["⚙️ Polymorphic VM Interpreter"]
+        R1["Encrypted Constant Pool"]
+        R2["Polymorphic VM Interpreter"]
     end
     
     H -->|"Lazy Decode"| R1
     H -->|"Dispatch Loop"| R2
     
-    R1 --> K["🧩 Runtime Values"]
+    R1 --> K["Runtime Values"]
     R2 --> K
 
-    K -->|"Semantic Output"| L["✅ Equivalent Program Behavior"]
+    K -->|"Semantic Output"| L["Equivalent Program Behavior"]
 ```
 
 ### Current Technical Capabilities
@@ -168,7 +168,7 @@ graph TD
 └── test-pipeline.js           # End-to-End semantic validation script
 ```
 
-## 💻 Code Example
+## Code Example
 
 **1. Original Code (`examples/basic-ts/src/index.ts`)**
 ```typescript
@@ -203,7 +203,7 @@ const vmFunctions = (function() {
 
 After lowering and compilation, the original function body is replaced by VM bytecode plus a generated runtime bundle.
 
-## 🧪 Verification & Testing
+## Verification & Testing
 
 TSXobf includes strict semantic validation to ensure the VM interpreter produces the exact same results as native Node.js V8 execution.
 
@@ -235,7 +235,7 @@ node examples/st/run-obf.js
 ```
 Expected success output: `OK runComplexStructures matched native output for all flags.`
 
-## 🔧 Recommended Development Flow
+## Recommended Development Flow
 
 If you are changing pipeline behavior:
 1. Update or add tests first.
@@ -243,7 +243,7 @@ If you are changing pipeline behavior:
 3. Run `pnpm test`.
 4. If touching complex expression lowering, rerun the `examples/st` verification flow.
 
-## ⚠️ Current Limits & Status
+## Current Limits & Status
 
 This repo is a serious VM compiler and is currently in a state of **SUPER UPGRADE**, fully verified against complex structural logic, but it does not claim broad support for arbitrary JavaScript syntax inside *every* virtualized function yet.
 
@@ -253,7 +253,7 @@ Notable limits:
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
-## 🩺 Troubleshooting
+## Troubleshooting
 
 ### VM Integrity Violation
 
@@ -267,6 +267,6 @@ Notable limits:
 
 **Solution:** Check the TypeScript source code for missing curly braces `{}` in `for`, `while`, or `if` statements. The AST parser might aggressively merge function calls if block scopes are ambiguous, causing incorrect register mappings during virtualization.
 
-## 🛡️ License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
