@@ -1,6 +1,40 @@
 import { describe, it, expect } from 'vitest';
 import { buildVMRuntime } from '../src/polymorphic-builder.js';
-import { BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme } from '@tsvm/shared';
+import { BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
+import { lowerToIR } from '../../ir/src/builder.js';
+import { compileToBytecode } from '../../bytecode/src/compiler.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function createModuleInfo(filePath: string): ModuleInfo {
+  return {
+    filePath,
+    relativePath: path.basename(filePath),
+    exports: [],
+    imports: [],
+    typeFacts: [],
+    isEntryPoint: true,
+    isDeclarationFile: false,
+    hasJSX: false,
+    hasDecorators: false,
+    byteSize: 0,
+  };
+}
+
+function createGraph(): ProjectSemanticGraph {
+  return {
+    rootDir: __dirname,
+    modules: new Map(),
+    dependencyEdges: [],
+    entryPoints: [],
+    symbolTable: [],
+    aliases: new Map(),
+    compilerOptions: {},
+    diagnostics: [],
+  };
+}
 
 describe('VM Runtime', () => {
   it('should initialize and execute bytecode safely', () => {
@@ -110,9 +144,41 @@ describe('VM Runtime', () => {
       seed: 9,
     });
 
-    expect(bundle.fullSource).toContain('function getExecutorById(functionId)');
+    expect(bundle.fullSource).toContain('function getExecutorById(functionId, env)');
     expect(bundle.fullSource).toContain("throw new Error('Unknown VM function id: ' + functionId);");
-    expect(bundle.fullSource).toContain('ctx.regs[args[1]] = getExecutorById(getCP(args[0]));');
+    expect(bundle.fullSource).toContain('ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);');
+    expect(bundle.fullSource).toContain('ctx.regs[args[1]] = ctx.env[args[0]];');
+    expect(bundle.fullSource).toContain('ctx.regs[args[1]] = { v: ctx.regs[args[0]] };');
+  });
+
+  it('should execute closures with shared captured state', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'nested-closures.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 13,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 13,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.nestedCounter(5)).toBe(16);
   });
 
   it('should inject anti-debug and tamper logic when enabled', () => {

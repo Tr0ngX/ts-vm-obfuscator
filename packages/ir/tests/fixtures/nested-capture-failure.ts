@@ -1,5 +1,4 @@
 export function nestedCaptureFailure() {
-  const local = 1;
-  const fn = () => local + 1;
-  return fn();
+  const values = [1, ...[2]];
+  return values.length;
 }

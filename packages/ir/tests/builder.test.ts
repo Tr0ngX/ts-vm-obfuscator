@@ -68,11 +68,32 @@ describe('IR builder', () => {
     expect(nestedFunctions.every((candidate) => candidate.attributes.includes(FunctionAttribute.Nested))).toBe(true);
   });
 
-  it('fails loudly for nested functions that capture outer locals', () => {
+  it('boxes captured locals and records closure captures', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'nested-closures.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const outer = module.functions.find((candidate) => candidate.name === 'nestedCounter');
+    const inner = module.functions.find((candidate) => candidate.name !== 'nestedCounter');
+
+    expect(outer).toBeDefined();
+    expect(inner).toBeDefined();
+
+    const outerOpcodes = outer!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    const innerOpcodes = inner!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+
+    expect(outerOpcodes).toContain(OpCode.CellNew);
+    expect(outerOpcodes).toContain(OpCode.CellSet);
+    expect(outerOpcodes).toContain(OpCode.ClosureNew);
+    expect(innerOpcodes).toContain(OpCode.EnvGet);
+    expect(innerOpcodes).toContain(OpCode.CellGet);
+    expect(innerOpcodes).toContain(OpCode.CellSet);
+    expect(inner!.capturedVariables).toContain('counter');
+  });
+
+  it('still fails loudly for unsupported AST with location context', () => {
     const filePath = path.join(__dirname, 'fixtures', 'nested-capture-failure.ts');
 
     expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
-      /Unsupported AST in IR builder: Identifier \(Nested function captures outer local "local"\) at .*nested-capture-failure\.ts:\d+:\d+ near "local"/
+      /Unsupported AST in IR builder: .* at .*nested-capture-failure\.ts:\d+:\d+ near /
     );
   });
 });

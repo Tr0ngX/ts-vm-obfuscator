@@ -13,25 +13,150 @@ interface LoweringOptions {
   readonly name: string;
   readonly isExported: boolean;
   readonly isVirtualized: boolean;
-  readonly inheritedScopeNames?: ReadonlySet<string>;
+  readonly analysis: ClosureAnalysis;
   readonly attributes?: readonly FunctionAttribute[];
   readonly isNested?: boolean;
+}
+
+interface ClosureAnalysis {
+  readonly localNames: ReadonlySet<string>;
+  readonly capturedFromOuter: readonly string[];
+  readonly capturedByDescendants: ReadonlySet<string>;
+}
+
+interface LocalBinding {
+  readonly register: Register;
+  readonly boxed: boolean;
+}
+
+function pushUnique(target: string[], value: string): void {
+  if (!target.includes(value)) {
+    target.push(value);
+  }
+}
+
+function isNestedFunctionLike(node: ts.Node): node is SupportedFunctionNode {
+  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
+}
+
+function isTypePosition(node: ts.Node): boolean {
+  const parent = node.parent;
+  return ts.isTypeNode(parent) || ts.isTypeAliasDeclaration(parent) || ts.isHeritageClause(parent);
+}
+
+function isIdentifierReference(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent || isTypePosition(node)) {
+    return false;
+  }
+  if (
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    (ts.isPropertyAssignment(parent) && parent.name === node) ||
+    (ts.isShorthandPropertyAssignment(parent) && parent.name !== node) ||
+    (ts.isMethodDeclaration(parent) && parent.name === node) ||
+    (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+    (ts.isPropertySignature(parent) && parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.name === node) ||
+    (ts.isVariableDeclaration(parent) && parent.name === node) ||
+    (ts.isParameter(parent) && parent.name === node) ||
+    (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+    (ts.isFunctionExpression(parent) && parent.name === node) ||
+    (ts.isLabeledStatement(parent) && parent.label === node) ||
+    (ts.isBreakOrContinueStatement(parent) && parent.label === node)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function collectFunctionLocalNames(node: SupportedFunctionNode): Set<string> {
+  const names = new Set<string>();
+
+  node.parameters.forEach((param) => {
+    if (ts.isIdentifier(param.name)) {
+      names.add(param.name.text);
+    }
+  });
+  if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) {
+    names.add(node.name.text);
+  }
+
+  const visit = (current: ts.Node) => {
+    if (current !== node && isNestedFunctionLike(current)) {
+      return;
+    }
+    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
+      names.add(current.name.text);
+    }
+    ts.forEachChild(current, visit);
+  };
+
+  if (node.body) {
+    ts.forEachChild(node.body, visit);
+  }
+
+  return names;
+}
+
+function analyzeFunctionClosures(node: SupportedFunctionNode, availableOuterNames: ReadonlySet<string>): ClosureAnalysis {
+  const localNames = collectFunctionLocalNames(node);
+  const capturedFromOuter: string[] = [];
+  const capturedByDescendants = new Set<string>();
+
+  const childAvailableOuterNames = new Set<string>(availableOuterNames);
+  for (const name of localNames) {
+    childAvailableOuterNames.add(name);
+  }
+
+  const visit = (current: ts.Node) => {
+    if (current !== node && isNestedFunctionLike(current)) {
+      const childAnalysis = analyzeFunctionClosures(current, childAvailableOuterNames);
+      for (const name of childAnalysis.capturedFromOuter) {
+        if (localNames.has(name)) {
+          capturedByDescendants.add(name);
+        } else if (availableOuterNames.has(name)) {
+          pushUnique(capturedFromOuter, name);
+        }
+      }
+      return;
+    }
+
+    if (ts.isIdentifier(current) && isIdentifierReference(current)) {
+      const name = current.text;
+      if (!localNames.has(name) && availableOuterNames.has(name)) {
+        pushUnique(capturedFromOuter, name);
+      }
+    }
+
+    ts.forEachChild(current, visit);
+  };
+
+  if (node.body) {
+    ts.forEachChild(node.body, visit);
+  }
+
+  return {
+    localNames,
+    capturedFromOuter,
+    capturedByDescendants,
+  };
 }
 
 class ASTLowering {
   private fnBuilder: IRFunctionBuilder;
   private currentBlock: BasicBlockBuilder;
-  private scope: Map<string, Register> = new Map();
+  private scope: Map<string, LocalBinding> = new Map();
   readonly functionId: string;
   private nestedFunctionCount = 0;
-  private readonly inheritedScopeNames: ReadonlySet<string>;
   private readonly sourceFile: ts.SourceFile;
+  private readonly capturedLocals: ReadonlySet<string>;
+  private readonly outerCaptureBindings = new Map<string, number>();
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
     this.fnBuilder = new IRFunctionBuilder(this.functionId, options.name, IRType.Any);
-    this.inheritedScopeNames = options.inheritedScopeNames ?? new Set<string>();
     this.sourceFile = node.getSourceFile();
+    this.capturedLocals = options.analysis.capturedByDescendants;
     if (options.isExported) {
       this.fnBuilder.addAttribute(FunctionAttribute.Exported);
     }
@@ -43,13 +168,18 @@ class ASTLowering {
     }
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
+    options.analysis.capturedFromOuter.forEach((name, index) => {
+      this.outerCaptureBindings.set(name, index);
+      this.fnBuilder.addCapturedVariable(name);
+    });
 
     node.parameters.forEach(p => {
       if (ts.isIdentifier(p.name)) {
         const reg = this.fnBuilder.addParam(p.name.text, IRType.Any);
-        this.scope.set(p.name.text, reg);
+        this.scope.set(p.name.text, { register: reg, boxed: this.capturedLocals.has(p.name.text) });
       }
     });
+    this.boxCapturedParameters();
 
     if (node.body) {
       if (ts.isBlock(node.body)) {
@@ -106,15 +236,41 @@ class ASTLowering {
     return reg;
   }
 
+  private boxCapturedParameters(): void {
+    for (const [name, binding] of this.scope.entries()) {
+      if (binding.boxed) {
+        this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: binding.register }], binding.register);
+        this.fnBuilder.addCapturedVariable(name);
+      }
+    }
+  }
+
+  private loadOuterCaptureCell(name: string): Register {
+    const envIndex = this.outerCaptureBindings.get(name);
+    if (envIndex === undefined) {
+      this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Unknown closure binding "${name}"`);
+    }
+    const cellReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.EnvGet, [{ kind: OperandKind.Immediate, value: envIndex }], cellReg);
+    return cellReg;
+  }
+
   private resolveVar(name: string): Register {
     if (this.scope.has(name)) {
-      const reg = this.scope.get(name)!;
+      const binding = this.scope.get(name)!;
       const destReg = this.fnBuilder.allocRegister();
-      this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: reg }], destReg);
+      if (binding.boxed) {
+        this.currentBlock.addInstruction(OpCode.CellGet, [{ kind: OperandKind.Register, value: binding.register }], destReg);
+      } else {
+        this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: binding.register }], destReg);
+      }
       return destReg;
     }
-    if (this.inheritedScopeNames.has(name)) {
-      this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Nested function captures outer local "${name}"`);
+    if (this.outerCaptureBindings.has(name)) {
+      const cellReg = this.loadOuterCaptureCell(name);
+      const destReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.CellGet, [{ kind: OperandKind.Register, value: cellReg }], destReg);
+      return destReg;
     }
     // Assume global
     const strReg = this.emitConstant(ConstantKind.String, name);
@@ -148,10 +304,11 @@ class ASTLowering {
 
   private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
     const nestedName = this.createNestedFunctionName();
-    const inheritedScopeNames = new Set<string>(this.inheritedScopeNames);
+    const availableOuterNames = new Set<string>(this.outerCaptureBindings.keys());
     for (const name of this.scope.keys()) {
-      inheritedScopeNames.add(name);
+      availableOuterNames.add(name);
     }
+    const analysis = analyzeFunctionClosures(expr, availableOuterNames);
     const attributes: FunctionAttribute[] = [];
     if (ts.isArrowFunction(expr)) {
       attributes.push(FunctionAttribute.Arrow);
@@ -163,27 +320,67 @@ class ASTLowering {
       name: nestedName,
       isExported: false,
       isVirtualized: true,
-      inheritedScopeNames,
+      analysis,
       attributes,
       isNested: true,
     });
+    const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
     const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
     const closureReg = this.fnBuilder.allocRegister();
     this.currentBlock.addInstruction(
       OpCode.ClosureNew,
       [
         { kind: OperandKind.ConstantIndex, value: functionIdIndex },
+        { kind: OperandKind.Register, value: envReg },
       ],
       closureReg
     );
     return closureReg;
   }
 
+  private buildClosureEnvironment(capturedNames: readonly string[]): Register {
+    const envReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.ArrayNew, [], envReg);
+
+    capturedNames.forEach((name, index) => {
+      const indexReg = this.emitConstant(ConstantKind.Number, index);
+      const cellReg = this.getCellForCapture(name);
+      this.currentBlock.addInstruction(OpCode.ComputedSet, [
+        { kind: OperandKind.Register, value: envReg },
+        { kind: OperandKind.Register, value: indexReg },
+        { kind: OperandKind.Register, value: cellReg },
+      ]);
+    });
+
+    return envReg;
+  }
+
+  private getCellForCapture(name: string): Register {
+    const localBinding = this.scope.get(name);
+    if (localBinding) {
+      if (!localBinding.boxed) {
+        this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Closure capture expected boxed local "${name}"`);
+      }
+      return localBinding.register;
+    }
+    if (this.outerCaptureBindings.has(name)) {
+      return this.loadOuterCaptureCell(name);
+    }
+    this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Unknown capture "${name}"`);
+  }
+
   private storeValue(target: ts.Expression, valueReg: Register): void {
     if (ts.isIdentifier(target)) {
       if (this.scope.has(target.text)) {
-        const locReg = this.scope.get(target.text)!;
-        this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valueReg }]);
+        const binding = this.scope.get(target.text)!;
+        if (binding.boxed) {
+          this.currentBlock.addInstruction(OpCode.CellSet, [{ kind: OperandKind.Register, value: binding.register }, { kind: OperandKind.Register, value: valueReg }]);
+        } else {
+          this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: binding.register }, { kind: OperandKind.Register, value: valueReg }]);
+        }
+      } else if (this.outerCaptureBindings.has(target.text)) {
+        const cellReg = this.loadOuterCaptureCell(target.text);
+        this.currentBlock.addInstruction(OpCode.CellSet, [{ kind: OperandKind.Register, value: cellReg }, { kind: OperandKind.Register, value: valueReg }]);
       } else {
         const strReg = this.emitConstant(ConstantKind.String, target.text);
         this.currentBlock.addInstruction(OpCode.StoreGlobal, [{ kind: OperandKind.Register, value: strReg }, { kind: OperandKind.Register, value: valueReg }]);
@@ -445,8 +642,7 @@ class ASTLowering {
           const oneReg = this.emitConstant(ConstantKind.Number, 1);
           const resReg = this.fnBuilder.allocRegister();
           this.currentBlock.addInstruction(OpCode.Add, [{ kind: OperandKind.Register, value: vReg }, { kind: OperandKind.Register, value: oneReg }], resReg);
-          const target = this.scope.get(expr.operand.text)!;
-          this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: target }, { kind: OperandKind.Register, value: resReg }]);
+          this.storeValue(expr.operand, resReg);
           return vReg;
         }
       }
@@ -522,10 +718,20 @@ class ASTLowering {
       stmt.declarationList.declarations.forEach(decl => {
         if (ts.isIdentifier(decl.name)) {
           const locReg = this.fnBuilder.addLocal(decl.name.text, IRType.Any);
-          this.scope.set(decl.name.text, locReg);
+          const boxed = this.capturedLocals.has(decl.name.text);
+          this.scope.set(decl.name.text, { register: locReg, boxed });
           if (decl.initializer) {
             const valReg = this.visitExpression(decl.initializer);
-            this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
+            if (boxed) {
+              this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: valReg }], locReg);
+              this.fnBuilder.addCapturedVariable(decl.name.text);
+            } else {
+              this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
+            }
+          } else if (boxed) {
+            const undefReg = this.emitConstant(ConstantKind.Undefined, null);
+            this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], locReg);
+            this.fnBuilder.addCapturedVariable(decl.name.text);
           }
         }
       });
@@ -546,10 +752,20 @@ class ASTLowering {
           stmt.initializer.declarations.forEach(decl => {
             if (ts.isIdentifier(decl.name)) {
               const locReg = this.fnBuilder.addLocal(decl.name.text, IRType.Any);
-              this.scope.set(decl.name.text, locReg);
+              const boxed = this.capturedLocals.has(decl.name.text);
+              this.scope.set(decl.name.text, { register: locReg, boxed });
               if (decl.initializer) {
                 const valReg = this.visitExpression(decl.initializer);
-                this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
+                if (boxed) {
+                  this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: valReg }], locReg);
+                  this.fnBuilder.addCapturedVariable(decl.name.text);
+                } else {
+                  this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
+                }
+              } else if (boxed) {
+                const undefReg = this.emitConstant(ConstantKind.Undefined, null);
+                this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], locReg);
+                this.fnBuilder.addCapturedVariable(decl.name.text);
               }
             }
           });
@@ -664,10 +880,12 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
       const isVirtualized = jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
         || node.name.text === 'calculateSecretHash'
         || node.name.text === 'encryptTEA';
+      const analysis = analyzeFunctionClosures(node, new Set<string>());
       new ASTLowering(modBuilder, node, {
         name: node.name.text,
         isExported,
         isVirtualized,
+        analysis,
       });
     }
     ts.forEachChild(node, visit);

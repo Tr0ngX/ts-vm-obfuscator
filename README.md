@@ -130,6 +130,7 @@ graph TD
 **IR lowering now covers these important runtime-safe constructs:**
 - Array literals like `[1, 2, 3]`
 - Object literals with `PropertyAssignment` and `ShorthandPropertyAssignment`
+- Object literal methods like `{ f() {} }`
 - Element access like `arr[i]`
 - Property assignment like `obj.x = y`
 - Computed assignment like `arr[i] = y`
@@ -137,6 +138,8 @@ graph TD
 - `while` loops
 - Prefix unary expressions (e.g. `!x`, `-x`, `~x`, `typeof x`)
 - `delete` operator expressions
+- Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
+- True lexical closures for captured outer locals via boxed cells and closure environments
 
 **The VM runtime now includes handlers for:**
 - `ArrayNew`
@@ -144,6 +147,11 @@ graph TD
 - `ComputedGet`
 - `ComputedSet`
 - `Delete`
+- `ClosureNew`
+- `CellNew`
+- `CellGet`
+- `CellSet`
+- `EnvGet`
 
 ### Workspace Layout
 
@@ -248,9 +256,9 @@ If you are changing pipeline behavior:
 This repo is a serious VM compiler and is currently in a state of **SUPER UPGRADE**, fully verified against complex structural logic, but it does not claim broad support for arbitrary JavaScript syntax inside *every* virtualized function yet.
 
 Notable limits:
-- Object literal method declarations such as `{ f() {} }` are not yet documented as supported inside virtualized regions.
-- Function expressions and arrow functions embedded inside object literals are not part of the verified support set.
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
+- Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
+- Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
 ## Troubleshooting

@@ -276,6 +276,10 @@ export enum OpCode {
   ReturnVoid = 0x44,
   TailCall = 0x45,
   ClosureNew = 0x46,
+  CellNew = 0x47,
+  CellGet = 0x48,
+  CellSet = 0x49,
+  EnvGet = 0x4A,
 
   // Object/Array
   PropGet = 0x50,

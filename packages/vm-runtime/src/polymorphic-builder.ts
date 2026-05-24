@@ -122,9 +122,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.ArrayNew, `${readArgs} ctx.regs[args[0]] = [];`);
   declareHandler(OpCode.ObjectNew, `${readArgs} ctx.regs[args[0]] = {};`);
   declareHandler(OpCode.Delete, `${readArgs} delete ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(OpCode.CellNew, `${readArgs} ctx.regs[args[1]] = { v: ctx.regs[args[0]] };`);
+  declareHandler(OpCode.CellGet, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]].v;`);
+  declareHandler(OpCode.CellSet, `${readArgs} ctx.regs[args[0]].v = ctx.regs[args[1]];`);
+  declareHandler(OpCode.EnvGet, `${readArgs} ctx.regs[args[1]] = ctx.env[args[0]];`);
   declareHandler(OpCode.ClosureNew, `
     ${readArgs}
-    ctx.regs[args[1]] = getExecutorById(getCP(args[0]));
+    ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);
   `);
   
   declareHandler(OpCode.CallMethod, `
@@ -217,26 +221,29 @@ ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join
   };
   const executorCache = Object.create(null);
 
-  function getExecutorById(functionId) {
-    if (executorCache[functionId]) {
+  function getExecutorById(functionId, env) {
+    if ((!env || env.length === 0) && executorCache[functionId]) {
       return executorCache[functionId];
     }
     const bytecode = functionBytecodes[functionId];
     if (!bytecode) {
       throw new Error('Unknown VM function id: ' + functionId);
     }
-    const executor = createExecutor(bytecode);
-    executorCache[functionId] = executor;
+    const executor = createExecutor(bytecode, env || []);
+    if (!env || env.length === 0) {
+      executorCache[functionId] = executor;
+    }
     return executor;
   }
 
-  function createExecutor(bytecodeArr) {
+  function createExecutor(bytecodeArr, envArr) {
     return function execute() {
       const fnArgs = Array.prototype.slice.call(arguments);
       const ctx = {
         pc: 0,
         bytecode: bytecodeArr,
         regs: new Array(256).fill(undefined),
+        env: envArr || [],
         globalScope: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
         running: true,
         returnValue: undefined,
