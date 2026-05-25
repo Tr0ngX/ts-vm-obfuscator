@@ -45,6 +45,12 @@ function createRuntimeNames(config: VMBuildConfig) {
         fnArgs: 'fnArgs',
         env: 'env',
         globalScope: 'globalScope',
+        thisArg: 'thisArg',
+        newTarget: 'newTarget',
+        resumeMode: 'resumeMode',
+        resumeValue: 'resumeValue',
+        resumeReg: 'resumeReg',
+        awaitPromise: 'awaitPromise',
         running: 'running',
         returnValue: 'returnValue',
         tryFrames: 'tryStack',
@@ -87,6 +93,12 @@ function createRuntimeNames(config: VMBuildConfig) {
       fnArgs: 'fnArgs',
       env: 'env',
       globalScope: 'globalScope',
+      thisArg: next(),
+      newTarget: next(),
+      resumeMode: next(),
+      resumeValue: next(),
+      resumeReg: next(),
+      awaitPromise: next(),
       running: 'running',
       returnValue: 'returnValue',
       tryFrames: next(),
@@ -193,6 +205,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       : ${ctxRef('globalScope')}[propName];
   `);
   declareHandler(OpCode.StoreGlobal, `${readArgs} ${ctxRef('globalScope')}[${regRef('args[0]')}] = ${regRef('args[1]')};`);
+  declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
+  declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
   
   declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] + ctx.regs[args[1]];`);
   declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] - ctx.regs[args[1]];`);
@@ -339,6 +353,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     });
   `);
   declareHandler(OpCode.TryCatchEnd, `${readArgs} if (${ctxRef('tryFrames')}.length > 0) { ${ctxRef('tryFrames')}.pop(); }`);
+  declareHandler(OpCode.Await, `
+    ${readArgs}
+    ${ctxRef('awaitPromise')} = Promise.resolve(${regRef('args[0]')});
+    ${ctxRef('resumeReg')} = args[1];
+    ${ctxRef('resumeMode')} = 'await';
+    ${ctxRef('running')} = false;
+  `);
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `${ctxRef('running')} = false;`);
 
@@ -433,7 +454,7 @@ const ${top.vmFunctions} = (function() {
   ${runtimeDispatch.declarations}
 
   const ${top.functionBytecodes} = {
-${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join(',')}])`).join(',\n')}
+${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.bytecode.join(',')}]), attributes: ${JSON.stringify(fn.attributes ?? [])} }`).join(',\n')}
   };
   const ${top.executorCache} = Object.create(null);
 
@@ -441,61 +462,111 @@ ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join
     if ((!env || env.length === 0) && ${top.executorCache}[functionId]) {
       return ${top.executorCache}[functionId];
     }
-    const bytecode = ${top.functionBytecodes}[functionId];
-    if (!bytecode) {
+    const functionMeta = ${top.functionBytecodes}[functionId];
+    if (!functionMeta) {
       throw new Error('Unknown VM function id: ' + functionId);
     }
-    const executor = ${top.createExecutor}(bytecode, env || []);
+    const executor = ${top.createExecutor}(functionMeta.bytecode, env || [], functionMeta.attributes || []);
     if (!env || env.length === 0) {
       ${top.executorCache}[functionId] = executor;
     }
     return executor;
   }
 
-  function ${top.createExecutor}(bytecodeArr, envArr) {
-    return function execute() {
-      const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
-      const ctx = {
-        ${ctx.pc}: 0,
-        ${ctx.bytecode}: bytecodeArr,
-        ${ctx.regs}: new Array(256).fill(undefined),
-        ${ctx.fnArgs},
-        ${ctx.env}: envArr || [],
-        ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
-        ${ctx.running}: true,
-        ${ctx.returnValue}: undefined,
-        ${ctx.tryFrames}: [],
-        ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'}
-      };
+  function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr) {
+    const ctx = {
+      ${ctx.pc}: 0,
+      ${ctx.bytecode}: bytecodeArr,
+      ${ctx.regs}: new Array(256).fill(undefined),
+      ${ctx.fnArgs}: argsArr,
+      ${ctx.env}: envArr || [],
+      ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
+      ${ctx.thisArg}: thisArg,
+      ${ctx.newTarget}: newTarget,
+      ${ctx.resumeMode}: 'normal',
+      ${ctx.resumeValue}: undefined,
+      ${ctx.resumeReg}: -1,
+      ${ctx.awaitPromise}: null,
+      ${ctx.running}: true,
+      ${ctx.returnValue}: undefined,
+      ${ctx.tryFrames}: [],
+      ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'}
+    };
+    for (let i = 0; i < argsArr.length; i++) {
+      ${regRef('i')} = argsArr[i];
+    }
+    return ctx;
+  }
 
-      ${antiDebugLogic}
-      ${tamperDetectionLogic}
-
-      for (let i = 0; i < ${ctx.fnArgs}.length; i++) {
-        ${regRef('i')} = ${ctx.fnArgs}[i];
+  function __runVm(ctx) {
+    ${antiDebugLogic}
+    ${tamperDetectionLogic}
+    while(${ctxRef('running')} && ${ctxRef('pc')} < ${ctxRef('bytecode')}.length) {
+      while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
+        ${ctxRef('tryFrames')}.pop();
       }
-      
-      // Threaded Dispatch Loop
-      while(${ctxRef('running')} && ${ctxRef('pc')} < ${ctxRef('bytecode')}.length) {
-        while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
-          ${ctxRef('tryFrames')}.pop();
+      try {
+        if (${ctxRef('resumeMode')} === 'store') {
+          ctx.${ctx.regs}[ctx.${ctx.resumeReg}] = ctx.${ctx.resumeValue};
+          ${ctxRef('resumeMode')} = 'normal';
+          ${ctxRef('resumeValue')} = undefined;
+          ${ctxRef('resumeReg')} = -1;
+        } else if (${ctxRef('resumeMode')} === 'throw') {
+          const pendingError = ctx.${ctx.resumeValue};
+          ${ctxRef('resumeMode')} = 'normal';
+          ${ctxRef('resumeValue')} = undefined;
+          throw pendingError;
         }
         let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
         ${config.rollingKeys ? `${locals.opByte} ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + ${locals.opByte}) & 0xFF;` : ''}
-        try {
-          ${runtimeDispatch.invoke}
-        } catch (error) {
-          if (${ctxRef('tryFrames')}.length === 0) {
-            throw error;
-          }
-          const handler = ${ctxRef('tryFrames')}.pop();
-          ${regRef(frameRef('handler', 'exceptionReg'))} = error;
-          ${ctxRef('running')} = true;
-          ${ctxRef('pc')} = ${frameRef('handler', 'catchPc')};
+        ${runtimeDispatch.invoke}
+      } catch (error) {
+        if (${ctxRef('tryFrames')}.length === 0) {
+          throw error;
         }
+        const handler = ${ctxRef('tryFrames')}.pop();
+        ${regRef(frameRef('handler', 'exceptionReg'))} = error;
+        ${ctxRef('running')} = true;
+        ${ctxRef('pc')} = ${frameRef('handler', 'catchPc')};
       }
-      
-      return ${ctxRef('returnValue')};
+    }
+    if (${ctxRef('resumeMode')} === 'await') {
+      ${ctxRef('resumeMode')} = 'normal';
+      return { kind: 'await', promise: ${ctxRef('awaitPromise')} };
+    }
+    return { kind: 'return', value: ${ctxRef('returnValue')} };
+  }
+
+  function ${top.createExecutor}(bytecodeArr, envArr, attributes) {
+    if (attributes && attributes.indexOf('async') >= 0) {
+      return async function execute() {
+        const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+        while (true) {
+          const outcome = __runVm(ctx);
+          if (outcome.kind === 'return') {
+            return outcome.value;
+          }
+          try {
+            ctx.${ctx.resumeMode} = 'store';
+            ctx.${ctx.resumeValue} = await outcome.promise;
+            ctx.${ctx.running} = true;
+          } catch (error) {
+            ctx.${ctx.resumeMode} = 'throw';
+            ctx.${ctx.resumeValue} = error;
+            ctx.${ctx.running} = true;
+          }
+        }
+      };
+    }
+    return function execute() {
+      const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
+      const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+      const outcome = __runVm(ctx);
+      if (outcome.kind === 'await') {
+        throw new Error('VM await suspension reached sync executor');
+      }
+      return outcome.value;
     };
   }
 

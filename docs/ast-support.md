@@ -18,7 +18,9 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Sparse array holes in array literals
 - Object literals with property assignments, shorthand properties, and object-literal methods
 - Calls and `new`
+- `this` and `new.target` for regular function and constructor-style lowering
 - Nested `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, and object-literal `MethodDeclaration`
+- `await` inside verified async function declarations and async arrows
 - Prefix unary subset: `!`, unary `-`, `~`, `typeof`
 - `delete`
 
@@ -45,6 +47,7 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - object and array rest binding in declarations, assignments, loop bindings, and catch bindings
 - rest parameters and parameter destructuring
 - spread in array/object literals and call/new arguments
+- async function declarations and async arrows with verified `await` usage
 
 ### Closures
 
@@ -54,8 +57,9 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 ## Supported With Limits
 
 - Captured bindings incur targeted boxing overhead
-- `this` is not fully modeled yet and should not be treated as verified runtime support
+- Lexical `this` and lexical `new.target` in arrow functions are not part of the verified VM-safe surface yet
 - Object literals do not yet cover every property form
+- Async support is currently limited to verified `await` patterns; generators and async generators are not modeled yet
 
 ## Unsupported / Planned
 
@@ -63,7 +67,6 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 
 - `super`
 - Class expressions
-- `await`
 - `yield`
 
 ### Language Features

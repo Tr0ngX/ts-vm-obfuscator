@@ -81,5 +81,6 @@ describe('Bytecode Compiler', () => {
     expect(bytecode.functions).toHaveLength(2);
     expect(bytecode.functions.filter((fn) => fn.isEntryPoint)).toHaveLength(1);
     expect(bytecode.functions.find((fn) => fn.id === 'fn_inner')!.isEntryPoint).toBe(false);
+    expect(bytecode.functions.find((fn) => fn.id === 'fn_inner')!.attributes).toContain(FunctionAttribute.Nested);
   });
 });

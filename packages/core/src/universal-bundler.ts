@@ -80,15 +80,19 @@ function buildVmFunctionWrapper(
     throw new Error(`Cannot emit VM wrapper for declaration without body: ${functionName}`);
   }
   const signatureText = transpiledSource.slice(statement.getStart(sourceFile), body.getStart(sourceFile));
-  return `${signatureText}{ return vmFunctions[${JSON.stringify(functionName)}].apply(this, arguments); }`;
+  return `${signatureText}{ if (new.target) { return Reflect.construct(vmFunctions[${JSON.stringify(functionName)}], Array.prototype.slice.call(arguments), new.target); } return vmFunctions[${JSON.stringify(functionName)}].apply(this, arguments); }`;
 }
 
 function buildVmFunctionExpressionWrapper(functionName: string, initializer: import('typescript').Expression): string {
   if (ts.isArrowFunction(initializer)) {
-    return `(...args) => vmFunctions[${JSON.stringify(functionName)}].apply(this, args)`;
+    return initializer.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+      ? `async (...args) => vmFunctions[${JSON.stringify(functionName)}].apply(this, args)`
+      : `(...args) => vmFunctions[${JSON.stringify(functionName)}].apply(this, args)`;
   }
   if (ts.isFunctionExpression(initializer)) {
-    return `function (...args) { return vmFunctions[${JSON.stringify(functionName)}].apply(this, args); }`;
+    return initializer.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+      ? `async function (...args) { return vmFunctions[${JSON.stringify(functionName)}].apply(this, args); }`
+      : `function (...args) { if (new.target) { return Reflect.construct(vmFunctions[${JSON.stringify(functionName)}], args, new.target); } return vmFunctions[${JSON.stringify(functionName)}].apply(this, args); }`;
   }
   throw new Error(`Unsupported top-level VM wrapper initializer for ${functionName}`);
 }

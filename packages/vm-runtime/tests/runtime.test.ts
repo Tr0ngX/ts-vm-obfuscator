@@ -351,6 +351,37 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.callSpreadPack(3, [4, 5])).toBe(19);
   });
 
+  it('should preserve this and new.target through VM execution', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'this-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(59));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(59));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.thisPack.call({ label: 'ctx' }, 'hello')).toBe('hello:ctx');
+    expect(moduleShim.exports.thisPack('hello')).toBe('hello:none');
+
+    const instance = new (moduleShim.exports.newTargetPack as new (value: number) => { value: number })(7);
+    expect(instance.value).toBe(7);
+    expect(moduleShim.exports.newTargetPack(7)).toBe(6);
+  });
+
+  it('should execute verified async/await functions through the VM runtime', async () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(61));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(61));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    await expect(moduleShim.exports.asyncPack(true, 4)).resolves.toBe(5);
+    await expect(moduleShim.exports.asyncPack(false, 4)).resolves.toBe('boom:4');
+    await expect(moduleShim.exports.asyncArrowPack(6)).resolves.toBe(13);
+  });
+
   it('should inject anti-debug and tamper logic when enabled', () => {
     const dummyModule: BytecodeModule = {
       magic: 0x54534F42,

@@ -26,6 +26,10 @@ describe('universal profile', () => {
     expect(result.functionReports?.some((report) => report.functionName === 'destructured' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'lifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'spreadHoles' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'thisAware' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'ctorAware' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'asyncVm' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'asyncLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
     expect(result.vmBundles![0]!.fullSource.includes('module.exports')).toBe(false);
     expect(result.vmBundles![0]!.fullSource.includes('Object.assign(__nativeModule.exports')).toBe(false);
@@ -42,5 +46,11 @@ describe('universal profile', () => {
     expect(imported.destructured({ a: 2 }, 3, 4, 5)).toBe(12);
     expect(imported.lifted({ value: 2 })).toBe(5);
     expect(imported.spreadHoles()).toBe('7:0|2|3|5|6:AB:2');
+    expect(imported.thisAware.call({ label: 'ctx' }, 'hello')).toBe('hello:ctx');
+    expect(imported.thisAware('hello')).toBe('hello:none');
+    expect(new (imported.ctorAware as new (value: number) => { value: number })(7).value).toBe(7);
+    expect(imported.ctorAware(7)).toBe(6);
+    await expect(imported.asyncVm(4)).resolves.toBe(12);
+    await expect(imported.asyncLifted(4)).resolves.toBe(15);
   });
 });

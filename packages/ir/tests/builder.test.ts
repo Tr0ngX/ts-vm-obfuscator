@@ -222,6 +222,51 @@ describe('IR builder', () => {
     expect(opcodes).toContain(OpCode.NewWithArray);
   });
 
+  it('keeps this and new.target semantics on the vm-safe path', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'this-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const thisFn = module.functions.find((candidate) => candidate.name === 'thisPack');
+    const newTargetFn = module.functions.find((candidate) => candidate.name === 'newTargetPack');
+
+    expect(thisFn).toBeDefined();
+    expect(newTargetFn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'thisPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'newTargetPack')?.tier).toBe('vm_safe');
+
+    const thisOpcodes = thisFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    const newTargetOpcodes = newTargetFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(thisOpcodes).toContain(OpCode.LoadThis);
+    expect(newTargetOpcodes).toContain(OpCode.LoadNewTarget);
+  });
+
+  it('keeps lexical this and lexical new.target in arrows off the vm-safe path', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'this-arrow-pack.ts');
+    const reports = analyzeFunctionCapabilities(filePath);
+
+    expect(reports.find((report) => report.functionName === 'lexicalThisArrow')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'lexicalNewTargetArrow')?.tier).toBe('js_lowered');
+  });
+
+  it('lowers verified async/await functions into vm-safe IR', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'async-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const asyncFn = module.functions.find((candidate) => candidate.name === 'asyncPack');
+    const asyncArrow = module.functions.find((candidate) => candidate.name === 'asyncArrowPack');
+
+    expect(asyncFn).toBeDefined();
+    expect(asyncArrow).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'asyncPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'asyncArrowPack')?.tier).toBe('vm_safe');
+    expect(asyncFn!.attributes).toContain(FunctionAttribute.Async);
+    expect(asyncArrow!.attributes).toContain(FunctionAttribute.Async);
+
+    const asyncOpcodes = asyncFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(asyncOpcodes).toContain(OpCode.Await);
+    expect(asyncFn!.blocks.some((block) => block.label.includes('try_catch'))).toBe(true);
+  });
+
   it('skips unsupported functions in compatibility fallback mode', () => {
     const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
     const diagnostics: Diagnostic[] = [];

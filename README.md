@@ -143,10 +143,12 @@ graph TD
 - Destructuring assignment for verified array/object forms, including defaults and simple nesting
 - Object/array rest binding, parameter destructuring, and rest parameters
 - Spread in array/object literals and in call/new argument lists
+- Verified async/await lowering for async function declarations and async arrows
 - Prefix unary expressions (e.g. `!x`, `-x`, `~x`, `typeof x`)
 - `delete` operator expressions
 - Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
 - True lexical closures for captured outer locals via boxed cells and closure environments
+- Runtime `this` and `new.target` for verified non-lexical function paths
 
 **The VM runtime now includes handlers for:**
 - `ArrayNew`
@@ -159,9 +161,12 @@ graph TD
 - `CellGet`
 - `CellSet`
 - `EnvGet`
+- `LoadThis`
+- `LoadNewTarget`
 - `Throw`
 - `TryCatchBegin`
 - `TryCatchEnd`
+- `Await`
 
 Detailed status references:
 - [AST Support Matrix](docs/ast-support.md)
@@ -273,7 +278,9 @@ Notable limits:
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
-- `try / catch / finally` support is currently limited to synchronous control flow, with identifier or no-binding `catch` clauses as the verified path.
+- `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified only for the current async-function subset; generators and async generators are still outside the VM path.
+- `this` and `new.target` are verified for regular function and constructor-style VM execution, but lexical `this` / lexical `new.target` in arrow functions are still kept off the `vm_safe` path.
+- `super`, classes / class expressions, generators / `yield`, and decorators are still outside the verified VM path.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
 ## Troubleshooting

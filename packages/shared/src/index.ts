@@ -249,6 +249,8 @@ export enum OpCode {
   StoreGlobal = 0x06,
   LoadCapture = 0x07,
   StoreCapture = 0x08,
+  LoadThis = 0x09,
+  LoadNewTarget = 0x0A,
 
   // Arithmetic
   Add = 0x10,
@@ -537,6 +539,7 @@ export interface BytecodeFunction {
   readonly localCount: number;
   readonly maxRegisters: number;
   readonly bytecode: Uint8Array;
+  readonly attributes?: readonly FunctionAttribute[];
   readonly sourceMapOffset?: number;
   readonly isEntryPoint: boolean;
 }

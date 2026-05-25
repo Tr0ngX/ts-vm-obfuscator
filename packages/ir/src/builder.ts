@@ -100,6 +100,7 @@ function isIdentifierReference(node: ts.Identifier): boolean {
 
 function collectFunctionLocalNames(node: SupportedFunctionNode): Set<string> {
   const names = new Set<string>();
+  const isThisParameter = (param: ts.ParameterDeclaration) => ts.isIdentifier(param.name) && param.name.text === 'this';
   const collectBindingNames = (bindingName: ts.BindingName) => {
     if (ts.isIdentifier(bindingName)) {
       names.add(bindingName.text);
@@ -114,6 +115,9 @@ function collectFunctionLocalNames(node: SupportedFunctionNode): Set<string> {
   };
 
   node.parameters.forEach((param) => {
+    if (isThisParameter(param)) {
+      return;
+    }
     collectBindingNames(param.name);
   });
   if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) {
@@ -199,6 +203,7 @@ class ASTLowering {
   private readonly finallyContexts: FinallyContext[] = [];
   private throwPassthroughFinallyDepth = 0;
   private readonly pendingParameterBindings: PendingParameterBinding[] = [];
+  private readonly isAsyncFunction: boolean;
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
@@ -214,6 +219,8 @@ class ASTLowering {
     for (const attribute of options.attributes ?? []) {
       this.fnBuilder.addAttribute(attribute);
     }
+    this.isAsyncFunction = !!this.node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+      || (options.attributes ?? []).includes(FunctionAttribute.Async);
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
     options.analysis.capturedFromOuter.forEach((name, index) => {
@@ -221,15 +228,21 @@ class ASTLowering {
       this.fnBuilder.addCapturedVariable(name);
     });
 
+    const isThisParameter = (param: ts.ParameterDeclaration) => ts.isIdentifier(param.name) && param.name.text === 'this';
+    let runtimeParamIndex = 0;
     node.parameters.forEach((param, index) => {
+      if (isThisParameter(param)) {
+        return;
+      }
       const isPlainIdentifier = ts.isIdentifier(param.name) && !param.dotDotDotToken && !param.initializer;
-      const paramName = isPlainIdentifier ? param.name.text : `$param_${index}`;
+      const paramName = isPlainIdentifier ? param.name.text : `$param_${runtimeParamIndex}`;
       const reg = this.fnBuilder.addParam(paramName, IRType.Any, !!param.dotDotDotToken);
       if (isPlainIdentifier && ts.isIdentifier(param.name)) {
         this.scope.set(param.name.text, { register: reg, boxed: this.capturedLocals.has(param.name.text) });
       } else {
         this.pendingParameterBindings.push({ param, register: reg });
       }
+      runtimeParamIndex++;
     });
     this.boxCapturedParameters();
     this.lowerPendingParameterBindings();
@@ -411,6 +424,9 @@ class ASTLowering {
     }
     const analysis = analyzeFunctionClosures(expr, availableOuterNames);
     const attributes: FunctionAttribute[] = [];
+    if (expr.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
+      attributes.push(FunctionAttribute.Async);
+    }
     if (ts.isArrowFunction(expr)) {
       attributes.push(FunctionAttribute.Arrow);
     }
@@ -1297,10 +1313,41 @@ class ASTLowering {
     if (ts.isTemplateExpression(expr)) {
       return this.lowerTemplateExpression(expr);
     }
+    if (ts.isAwaitExpression(expr)) {
+      if (!this.isAsyncFunction) {
+        this.failUnsupported(expr, 'await outside async function is not supported');
+      }
+      const awaitedSourceReg = this.visitExpression(expr.expression);
+      const awaitedValueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.Await,
+        [{ kind: OperandKind.Register, value: awaitedSourceReg }],
+        awaitedValueReg,
+      );
+      return awaitedValueReg;
+    }
     if (expr.kind === ts.SyntaxKind.NullKeyword) return this.emitConstant(ConstantKind.Null, null);
     if (expr.kind === ts.SyntaxKind.TrueKeyword) return this.emitConstant(ConstantKind.Boolean, true);
     if (expr.kind === ts.SyntaxKind.FalseKeyword) return this.emitConstant(ConstantKind.Boolean, false);
-    if (expr.kind === ts.SyntaxKind.ThisKeyword) return this.emitConstant(ConstantKind.Undefined, null);
+    if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+      if (ts.isArrowFunction(this.node)) {
+        this.failUnsupported(expr, 'lexical this in arrow function is not supported');
+      }
+      const thisReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
+      return thisReg;
+    }
+    if (ts.isMetaProperty(expr)) {
+      if (expr.keywordToken === ts.SyntaxKind.NewKeyword && expr.name.text === 'target') {
+        if (ts.isArrowFunction(this.node)) {
+          this.failUnsupported(expr, 'lexical new.target in arrow function is not supported');
+        }
+        const newTargetReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.LoadNewTarget, [], newTargetReg);
+        return newTargetReg;
+      }
+      this.failUnsupported(expr, 'meta property is not supported');
+    }
     
     if (ts.isIdentifier(expr)) {
       return this.resolveVar(expr.text);
@@ -2307,12 +2354,17 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
       || functionName === 'calculateSecretHash'
       || functionName === 'encryptTEA';
     const analysis = analyzeFunctionClosures(functionNode, new Set<string>());
+    const attributes: FunctionAttribute[] = [];
+    if (functionNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
+      attributes.push(FunctionAttribute.Async);
+    }
     try {
       new ASTLowering(modBuilder, functionNode, {
         name: functionName,
         isExported,
         isVirtualized,
         analysis,
+        attributes,
       });
     } catch (error) {
       if (!options.compatibilityFallback) {

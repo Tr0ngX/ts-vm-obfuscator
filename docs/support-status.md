@@ -24,7 +24,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Control flow | `break`, `continue` | `Fully Supported` | Verified through loop control-flow fixtures. |
 | Control flow | `switch` | `Fully Supported` | Routed as `vm_safe` on the verified path. |
 | Control flow | `throw` | `Fully Supported` | VM runtime executes explicit throws correctly. |
-| Control flow | `try / catch / finally` | `Supported With Limits` | Verified only for synchronous flow. |
+| Control flow | `try / catch / finally` | `Supported With Limits` | Fully verified for synchronous flow; async `await` inside the current async subset is verified separately, but generators are still outside scope. |
 | Control flow | `catch` binding | `Fully Supported` | Verified for identifier, no-binding, and destructured catch bindings on the VM path. |
 | Data / objects | array literals | `Fully Supported` | Includes indexed reads and writes on verified path. |
 | Data / objects | object literals, shorthand props, object-literal methods | `Supported With Limits` | Common forms are covered; not every property form is modeled yet. |
@@ -41,13 +41,14 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Bindings | rest/spread on VM path | `Fully Supported` | Verified for object/array rest binding, rest parameters, and spread in literals plus call/new arguments. |
 | Functions | nested `FunctionExpression` / `ArrowFunction` / local `FunctionDeclaration` / object-literal `MethodDeclaration` | `Fully Supported` | Compiled as nested VM functions. |
 | Closures | lexical capture of outer locals | `Supported With Limits` | Correct, but captured bindings are boxed and add targeted overhead. |
-| Semantics | `this` | `Supported With Limits` | Not part of the fully verified VM-safe surface yet. |
+| Semantics | `this` | `Supported With Limits` | Verified for regular function and constructor-style VM execution, but lexical `this` in arrow functions still routes off the vm-safe path. |
+| Semantics | `new.target` | `Supported With Limits` | Verified for constructor-style VM execution, but lexical `new.target` in arrow functions is still outside the vm-safe surface. |
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
 | Language | `super` | `Not Supported` | Still outside VM support. |
 | Language | classes / class expressions | `Not Supported` | Not part of the verified VM path yet. |
-| Language | `await` | `Not Supported` | Async lowering is not implemented for VM path. |
+| Language | `await` | `Supported With Limits` | Verified for async function declarations and async arrows, including current `try/catch/finally` await coverage. |
 | Language | generators / `yield` | `Not Supported` | Generator semantics are not modeled yet. |
 | Language | decorators | `Not Supported` | Not part of verified VM virtualization support. |
 

@@ -279,6 +279,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         paramCount: irFn.params.length,
         localCount: irFn.locals.length,
         maxRegisters: maxRegs,
+        attributes: irFn.attributes,
         isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported)
       });
     }

@@ -7,7 +7,6 @@ const VM_BLOCKERS = new Set<ts.SyntaxKind>([
   ts.SyntaxKind.ClassExpression,
   ts.SyntaxKind.SuperKeyword,
   ts.SyntaxKind.WithStatement,
-  ts.SyntaxKind.AwaitExpression,
   ts.SyntaxKind.YieldExpression,
   ts.SyntaxKind.ImportKeyword,
   ts.SyntaxKind.JsxElement,
@@ -67,6 +66,7 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
   const reasons = new Set<string>();
   let tier: FunctionExecutionTier = 'vm_safe';
 
+  const isAsyncFunction = !!node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword);
   const visit = (current: ts.Node) => {
     if (current !== node && isFunctionLikeNode(current)) {
       return;
@@ -80,9 +80,27 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
       } 
     }
 
-    if (current.kind === ts.SyntaxKind.ThisKeyword) {
+    if (ts.isAwaitExpression(current)) {
+      syntaxKinds.add('AwaitExpression');
+      if (!isAsyncFunction) {
+        reasons.add('uses await outside async function');
+        if (tier === 'vm_safe') {
+          tier = 'js_lowered';
+        }
+      }
+    }
+
+    if (current.kind === ts.SyntaxKind.ThisKeyword && ts.isArrowFunction(node)) {
       syntaxKinds.add('ThisKeyword');
-      reasons.add('uses this semantics');
+      reasons.add('uses lexical this in arrow function');
+      if (tier === 'vm_safe') {
+        tier = 'js_lowered';
+      }
+    }
+
+    if (ts.isMetaProperty(current) && current.keywordToken === ts.SyntaxKind.NewKeyword && current.name.text === 'target' && ts.isArrowFunction(node)) {
+      syntaxKinds.add('MetaProperty');
+      reasons.add('uses lexical new.target in arrow function');
       if (tier === 'vm_safe') {
         tier = 'js_lowered';
       }

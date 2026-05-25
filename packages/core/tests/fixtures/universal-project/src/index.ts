@@ -34,3 +34,25 @@ export function spreadHoles() {
   const upper = String.fromCharCode(...new Set([65, 66]));
   return `${sparse.length}:${mark}:${upper}:${new Date(...new Set([2020, 1, 2])).getDate()}`;
 }
+
+export function thisAware(this: { label?: string } | undefined, prefix: string) {
+  return `${prefix}:${this?.label ?? 'none'}`;
+}
+
+export function ctorAware(this: { value?: number }, value: number) {
+  if (new.target) {
+    this.value = value;
+    return value + 1;
+  }
+  return value - 1;
+}
+
+export async function asyncVm(value: number) {
+  const first = await Promise.resolve(value + 2);
+  return first * 2;
+}
+
+export const asyncLifted = async (value: number) => {
+  const next = await Promise.resolve(value + 1);
+  return next * 3;
+};
