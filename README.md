@@ -160,6 +160,10 @@ graph TD
 - `TryCatchBegin`
 - `TryCatchEnd`
 
+Detailed status references:
+- [AST Support Matrix](docs/ast-support.md)
+- [Support Status Guide](docs/support-status.md)
+
 ### Workspace Layout
 
 ```text
