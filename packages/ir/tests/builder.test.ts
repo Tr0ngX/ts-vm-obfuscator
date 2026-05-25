@@ -240,12 +240,37 @@ describe('IR builder', () => {
     expect(newTargetOpcodes).toContain(OpCode.LoadNewTarget);
   });
 
-  it('keeps lexical this and lexical new.target in arrows off the vm-safe path', () => {
+  it('lowers nested lexical this and lexical new.target arrows through closure captures', () => {
     const filePath = path.join(__dirname, 'fixtures', 'this-arrow-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
     const reports = analyzeFunctionCapabilities(filePath);
+    const lexicalThisHost = module.functions.find((candidate) => candidate.name === 'lexicalThisArrowHost');
+    const lexicalNewTargetHost = module.functions.find((candidate) => candidate.name === 'lexicalNewTargetArrowHost');
+    const nestedLexicalArrows = module.functions.filter((candidate) => candidate.attributes.includes(FunctionAttribute.Arrow));
 
-    expect(reports.find((report) => report.functionName === 'lexicalThisArrow')?.tier).toBe('js_lowered');
-    expect(reports.find((report) => report.functionName === 'lexicalNewTargetArrow')?.tier).toBe('js_lowered');
+    expect(lexicalThisHost).toBeDefined();
+    expect(lexicalNewTargetHost).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'lexicalThisArrowHost')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'lexicalNewTargetArrowHost')?.tier).toBe('vm_safe');
+
+    expect(nestedLexicalArrows).toHaveLength(2);
+    expect(nestedLexicalArrows.every((candidate) => candidate.attributes.includes(FunctionAttribute.Nested))).toBe(true);
+    expect(reports.filter((report) => report.functionName === '<anonymous>').every((report) => report.tier === 'vm_safe')).toBe(true);
+
+    const nestedLexicalThis = nestedLexicalArrows.find((candidate) => candidate.capturedVariables.includes('$$vm_lexical_this'));
+    const nestedLexicalNewTarget = nestedLexicalArrows.find((candidate) => candidate.capturedVariables.includes('$$vm_lexical_new_target'));
+
+    expect(nestedLexicalThis).toBeDefined();
+    expect(nestedLexicalNewTarget).toBeDefined();
+    expect(nestedLexicalThis!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).toContain(OpCode.EnvGet);
+    expect(nestedLexicalThis!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).not.toContain(OpCode.LoadThis);
+    expect(nestedLexicalNewTarget!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).toContain(OpCode.EnvGet);
+    expect(nestedLexicalNewTarget!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).not.toContain(OpCode.LoadNewTarget);
+
+    const unsupportedFilePath = path.join(__dirname, 'fixtures', 'this-arrow-unsupported.ts');
+    const unsupportedReports = analyzeFunctionCapabilities(unsupportedFilePath);
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalThisArrow')?.tier).toBe('js_lowered');
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalNewTargetArrow')?.tier).toBe('js_lowered');
   });
 
   it('lowers verified async/await functions into vm-safe IR', () => {

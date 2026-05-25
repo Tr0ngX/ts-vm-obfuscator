@@ -28,6 +28,8 @@ describe('universal profile', () => {
     expect(result.functionReports?.some((report) => report.functionName === 'spreadHoles' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'thisAware' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'ctorAware' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'lexicalThisLifted' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'lexicalCtorLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'asyncVm' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'asyncLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
@@ -50,6 +52,10 @@ describe('universal profile', () => {
     expect(imported.thisAware('hello')).toBe('hello:none');
     expect(new (imported.ctorAware as new (value: number) => { value: number })(7).value).toBe(7);
     expect(imported.ctorAware(7)).toBe(6);
+    expect(imported.lexicalThisLifted.call({ label: 'ctx' }, 'hello')).toBe('hello:ctx');
+    expect(imported.lexicalThisLifted('hello')).toBe('hello:none');
+    expect(new (imported.lexicalCtorLifted as new (value: number) => { value: number })(7).value).toBe(7);
+    expect(imported.lexicalCtorLifted(7)).toBe(6);
     await expect(imported.asyncVm(4)).resolves.toBe(12);
     await expect(imported.asyncLifted(4)).resolves.toBe(15);
   });

@@ -368,6 +368,23 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.newTargetPack(7)).toBe(6);
   });
 
+  it('should preserve lexical this and lexical new.target inside nested arrows', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'this-arrow-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(67));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(67));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.lexicalThisArrowHost.call({ label: 'ctx' }, 'hello')).toBe('hello:ctx');
+    expect(moduleShim.exports.lexicalThisArrowHost('hello')).toBe('hello:none');
+
+    const instance = new (moduleShim.exports.lexicalNewTargetArrowHost as new (value: number) => { value: number })(9);
+    expect(instance.value).toBe(9);
+    expect(moduleShim.exports.lexicalNewTargetArrowHost(9)).toBe(8);
+  });
+
   it('should execute verified async/await functions through the VM runtime', async () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-pack.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });

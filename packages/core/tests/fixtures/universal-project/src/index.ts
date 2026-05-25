@@ -47,6 +47,22 @@ export function ctorAware(this: { value?: number }, value: number) {
   return value - 1;
 }
 
+export function lexicalThisLifted(this: { label?: string } | undefined, prefix: string) {
+  const readThis = () => `${prefix}:${this?.label ?? 'none'}`;
+  return readThis();
+}
+
+export function lexicalCtorLifted(this: { value?: number }, value: number) {
+  const readCtor = () => {
+    if (new.target) {
+      this.value = value;
+      return value + 1;
+    }
+    return value - 1;
+  };
+  return readCtor();
+}
+
 export async function asyncVm(value: number) {
   const first = await Promise.resolve(value + 2);
   return first * 2;

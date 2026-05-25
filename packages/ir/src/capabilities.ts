@@ -61,6 +61,29 @@ function getFunctionName(node: SupportedFunctionNode): string {
   return '<computed>';
 }
 
+function findEnclosingFunctionLike(node: ts.Node): SupportedFunctionNode | undefined {
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if (isFunctionLikeNode(current)) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function hasLexicalThisProvider(node: ts.ArrowFunction): boolean {
+  return findEnclosingFunctionLike(node) !== undefined;
+}
+
+function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
+  const enclosing = findEnclosingFunctionLike(node);
+  if (!enclosing) {
+    return false;
+  }
+  return !ts.isArrowFunction(enclosing) || hasLexicalNewTargetProvider(enclosing);
+}
+
 function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceFile): FunctionCapabilityReport {
   const syntaxKinds = new Set<string>();
   const reasons = new Set<string>();
@@ -92,16 +115,20 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
 
     if (current.kind === ts.SyntaxKind.ThisKeyword && ts.isArrowFunction(node)) {
       syntaxKinds.add('ThisKeyword');
-      reasons.add('uses lexical this in arrow function');
-      if (tier === 'vm_safe') {
+      if (!hasLexicalThisProvider(node)) {
+        reasons.add('uses lexical this in arrow function without an enclosing function context');
+      }
+      if (tier === 'vm_safe' && !hasLexicalThisProvider(node)) {
         tier = 'js_lowered';
       }
     }
 
     if (ts.isMetaProperty(current) && current.keywordToken === ts.SyntaxKind.NewKeyword && current.name.text === 'target' && ts.isArrowFunction(node)) {
       syntaxKinds.add('MetaProperty');
-      reasons.add('uses lexical new.target in arrow function');
-      if (tier === 'vm_safe') {
+      if (!hasLexicalNewTargetProvider(node)) {
+        reasons.add('uses lexical new.target in arrow function without an enclosing constructor/function context');
+      }
+      if (tier === 'vm_safe' && !hasLexicalNewTargetProvider(node)) {
         tier = 'js_lowered';
       }
     }

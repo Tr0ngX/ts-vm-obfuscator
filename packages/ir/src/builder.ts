@@ -58,6 +58,9 @@ interface FinallyContext {
   readonly targets: FinallyCompletionTarget[];
 }
 
+const LEXICAL_THIS_CAPTURE = '$$vm_lexical_this';
+const LEXICAL_NEW_TARGET_CAPTURE = '$$vm_lexical_new_target';
+
 function pushUnique(target: string[], value: string): void {
   if (!target.includes(value)) {
     target.push(value);
@@ -174,6 +177,20 @@ function analyzeFunctionClosures(node: SupportedFunctionNode, availableOuterName
       }
     }
 
+    if (ts.isArrowFunction(node) && current.kind === ts.SyntaxKind.ThisKeyword && availableOuterNames.has(LEXICAL_THIS_CAPTURE)) {
+      pushUnique(capturedFromOuter, LEXICAL_THIS_CAPTURE);
+    }
+
+    if (
+      ts.isArrowFunction(node) &&
+      ts.isMetaProperty(current) &&
+      current.keywordToken === ts.SyntaxKind.NewKeyword &&
+      current.name.text === 'target' &&
+      availableOuterNames.has(LEXICAL_NEW_TARGET_CAPTURE)
+    ) {
+      pushUnique(capturedFromOuter, LEXICAL_NEW_TARGET_CAPTURE);
+    }
+
     ts.forEachChild(current, visit);
   };
 
@@ -246,6 +263,7 @@ class ASTLowering {
     });
     this.boxCapturedParameters();
     this.lowerPendingParameterBindings();
+    this.initializeLexicalSemanticCaptures(options.analysis);
 
     if (node.body) {
       if (ts.isBlock(node.body)) {
@@ -416,12 +434,81 @@ class ASTLowering {
     return `${this.fnBuilder.name}$closure$${suffix}`;
   }
 
-  private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
-    const nestedName = this.createNestedFunctionName();
+  private getAvailableOuterCaptureNames(): Set<string> {
     const availableOuterNames = new Set<string>(this.outerCaptureBindings.keys());
     for (const name of this.scope.keys()) {
       availableOuterNames.add(name);
     }
+    if (this.canProvideLexicalThis()) {
+      availableOuterNames.add(LEXICAL_THIS_CAPTURE);
+    }
+    if (this.canProvideLexicalNewTarget()) {
+      availableOuterNames.add(LEXICAL_NEW_TARGET_CAPTURE);
+    }
+    return availableOuterNames;
+  }
+
+  private canProvideLexicalThis(): boolean {
+    if (!ts.isArrowFunction(this.node)) {
+      return true;
+    }
+    return this.scope.has(LEXICAL_THIS_CAPTURE) || this.outerCaptureBindings.has(LEXICAL_THIS_CAPTURE);
+  }
+
+  private canProvideLexicalNewTarget(): boolean {
+    if (!ts.isArrowFunction(this.node)) {
+      return true;
+    }
+    return this.scope.has(LEXICAL_NEW_TARGET_CAPTURE) || this.outerCaptureBindings.has(LEXICAL_NEW_TARGET_CAPTURE);
+  }
+
+  private initializeLexicalSemanticCaptures(analysis: ClosureAnalysis): void {
+    if (!ts.isArrowFunction(this.node)) {
+      return;
+    }
+    if (analysis.capturedFromOuter.includes(LEXICAL_THIS_CAPTURE)) {
+      this.initializeLexicalCapture(LEXICAL_THIS_CAPTURE);
+    }
+    if (analysis.capturedFromOuter.includes(LEXICAL_NEW_TARGET_CAPTURE)) {
+      this.initializeLexicalCapture(LEXICAL_NEW_TARGET_CAPTURE);
+    }
+  }
+
+  private initializeLexicalCapture(name: typeof LEXICAL_THIS_CAPTURE | typeof LEXICAL_NEW_TARGET_CAPTURE): void {
+    if (this.scope.has(name)) {
+      return;
+    }
+
+    const localReg = this.fnBuilder.addLocal(name, IRType.Any, true);
+    this.scope.set(name, { register: localReg, boxed: true });
+
+    let sourceValueReg: Register;
+    if (this.outerCaptureBindings.has(name)) {
+      const outerCellReg = this.loadOuterCaptureCell(name);
+      sourceValueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.CellGet, [{ kind: OperandKind.Register, value: outerCellReg }], sourceValueReg);
+    } else if (name === LEXICAL_THIS_CAPTURE) {
+      sourceValueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.LoadThis, [], sourceValueReg);
+    } else {
+      sourceValueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.LoadNewTarget, [], sourceValueReg);
+    }
+
+    this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: sourceValueReg }], localReg);
+    this.fnBuilder.addCapturedVariable(name);
+  }
+
+  private resolveLexicalCapture(name: typeof LEXICAL_THIS_CAPTURE | typeof LEXICAL_NEW_TARGET_CAPTURE, node: ts.Node, detail: string): Register {
+    if (!this.scope.has(name) && !this.outerCaptureBindings.has(name)) {
+      this.failUnsupported(node, detail);
+    }
+    return this.resolveVar(name);
+  }
+
+  private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
+    const nestedName = this.createNestedFunctionName();
+    const availableOuterNames = this.getAvailableOuterCaptureNames();
     const analysis = analyzeFunctionClosures(expr, availableOuterNames);
     const attributes: FunctionAttribute[] = [];
     if (expr.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
@@ -479,6 +566,13 @@ class ASTLowering {
         this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Closure capture expected boxed local "${name}"`);
       }
       return localBinding.register;
+    }
+    if (name === LEXICAL_THIS_CAPTURE || name === LEXICAL_NEW_TARGET_CAPTURE) {
+      this.initializeLexicalCapture(name);
+      const lexicalBinding = this.scope.get(name);
+      if (lexicalBinding?.boxed) {
+        return lexicalBinding.register;
+      }
     }
     if (this.outerCaptureBindings.has(name)) {
       return this.loadOuterCaptureCell(name);
@@ -1268,10 +1362,7 @@ class ASTLowering {
 
   private lowerNestedFunctionNode(expr: SupportedFunctionNode, explicitName?: string): Register {
     const nestedName = explicitName ?? this.createNestedFunctionName();
-    const availableOuterNames = new Set<string>(this.outerCaptureBindings.keys());
-    for (const name of this.scope.keys()) {
-      availableOuterNames.add(name);
-    }
+    const availableOuterNames = this.getAvailableOuterCaptureNames();
     const analysis = analyzeFunctionClosures(expr, availableOuterNames);
     const attributes: FunctionAttribute[] = [];
     if (ts.isArrowFunction(expr)) {
@@ -1331,7 +1422,7 @@ class ASTLowering {
     if (expr.kind === ts.SyntaxKind.FalseKeyword) return this.emitConstant(ConstantKind.Boolean, false);
     if (expr.kind === ts.SyntaxKind.ThisKeyword) {
       if (ts.isArrowFunction(this.node)) {
-        this.failUnsupported(expr, 'lexical this in arrow function is not supported');
+        return this.resolveLexicalCapture(LEXICAL_THIS_CAPTURE, expr, 'lexical this in arrow function requires an enclosing function context');
       }
       const thisReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
@@ -1340,7 +1431,11 @@ class ASTLowering {
     if (ts.isMetaProperty(expr)) {
       if (expr.keywordToken === ts.SyntaxKind.NewKeyword && expr.name.text === 'target') {
         if (ts.isArrowFunction(this.node)) {
-          this.failUnsupported(expr, 'lexical new.target in arrow function is not supported');
+          return this.resolveLexicalCapture(
+            LEXICAL_NEW_TARGET_CAPTURE,
+            expr,
+            'lexical new.target in arrow function requires an enclosing function context',
+          );
         }
         const newTargetReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(OpCode.LoadNewTarget, [], newTargetReg);

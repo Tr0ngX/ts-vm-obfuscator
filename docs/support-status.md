@@ -41,8 +41,8 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Bindings | rest/spread on VM path | `Fully Supported` | Verified for object/array rest binding, rest parameters, and spread in literals plus call/new arguments. |
 | Functions | nested `FunctionExpression` / `ArrowFunction` / local `FunctionDeclaration` / object-literal `MethodDeclaration` | `Fully Supported` | Compiled as nested VM functions. |
 | Closures | lexical capture of outer locals | `Supported With Limits` | Correct, but captured bindings are boxed and add targeted overhead. |
-| Semantics | `this` | `Supported With Limits` | Verified for regular function and constructor-style VM execution, but lexical `this` in arrow functions still routes off the vm-safe path. |
-| Semantics | `new.target` | `Supported With Limits` | Verified for constructor-style VM execution, but lexical `new.target` in arrow functions is still outside the vm-safe surface. |
+| Semantics | `this` | `Supported With Limits` | Verified for regular function paths, constructor-style VM execution, and nested arrows that capture lexical `this` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
+| Semantics | `new.target` | `Supported With Limits` | Verified for constructor-style VM execution and nested arrows that capture lexical `new.target` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |

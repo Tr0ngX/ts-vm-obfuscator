@@ -148,7 +148,7 @@ graph TD
 - `delete` operator expressions
 - Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
 - True lexical closures for captured outer locals via boxed cells and closure environments
-- Runtime `this` and `new.target` for verified non-lexical function paths
+- Runtime `this` and `new.target` for verified function/constructor paths, plus lexical capture for nested arrows
 
 **The VM runtime now includes handlers for:**
 - `ArrayNew`
@@ -279,7 +279,7 @@ Notable limits:
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
 - `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified only for the current async-function subset; generators and async generators are still outside the VM path.
-- `this` and `new.target` are verified for regular function and constructor-style VM execution, but lexical `this` / lexical `new.target` in arrow functions are still kept off the `vm_safe` path.
+- `this` and `new.target` are verified for regular function paths, constructor-style VM execution, and nested arrows that capture them lexically from an enclosing function context. Top-level arrows without an enclosing lexical provider are still kept off the `vm_safe` path.
 - `super`, classes / class expressions, generators / `yield`, and decorators are still outside the verified VM path.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
