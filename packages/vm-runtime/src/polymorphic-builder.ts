@@ -1,7 +1,120 @@
 import type { BytecodeModule, VMBuildConfig, VMRuntimeBundle } from '@tsvm/shared';
-import { OpCode, ConstantEncodingScheme, ImmediateEncodingScheme } from '@tsvm/shared';
+import { OpCode, ConstantEncodingScheme, ImmediateEncodingScheme, SeededRandom } from '@tsvm/shared';
+
+function createOpaqueNameFactory(seed: number): () => string {
+  const rng = new SeededRandom(seed ^ 0x51ed70);
+  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const used = new Set<string>();
+  return () => {
+    let value = '_';
+    do {
+      value = '_';
+      const len = rng.nextRange(5, 9);
+      for (let i = 0; i < len; i++) {
+        value += alphabet[rng.nextRange(0, alphabet.length - 1)];
+      }
+    } while (used.has(value));
+    used.add(value);
+    return value;
+  };
+}
+
+function createRuntimeNames(config: VMBuildConfig) {
+  const stealth = !!config.stealthDispatch;
+  if (!stealth) {
+    return {
+      stealth,
+      nextHandlerName: (canonical: OpCode) => `h_${canonical}`,
+      top: {
+        seed: 'seed',
+        rawCP: 'rawCP',
+        cpCache: 'cpCache',
+        getCP: 'getCP',
+        functionBytecodes: 'functionBytecodes',
+        executorCache: 'executorCache',
+        getExecutorById: 'getExecutorById',
+        createExecutor: 'createExecutor',
+        handlers: 'handlers',
+        result: 'result',
+        vmFunctions: 'vmFunctions',
+      },
+      ctx: {
+        pc: 'pc',
+        bytecode: 'bytecode',
+        regs: 'regs',
+        fnArgs: 'fnArgs',
+        env: 'env',
+        globalScope: 'globalScope',
+        running: 'running',
+        returnValue: 'returnValue',
+        tryFrames: 'tryStack',
+        rollingState: 'rollingKey',
+      },
+      frame: {
+        catchPc: 'catchPc',
+        endPc: 'endPc',
+        exceptionReg: 'exceptionReg',
+      },
+      locals: {
+        opByte: 'op',
+        dispatchBank: 'handlers',
+        dispatchRoute: 'dispatchRoute',
+      },
+    };
+  }
+
+  const next = createOpaqueNameFactory(config.seed);
+  return {
+    stealth,
+    nextHandlerName: () => next(),
+    top: {
+      seed: next(),
+      rawCP: next(),
+      cpCache: next(),
+      getCP: next(),
+      functionBytecodes: next(),
+      executorCache: next(),
+      getExecutorById: next(),
+      createExecutor: next(),
+      handlers: next(),
+      result: next(),
+      vmFunctions: next(),
+    },
+    ctx: {
+      pc: 'pc',
+      bytecode: 'bytecode',
+      regs: 'regs',
+      fnArgs: 'fnArgs',
+      env: 'env',
+      globalScope: 'globalScope',
+      running: 'running',
+      returnValue: 'returnValue',
+      tryFrames: next(),
+      rollingState: next(),
+    },
+    frame: {
+      catchPc: next(),
+      endPc: next(),
+      exceptionReg: next(),
+    },
+    locals: {
+      opByte: next(),
+      dispatchBank: next(),
+      dispatchRoute: next(),
+    },
+  };
+}
 
 export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): VMRuntimeBundle {
+  const names = createRuntimeNames(config);
+  const ctx = names.ctx;
+  const top = names.top;
+  const frame = names.frame;
+  const locals = names.locals;
+  const regRef = (idx: string) => `ctx.${ctx.regs}[${idx}]`;
+  const ctxRef = (key: keyof typeof ctx) => `ctx.${ctx[key]}`;
+  const frameRef = (target: string, key: keyof typeof frame) => `${target}.${frame[key]}`;
+
   const opToMapped = new Map<OpCode, number[]>();
   for (const [canonical, mapped] of (module.opcodeMapping.forward as Map<OpCode, number | readonly number[]>).entries()) {
     opToMapped.set(canonical, Array.isArray(mapped) ? [...mapped] : [mapped as number]);
@@ -17,57 +130,47 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const exportedFunctions = module.functions.filter(f => f.isEntryPoint);
 
-  // Generate handlers for 0-255
-  const handlerArrayItems: string[] = new Array(256).fill(`h_${OpCode.Trap}`);
-
-  const getAlias = (op: OpCode) => {
-    const list = opToMapped.get(op);
-    return list && list.length > 0 ? list[0] : -1;
-  };
-
-  // We will declare handler functions:
   const handlerDeclarations: string[] = [];
+  const handlerNames = new Map<OpCode, string>();
+  const declaredOpcodes: OpCode[] = [];
   const declareHandler = (canonical: OpCode, body: string) => {
-    const fnName = `h_${canonical}`;
+    const fnName = names.nextHandlerName(canonical);
+    declaredOpcodes.push(canonical);
+    handlerNames.set(canonical, fnName);
     handlerDeclarations.push(`function ${fnName}(ctx) {\n${body}\n}`);
-    const mapped = opToMapped.get(canonical) || [];
-    for (const vOp of mapped) {
-      handlerArrayItems[vOp] = fnName;
-    }
   };
 
-  declareHandler(OpCode.Trap, `throw new Error('VM Integrity Violation at PC ' + (ctx.pc - 1) + ', raw op: ' + ctx.bytecode[ctx.pc - 1]);`);
+  declareHandler(OpCode.Trap, `throw new Error('VM Integrity Violation at PC ' + (${ctxRef('pc')} - 1) + ', raw op: ' + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
 
   const advanceArg = `
-    let kindNum = ctx.bytecode[ctx.pc++];
-    ${config.rollingKeys ? 'kindNum ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + kindNum) & 0xFF;' : ''}
+    let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+    ${config.rollingKeys ? `kindNum ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + kindNum) & 0xFF;` : ''}
     let val = 0;
     ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
       let shift = 0;
       let b;
       do {
-        b = ctx.bytecode[ctx.pc++];
-        ${config.rollingKeys ? 'b ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b) & 0xFF;' : ''}
+        b = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+        ${config.rollingKeys ? `b ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b) & 0xFF;` : ''}
         val |= (b & 0x7F) << shift;
         shift += 7;
       } while (b & 0x80);
     ` : `
-      let b0 = ctx.bytecode[ctx.pc++];
-      ${config.rollingKeys ? 'b0 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b0) & 0xFF;' : ''}
-      let b1 = ctx.bytecode[ctx.pc++];
-      ${config.rollingKeys ? 'b1 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b1) & 0xFF;' : ''}
-      let b2 = ctx.bytecode[ctx.pc++];
-      ${config.rollingKeys ? 'b2 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b2) & 0xFF;' : ''}
-      let b3 = ctx.bytecode[ctx.pc++];
-      ${config.rollingKeys ? 'b3 ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + b3) & 0xFF;' : ''}
+      let b0 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      ${config.rollingKeys ? `b0 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b0) & 0xFF;` : ''}
+      let b1 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      ${config.rollingKeys ? `b1 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b1) & 0xFF;` : ''}
+      let b2 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      ${config.rollingKeys ? `b2 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b2) & 0xFF;` : ''}
+      let b3 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      ${config.rollingKeys ? `b3 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b3) & 0xFF;` : ''}
       val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     `}
   `;
 
-  // Read arguments dynamically based on instruction encoding
   const readArgs = `
-    let argCount = ctx.bytecode[ctx.pc++];
-    ${config.rollingKeys ? 'argCount ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + argCount) & 0xFF;' : ''}
+    let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+    ${config.rollingKeys ? `argCount ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + argCount) & 0xFF;` : ''}
     const args = [];
     for (let i = 0; i < argCount; i++) {
       ${advanceArg}
@@ -77,19 +180,19 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(OpCode.LoadConst, `
     ${readArgs}
-    ctx.regs[args[1]] = getCP(args[0]);
+    ${regRef('args[1]')} = ${top.getCP}(args[0]);
   `);
   declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
   declareHandler(OpCode.Move, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.LoadGlobal, `
     ${readArgs}
-    const propName = ctx.regs[args[0]];
-    ctx.regs[args[1]] = (typeof result !== 'undefined' && result[propName] !== undefined)
-      ? result[propName]
-      : ctx.globalScope[propName];
+    const propName = ${regRef('args[0]')};
+    ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
+      ? ${top.result}[propName]
+      : ${ctxRef('globalScope')}[propName];
   `);
-  declareHandler(OpCode.StoreGlobal, `${readArgs} ctx.globalScope[ctx.regs[args[0]]] = ctx.regs[args[1]];`);
+  declareHandler(OpCode.StoreGlobal, `${readArgs} ${ctxRef('globalScope')}[${regRef('args[0]')}] = ${regRef('args[1]')};`);
   
   declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] + ctx.regs[args[1]];`);
   declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] - ctx.regs[args[1]];`);
@@ -125,19 +228,24 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.CellNew, `${readArgs} ctx.regs[args[1]] = { v: ctx.regs[args[0]] };`);
   declareHandler(OpCode.CellGet, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]].v;`);
   declareHandler(OpCode.CellSet, `${readArgs} ctx.regs[args[0]].v = ctx.regs[args[1]];`);
-  declareHandler(OpCode.EnvGet, `${readArgs} ctx.regs[args[1]] = ctx.env[args[0]];`);
-  declareHandler(OpCode.RestArgs, `${readArgs} ctx.regs[args[1]] = ctx.fnArgs.slice(ctx.regs[args[0]]);`);
+  declareHandler(OpCode.EnvGet, `${readArgs} ${regRef('args[1]')} = ${ctxRef('env')}[args[0]];`);
+  declareHandler(OpCode.RestArgs, `${readArgs} ${regRef('args[1]')} = ${ctxRef('fnArgs')}.slice(${regRef('args[0]')});`);
   declareHandler(OpCode.ClosureNew, `
     ${readArgs}
-    ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);
+    ${regRef('args[2]')} = ${top.getExecutorById}(${top.getCP}(args[0]), ${regRef('args[1]')});
   `);
   declareHandler(OpCode.Spread, `
     ${readArgs}
-    var spreadTarget = ctx.regs[args[0]];
-    var spreadSource = ctx.regs[args[1]];
+    var spreadTarget = ${regRef('args[0]')};
+    var spreadSource = ${regRef('args[1]')};
     if (Array.isArray(spreadTarget)) {
-      for (var si = 0; si < spreadSource.length; si++) {
-        spreadTarget.push(spreadSource[si]);
+      if (spreadSource == null || typeof spreadSource[Symbol.iterator] !== 'function') {
+        throw new TypeError('VM spread source is not iterable');
+      }
+      var spreadIterator = spreadSource[Symbol.iterator]();
+      var spreadStep;
+      while (!(spreadStep = spreadIterator.next()).done) {
+        spreadTarget.push(spreadStep.value);
       }
     } else if (spreadSource != null) {
       var spreadKeys = Object.keys(spreadSource);
@@ -147,25 +255,42 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       }
     }
   `);
+  declareHandler(OpCode.SpreadIntoArray, `
+    ${readArgs}
+    var indexedSpreadTarget = ${regRef('args[0]')};
+    var indexedSpreadSource = ${regRef('args[1]')};
+    var indexedSpreadStart = ${regRef('args[2]')};
+    if (indexedSpreadSource == null || typeof indexedSpreadSource[Symbol.iterator] !== 'function') {
+      throw new TypeError('VM spread source is not iterable');
+    }
+    var indexedSpreadIterator = indexedSpreadSource[Symbol.iterator]();
+    var indexedSpreadStep;
+    var indexedSpreadCount = 0;
+    while (!(indexedSpreadStep = indexedSpreadIterator.next()).done) {
+      indexedSpreadTarget[indexedSpreadStart + indexedSpreadCount] = indexedSpreadStep.value;
+      indexedSpreadCount++;
+    }
+    ${regRef('args[3]')} = indexedSpreadCount;
+  `);
   
   declareHandler(OpCode.CallMethod, `
     ${readArgs}
-    var obj = ctx.regs[args[0]];
+    var obj = ${regRef('args[0]')};
     var method = obj[ctx.regs[args[1]]];
-    var callArgs = [];
+    var aa = [];
     for (var ci = 2; ci < args.length - 1; ci++) {
-      callArgs.push(ctx.regs[args[ci]]);
+      aa.push(${regRef('args[ci]')});
     }
-    ctx.regs[args[args.length - 1]] = method.apply(obj, callArgs);
+    ${regRef('args[args.length - 1]')} = method.apply(obj, aa);
   `);
   declareHandler(OpCode.Call, `
     ${readArgs}
-    var fn = ctx.regs[args[0]];
-    var callArgs2 = [];
+    var fn = ${regRef('args[0]')};
+    var ab = [];
     for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
-      callArgs2.push(ctx.regs[args[ci2]]);
+      ab.push(${regRef('args[ci2]')});
     }
-    ctx.regs[args[args.length - 1]] = fn.apply(null, callArgs2);
+    ${regRef('args[args.length - 1]')} = fn.apply(null, ab);
   `);
   declareHandler(OpCode.CallWithArray, `
     ${readArgs}
@@ -198,24 +323,24 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       : new (Function.prototype.bind.apply(ctorArray, [null].concat(ctorArrayArgs)))();
   `);
   
-  declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0]; ${config.rollingKeys ? 'ctx.rollingKey = args[1];' : ''}`);
-  declareHandler(OpCode.JmpIf, `${readArgs} ctx.pc = ctx.regs[args[0]] ? args[1] : args[2]; ${config.rollingKeys ? 'ctx.rollingKey = ctx.regs[args[0]] ? args[3] : args[4];' : ''}`);
-  declareHandler(OpCode.JmpIfNot, `${readArgs} ctx.pc = !ctx.regs[args[0]] ? args[1] : args[2]; ${config.rollingKeys ? 'ctx.rollingKey = !ctx.regs[args[0]] ? args[3] : args[4];' : ''}`);
+  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = args[0]; ${config.rollingKeys ? `${ctxRef('rollingState')} = args[1];` : ''}`);
+  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2]; ${config.rollingKeys ? `${ctxRef('rollingState')} = ${regRef('args[0]')} ? args[3] : args[4];` : ''}`);
+  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2]; ${config.rollingKeys ? `${ctxRef('rollingState')} = !${regRef('args[0]')} ? args[3] : args[4];` : ''}`);
   
-  declareHandler(OpCode.Return, `${readArgs} ctx.returnValue = args.length > 0 ? ctx.regs[args[0]] : undefined; ctx.running = false;`);
-  declareHandler(OpCode.ReturnVoid, `${readArgs} ctx.returnValue = undefined; ctx.running = false;`);
-  declareHandler(OpCode.Throw, `${readArgs} throw (args.length > 0 ? ctx.regs[args[0]] : undefined);`);
+  declareHandler(OpCode.Return, `${readArgs} ${ctxRef('returnValue')} = args.length > 0 ? ${regRef('args[0]')} : undefined; ${ctxRef('running')} = false;`);
+  declareHandler(OpCode.ReturnVoid, `${readArgs} ${ctxRef('returnValue')} = undefined; ${ctxRef('running')} = false;`);
+  declareHandler(OpCode.Throw, `${readArgs} throw (args.length > 0 ? ${regRef('args[0]')} : undefined);`);
   declareHandler(OpCode.TryCatchBegin, `
     ${readArgs}
-    ctx.tryStack.push({
-      catchPc: args[0],
-      endPc: args[1],
-      exceptionReg: args[2],
+    ${ctxRef('tryFrames')}.push({
+      ${frame.catchPc}: args[0],
+      ${frame.endPc}: args[1],
+      ${frame.exceptionReg}: args[2],
     });
   `);
-  declareHandler(OpCode.TryCatchEnd, `${readArgs} if (ctx.tryStack.length > 0) { ctx.tryStack.pop(); }`);
+  declareHandler(OpCode.TryCatchEnd, `${readArgs} if (${ctxRef('tryFrames')}.length > 0) { ${ctxRef('tryFrames')}.pop(); }`);
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
-  declareHandler(OpCode.Halt, `ctx.running = false;`);
+  declareHandler(OpCode.Halt, `${ctxRef('running')} = false;`);
 
   const antiDebugLogic = config.antiDebug ? `
     // Anti-Debug Heuristics
@@ -224,8 +349,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (_dbg_end - _dbg_start > 100) { 
        // Corrupt state silently
-       ctx.regs[1] = NaN; 
-       ctx.pc = Math.max(0, ctx.pc - 2); 
+       ${regRef('1')} = NaN; 
+       ${ctxRef('pc')} = Math.max(0, ${ctxRef('pc')} - 2); 
     }
   ` : '';
 
@@ -239,114 +364,148 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       !_isNative(Math.sin)
     ) {
       // Data corruption on tamper
-      ctx.globalScope = {}; 
-      ctx.regs[0] = null; 
+      ${ctxRef('globalScope')} = {}; 
+      ${regRef('0')} = null; 
     }
   ` : '';
 
+  const runtimeDispatch = (() => {
+    if (!names.stealth) {
+      const handlerArrayItems: string[] = new Array(256).fill(handlerNames.get(OpCode.Trap)!);
+      for (const [canonical, mapped] of opToMapped.entries()) {
+        const fnName = handlerNames.get(canonical)!;
+        for (const vOp of mapped) {
+          handlerArrayItems[vOp] = fnName;
+        }
+      }
+      return {
+        declarations: `const ${top.handlers} = [\n    ${handlerArrayItems.join(',\n    ')}\n  ];`,
+        invoke: `${top.handlers}[${locals.opByte}](ctx);`,
+      };
+    }
+
+    const rng = new SeededRandom(config.seed ^ 0x2e57f0);
+    const bankOrder = rng.shuffle([...declaredOpcodes]);
+    const slotByCanonical = new Map(bankOrder.map((canonical, index) => [canonical, index]));
+    const trapSlot = slotByCanonical.get(OpCode.Trap) ?? 0;
+    const route = new Array(256).fill(trapSlot);
+    for (const [canonical, mapped] of opToMapped.entries()) {
+      const slot = slotByCanonical.get(canonical);
+      if (slot === undefined) {
+        continue;
+      }
+      for (const vOp of mapped) {
+        route[vOp] = slot;
+      }
+    }
+
+    return {
+      declarations: `const ${locals.dispatchBank} = [\n    ${bankOrder.map((canonical) => handlerNames.get(canonical)!).join(',\n    ')}\n  ];\n  const ${locals.dispatchRoute} = new Uint8Array([${route.join(',')}]);`,
+      invoke: `${locals.dispatchBank}[${locals.dispatchRoute}[${locals.opByte}]](ctx);`,
+    };
+  })();
+
   const sourceCode = `
 // Polymorphic Threaded VM Engine - Build: ${module.buildId}
-const vmFunctions = (function() {
-  const seed = ${config.seed};
-  const rawCP = ${cp};
-  const cpCache = new Map();
+const ${top.vmFunctions} = (function() {
+  const ${top.seed} = ${config.seed};
+  const ${top.rawCP} = ${cp};
+  const ${top.cpCache} = new Map();
   
   // Lazy Decryption
-  function getCP(index) {
-    if (cpCache.has(index)) return cpCache.get(index);
-    let c = rawCP[index];
+  function ${top.getCP}(index) {
+    if (${top.cpCache}.has(index)) return ${top.cpCache}.get(index);
+    let c = ${top.rawCP}[index];
     let val = c.kind === 'undefined' ? undefined : c.value;
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
       let decoded = '';
       for (let i = 0; i < val.length; i++) {
-        decoded += String.fromCharCode(val.charCodeAt(i) ^ (seed & 0xFF));
+        decoded += String.fromCharCode(val.charCodeAt(i) ^ (${top.seed} & 0xFF));
       }
       val = decoded;
     }
-    cpCache.set(index, val);
+    ${top.cpCache}.set(index, val);
     return val;
   }
 
   ${handlerDeclarations.join('\n\n')}
 
-  const handlers = [
-    ${handlerArrayItems.join(',\n    ')}
-  ];
+  ${runtimeDispatch.declarations}
 
-  const functionBytecodes = {
+  const ${top.functionBytecodes} = {
 ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join(',')}])`).join(',\n')}
   };
-  const executorCache = Object.create(null);
+  const ${top.executorCache} = Object.create(null);
 
-  function getExecutorById(functionId, env) {
-    if ((!env || env.length === 0) && executorCache[functionId]) {
-      return executorCache[functionId];
+  function ${top.getExecutorById}(functionId, env) {
+    if ((!env || env.length === 0) && ${top.executorCache}[functionId]) {
+      return ${top.executorCache}[functionId];
     }
-    const bytecode = functionBytecodes[functionId];
+    const bytecode = ${top.functionBytecodes}[functionId];
     if (!bytecode) {
       throw new Error('Unknown VM function id: ' + functionId);
     }
-    const executor = createExecutor(bytecode, env || []);
+    const executor = ${top.createExecutor}(bytecode, env || []);
     if (!env || env.length === 0) {
-      executorCache[functionId] = executor;
+      ${top.executorCache}[functionId] = executor;
     }
     return executor;
   }
 
-  function createExecutor(bytecodeArr, envArr) {
+  function ${top.createExecutor}(bytecodeArr, envArr) {
     return function execute() {
-      const fnArgs = Array.prototype.slice.call(arguments);
+      const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
       const ctx = {
-        pc: 0,
-        bytecode: bytecodeArr,
-        regs: new Array(256).fill(undefined),
-        fnArgs,
-        env: envArr || [],
-        globalScope: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
-        running: true,
-        returnValue: undefined,
-        tryStack: [],
-        rollingKey: ${config.rollingKeys ? 'seed & 0xFF' : '0'}
+        ${ctx.pc}: 0,
+        ${ctx.bytecode}: bytecodeArr,
+        ${ctx.regs}: new Array(256).fill(undefined),
+        ${ctx.fnArgs},
+        ${ctx.env}: envArr || [],
+        ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
+        ${ctx.running}: true,
+        ${ctx.returnValue}: undefined,
+        ${ctx.tryFrames}: [],
+        ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'}
       };
 
       ${antiDebugLogic}
       ${tamperDetectionLogic}
 
-      for (let i = 0; i < fnArgs.length; i++) {
-        ctx.regs[i] = fnArgs[i];
+      for (let i = 0; i < ${ctx.fnArgs}.length; i++) {
+        ${regRef('i')} = ${ctx.fnArgs}[i];
       }
       
       // Threaded Dispatch Loop
-      while(ctx.running && ctx.pc < ctx.bytecode.length) {
-        while (ctx.tryStack.length > 0 && ctx.pc >= ctx.tryStack[ctx.tryStack.length - 1].endPc) {
-          ctx.tryStack.pop();
+      while(${ctxRef('running')} && ${ctxRef('pc')} < ${ctxRef('bytecode')}.length) {
+        while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
+          ${ctxRef('tryFrames')}.pop();
         }
-        let op = ctx.bytecode[ctx.pc++];
-        ${config.rollingKeys ? 'op ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;' : ''}
+        let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+        ${config.rollingKeys ? `${locals.opByte} ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + ${locals.opByte}) & 0xFF;` : ''}
         try {
-          handlers[op](ctx);
+          ${runtimeDispatch.invoke}
         } catch (error) {
-          if (ctx.tryStack.length === 0) {
+          if (${ctxRef('tryFrames')}.length === 0) {
             throw error;
           }
-          const handler = ctx.tryStack.pop();
-          ctx.regs[handler.exceptionReg] = error;
-          ctx.running = true;
-          ctx.pc = handler.catchPc;
+          const handler = ${ctxRef('tryFrames')}.pop();
+          ${regRef(frameRef('handler', 'exceptionReg'))} = error;
+          ${ctxRef('running')} = true;
+          ${ctxRef('pc')} = ${frameRef('handler', 'catchPc')};
         }
       }
       
-      return ctx.returnValue;
+      return ${ctxRef('returnValue')};
     };
   }
 
-  var result = {};
-${exportedFunctions.map(fn => `  result['${fn.name}'] = getExecutorById('${fn.id}');`).join('\n')}
-  return result;
+  var ${top.result} = {};
+${exportedFunctions.map(fn => `  ${top.result}['${fn.name}'] = ${top.getExecutorById}('${fn.id}');`).join('\n')}
+  return ${top.result};
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
-${exportedFunctions.map(fn => `  module.exports.${fn.name} = vmFunctions['${fn.name}'];`).join('\n')}
+${exportedFunctions.map(fn => `  module.exports.${fn.name} = ${top.vmFunctions}['${fn.name}'];`).join('\n')}
 }
   `.trim();
 

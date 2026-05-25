@@ -668,6 +668,29 @@ class ASTLowering {
     );
   }
 
+  private emitSpreadIntoArray(targetReg: Register, sourceReg: Register, startIndexReg: Register, destIndexLocal: Register): void {
+    const spreadCountReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.SpreadIntoArray,
+      [
+        { kind: OperandKind.Register, value: targetReg },
+        { kind: OperandKind.Register, value: sourceReg },
+        { kind: OperandKind.Register, value: startIndexReg },
+      ],
+      spreadCountReg,
+    );
+    const nextIndexReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.Add,
+      [
+        { kind: OperandKind.Register, value: startIndexReg },
+        { kind: OperandKind.Register, value: spreadCountReg },
+      ],
+      nextIndexReg,
+    );
+    this.storeToLocal(destIndexLocal, nextIndexReg);
+  }
+
   private bindPattern(bindingName: ts.BindingName, sourceReg: Register, mode: 'declare' | 'assign' = 'declare'): void {
     if (ts.isIdentifier(bindingName)) {
       if (mode === 'declare') {
@@ -1401,27 +1424,64 @@ class ASTLowering {
     if (ts.isArrayLiteralExpression(expr)) {
       const arrayReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(OpCode.ArrayNew, [], arrayReg);
+      const indexLocal = this.createTempLocal('array_index');
+      const zeroReg = this.emitConstant(ConstantKind.Number, 0);
+      const oneReg = this.emitConstant(ConstantKind.Number, 1);
+      const lengthKeyReg = this.emitConstant(ConstantKind.String, 'length');
+      this.storeToLocal(indexLocal, zeroReg);
 
       expr.elements.forEach((element) => {
         if (ts.isOmittedExpression(element)) {
-          this.failUnsupported(element, 'Sparse array holes are not supported yet');
-        }
-        if (ts.isSpreadElement(element)) {
-          const spreadReg = this.visitExpression(element.expression);
-          this.emitSpreadInto(arrayReg, spreadReg);
+          const currentIndexReg = this.loadFromLocal(indexLocal);
+          const nextIndexReg = this.fnBuilder.allocRegister();
+          this.currentBlock.addInstruction(
+            OpCode.Add,
+            [
+              { kind: OperandKind.Register, value: currentIndexReg },
+              { kind: OperandKind.Register, value: oneReg },
+            ],
+            nextIndexReg,
+          );
+          this.storeToLocal(indexLocal, nextIndexReg);
           return;
         }
+        if (ts.isSpreadElement(element)) {
+          const currentIndexReg = this.loadFromLocal(indexLocal);
+          const spreadReg = this.visitExpression(element.expression);
+          this.emitSpreadIntoArray(arrayReg, spreadReg, currentIndexReg, indexLocal);
+          return;
+        }
+        const currentIndexReg = this.loadFromLocal(indexLocal);
         const valueReg = this.visitExpression(element);
         this.currentBlock.addInstruction(
-          OpCode.CallMethod,
+          OpCode.ComputedSet,
           [
             { kind: OperandKind.Register, value: arrayReg },
-            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'push') },
+            { kind: OperandKind.Register, value: currentIndexReg },
             { kind: OperandKind.Register, value: valueReg },
           ],
-          this.fnBuilder.allocRegister(),
         );
+        const nextIndexReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(
+          OpCode.Add,
+          [
+            { kind: OperandKind.Register, value: currentIndexReg },
+            { kind: OperandKind.Register, value: oneReg },
+          ],
+          nextIndexReg,
+        );
+        this.storeToLocal(indexLocal, nextIndexReg);
       });
+
+      const finalLengthReg = this.loadFromLocal(indexLocal);
+      this.currentBlock.addInstruction(
+        OpCode.PropSet,
+        [
+          { kind: OperandKind.Register, value: arrayReg },
+          { kind: OperandKind.Register, value: lengthKeyReg },
+          { kind: OperandKind.Register, value: finalLengthReg },
+        ],
+      );
 
       return arrayReg;
     }

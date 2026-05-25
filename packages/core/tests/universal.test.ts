@@ -25,6 +25,7 @@ describe('universal profile', () => {
     expect(result.functionReports?.some((report) => report.functionName === 'switchTry' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'destructured' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'lifted' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'spreadHoles' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
     expect(result.vmBundles![0]!.fullSource.includes('module.exports')).toBe(false);
     expect(result.vmBundles![0]!.fullSource.includes('Object.assign(__nativeModule.exports')).toBe(false);
@@ -40,5 +41,6 @@ describe('universal profile', () => {
     expect(imported.switchTry(7)).toBe('other');
     expect(imported.destructured({ a: 2 }, 3, 4, 5)).toBe(12);
     expect(imported.lifted({ value: 2 })).toBe(5);
+    expect(imported.spreadHoles()).toBe('7:0|2|3|5|6:AB:2');
   });
 });

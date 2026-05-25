@@ -242,6 +242,7 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
     traceMode: false,
     deterministicReplay: false,
     seed,
+    stealthDispatch: false,
   };
 }
 

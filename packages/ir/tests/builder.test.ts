@@ -205,6 +205,23 @@ describe('IR builder', () => {
     expect(fn!.blocks.some((block) => block.label.includes('try_catch'))).toBe(true);
   });
 
+  it('lowers iterable spread and sparse array holes into vm-safe IR', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'expression-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'expressionPack');
+
+    expect(fn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'expressionPack')?.tier).toBe('vm_safe');
+
+    const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(opcodes).toContain(OpCode.ArrayNew);
+    expect(opcodes).toContain(OpCode.Spread);
+    expect(opcodes).toContain(OpCode.PropSet);
+    expect(opcodes).toContain(OpCode.CallMethodWithArray);
+    expect(opcodes).toContain(OpCode.NewWithArray);
+  });
+
   it('skips unsupported functions in compatibility fallback mode', () => {
     const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
     const diagnostics: Diagnostic[] = [];

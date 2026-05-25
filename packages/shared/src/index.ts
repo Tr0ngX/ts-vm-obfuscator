@@ -187,6 +187,7 @@ export interface VMBuildConfig {
   readonly opcodeAliasing?: boolean;
   readonly junkInsertion?: boolean;
   readonly rollingKeys?: boolean;
+  readonly stealthDispatch?: boolean;
 }
 
 export interface ObfuscationProfile {
@@ -306,7 +307,8 @@ export enum OpCode {
   ArrayNew = 0x54,
   ObjectNew = 0x55,
   Spread = 0x56,
-  Delete = 0x57,
+  SpreadIntoArray = 0x57,
+  Delete = 0x58,
 
   // Special
   Phi = 0x60,

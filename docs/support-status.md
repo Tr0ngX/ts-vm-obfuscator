@@ -43,8 +43,8 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Closures | lexical capture of outer locals | `Supported With Limits` | Correct, but captured bindings are boxed and add targeted overhead. |
 | Semantics | `this` | `Supported With Limits` | Not part of the fully verified VM-safe surface yet. |
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
-| Language | spread elements in general expression lowering | `Not Supported` | Still outside the verified VM path. |
-| Language | sparse array holes | `Not Supported` | No verified lowering path yet. |
+| Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
+| Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
 | Language | `super` | `Not Supported` | Still outside VM support. |
 | Language | classes / class expressions | `Not Supported` | Not part of the verified VM path yet. |
 | Language | `await` | `Not Supported` | Async lowering is not implemented for VM path. |

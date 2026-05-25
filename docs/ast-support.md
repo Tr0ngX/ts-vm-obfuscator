@@ -14,6 +14,8 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Logical short-circuit: `&&`, `||`, `??`
 - Property access and element access
 - Array literals
+- Iterable spread elements in array literals, call arguments, and `new` arguments
+- Sparse array holes in array literals
 - Object literals with property assignments, shorthand properties, and object-literal methods
 - Calls and `new`
 - Nested `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, and object-literal `MethodDeclaration`
@@ -59,7 +61,6 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 
 ### Expressions
 
-- Spread elements and sparse array holes
 - `super`
 - Class expressions
 - `await`

@@ -36,6 +36,20 @@ function createGraph(): ProjectSemanticGraph {
   };
 }
 
+function createVMConfig(seed: number, overrides: Partial<Parameters<typeof buildVMRuntime>[1]> = {}) {
+  return {
+    opcodeRemapping: true,
+    immediateEncoding: ImmediateEncodingScheme.VariableLength,
+    superInstructions: false,
+    handlerLayoutRandom: false,
+    constantPoolEncoding: ConstantEncodingScheme.Identity,
+    traceMode: false,
+    deterministicReplay: false,
+    seed,
+    ...overrides,
+  };
+}
+
 describe('VM Runtime', () => {
   it('should initialize and execute bytecode safely', () => {
     expect(true).toBe(true);
@@ -151,6 +165,71 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('ctx.regs[args[1]] = { v: ctx.regs[args[0]] };');
   });
 
+  it('should conceal canonical handler naming and direct raw-op dispatch in stealth mode', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534F42,
+      version: 1,
+      buildId: 'stealth-shape',
+      opcodeMapping: {
+        seed: 15,
+        forward: new Map([
+          [OpCode.LoadConst, 10],
+          [OpCode.Add, 11],
+          [OpCode.Return, 12],
+          [OpCode.Trap, 13],
+        ]),
+        reverse: new Map([
+          [10, OpCode.LoadConst],
+          [11, OpCode.Add],
+          [12, OpCode.Return],
+          [13, OpCode.Trap],
+        ]),
+      },
+      constantPool: [{ index: 0, kind: 'number', value: 1 }],
+      functions: [
+        {
+          id: 'f1',
+          name: 'shape',
+          paramCount: 0,
+          localCount: 0,
+          maxRegisters: 4,
+          bytecode: new Uint8Array([10, 2, 2, 0, 0, 11, 3, 0, 0, 0, 1, 12, 1, 0]),
+          isEntryPoint: true,
+        },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'stealth-shape', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, createVMConfig(15, { stealthDispatch: true }));
+
+    expect(bundle.fullSource).not.toMatch(/function h_\d+/);
+    expect(bundle.fullSource).not.toContain('handlers[op]');
+    expect(bundle.fullSource).not.toContain('rollingKey');
+    expect(bundle.fullSource).not.toContain('tryStack');
+    expect(bundle.fullSource).not.toContain('callArgs');
+    expect(bundle.fullSource).not.toContain('getExecutorById');
+  });
+
+  it('should vary stealth runtime structure across seeds while preserving execution', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecodeA = compileToBytecode(ir, createVMConfig(41, { stealthDispatch: true }));
+    const bytecodeB = compileToBytecode(ir, createVMConfig(43, { stealthDispatch: true }));
+    const bundleA = buildVMRuntime(bytecodeA, createVMConfig(41, { stealthDispatch: true }));
+    const bundleB = buildVMRuntime(bytecodeB, createVMConfig(43, { stealthDispatch: true }));
+
+    expect(bundleA.fullSource).not.toBe(bundleB.fullSource);
+
+    const modA = { exports: {} as Record<string, (...args: any[]) => any> };
+    const modB = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundleA.fullSource)(modA);
+    new Function('module', bundleB.fullSource)(modB);
+
+    expect(modA.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+    expect(modB.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+  });
+
   it('should execute closures with shared captured state', () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'nested-closures.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
@@ -244,6 +323,32 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.arrayPatternArrow([9, 10, 11])).toBe(11);
     expect(moduleShim.exports.callSpreadPack(3, [4, 5])).toBe(19);
     expect(moduleShim.exports.catchPack(true)).toBe('boom:2');
+  });
+
+  it('should execute iterable spread and sparse hole expressions through the VM runtime', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'expression-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(53));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(53));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.expressionPack()).toBe('8:0|2|3|4|6|7:undefined:3,4,5,,6,7:ABC:2020-1-2');
+  });
+
+  it('should preserve runtime parity when stealth dispatch is enabled', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'binding-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(47, { stealthDispatch: true }));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(47, { stealthDispatch: true }));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.bindingPack({ a: 7, b: undefined, extra: 11, drop: 2 }, [3, 5, 8])).toBe('boom:detail:3:7:6:5,8:5:13:3');
+    expect(moduleShim.exports.parameterPack({ a: 2 }, 4, 6, 8)).toBe(13);
+    expect(moduleShim.exports.callSpreadPack(3, [4, 5])).toBe(19);
   });
 
   it('should inject anti-debug and tamper logic when enabled', () => {
