@@ -2,13 +2,6 @@ import ts from 'typescript';
 import type { FunctionCapabilityReport, FunctionExecutionTier } from '@tsvm/shared';
 
 const VM_BLOCKERS = new Set<ts.SyntaxKind>([
-  ts.SyntaxKind.TryStatement,
-  ts.SyntaxKind.ThrowStatement,
-  ts.SyntaxKind.SwitchStatement,
-  ts.SyntaxKind.CaseClause,
-  ts.SyntaxKind.DefaultClause,
-  ts.SyntaxKind.ForOfStatement,
-  ts.SyntaxKind.ForInStatement,
   ts.SyntaxKind.DebuggerStatement,
   ts.SyntaxKind.ClassDeclaration,
   ts.SyntaxKind.ClassExpression,
@@ -23,20 +16,8 @@ const VM_BLOCKERS = new Set<ts.SyntaxKind>([
   ts.SyntaxKind.JsxExpression,
   ts.SyntaxKind.JsxOpeningElement,
   ts.SyntaxKind.JsxClosingElement,
-  ts.SyntaxKind.ObjectBindingPattern,
-  ts.SyntaxKind.ArrayBindingPattern,
   ts.SyntaxKind.SpreadElement,
   ts.SyntaxKind.SpreadAssignment,
-]);
-
-const FALLBACK_ONLY = new Set<ts.SyntaxKind>([
-  ts.SyntaxKind.WithStatement,
-  ts.SyntaxKind.SuperKeyword,
-  ts.SyntaxKind.AwaitExpression,
-  ts.SyntaxKind.YieldExpression,
-  ts.SyntaxKind.JsxElement,
-  ts.SyntaxKind.JsxSelfClosingElement,
-  ts.SyntaxKind.JsxFragment,
 ]);
 
 type SupportedFunctionNode =
@@ -65,11 +46,20 @@ function getFunctionName(node: SupportedFunctionNode): string {
     return 'constructor';
   }
   const name = (node as ts.NamedDeclaration).name;
+  if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name))) {
+    return name.text;
+  }
+  if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+    return node.parent.name.text;
+  }
+  if (ts.isPropertyAssignment(node.parent)) {
+    const propertyName = node.parent.name;
+    if (ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName) || ts.isNumericLiteral(propertyName)) {
+      return propertyName.text;
+    }
+  }
   if (!name) {
     return '<anonymous>';
-  }
-  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-    return name.text;
   }
   return '<computed>';
 }
@@ -87,11 +77,9 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
     if (VM_BLOCKERS.has(current.kind)) {
       syntaxKinds.add(ts.SyntaxKind[current.kind]);
       reasons.add(`contains ${ts.SyntaxKind[current.kind]}`);
-      if (FALLBACK_ONLY.has(current.kind)) {
-        tier = 'native_fallback';
-      } else if (tier === 'vm_safe') {
+      if (tier === 'vm_safe') {
         tier = 'js_lowered';
-      }
+      } 
     }
 
     if (current.kind === ts.SyntaxKind.ThisKeyword) {
@@ -138,6 +126,23 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
   };
 }
 
+function tryGetTopLevelVariableFunctionBinding(statement: ts.Statement): Array<{ name: string; node: SupportedFunctionNode }> {
+  if (!ts.isVariableStatement(statement)) {
+    return [];
+  }
+
+  const bindings: Array<{ name: string; node: SupportedFunctionNode }> = [];
+  for (const declaration of statement.declarationList.declarations) {
+    if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+      continue;
+    }
+    if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) {
+      bindings.push({ name: declaration.name.text, node: declaration.initializer });
+    }
+  }
+  return bindings;
+}
+
 export function analyzeFunctionCapabilities(filePath: string): FunctionCapabilityReport[] {
   const sourceText = ts.sys.readFile(filePath) || '';
   const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.ESNext, true);
@@ -151,5 +156,27 @@ export function analyzeFunctionCapabilities(filePath: string): FunctionCapabilit
   };
 
   ts.forEachChild(sourceFile, visit);
+  return reports;
+}
+
+export function analyzeTopLevelFunctionCapabilities(filePath: string): FunctionCapabilityReport[] {
+  const sourceText = ts.sys.readFile(filePath) || '';
+  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.ESNext, true);
+  const reports: FunctionCapabilityReport[] = [];
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      reports.push(analyzeFunctionNode(statement, sourceFile));
+      continue;
+    }
+    for (const binding of tryGetTopLevelVariableFunctionBinding(statement)) {
+      const report = analyzeFunctionNode(binding.node, sourceFile);
+      reports.push({
+        ...report,
+        functionName: binding.name,
+      });
+    }
+  }
+
   return reports;
 }

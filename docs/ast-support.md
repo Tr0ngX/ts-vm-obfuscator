@@ -30,6 +30,15 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - `if / else`
 - `for`
 - `while`
+- `do / while`
+- `break`
+- `continue`
+- `switch`
+- `throw`
+- `try / catch / finally` with synchronous execution and identifier/no-binding catch clauses
+- `for...of`
+- `for...in`
+- object and array destructuring declarations, including simple default values
 
 ### Closures
 
@@ -52,18 +61,9 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - `await`
 - `yield`
 
-### Statements
-
-- `switch`
-- `try / catch / finally`
-- `throw`
-- `do / while`
-- `for...of`
-- `for...in`
-
 ### Bindings / Patterns
 
-- Destructuring declarations and assignments
+- Destructuring assignments
 - Rest/spread lowering beyond current array/object limitations
 
 ### Language Features

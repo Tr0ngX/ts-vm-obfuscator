@@ -20,6 +20,8 @@ interface LoweringOptions {
 
 export interface LowerToIROptions {
   readonly forceVirtualizeAll?: boolean;
+  readonly forceVirtualizeFunctionNames?: ReadonlySet<string>;
+  readonly skipTopLevelFunctionNames?: ReadonlySet<string>;
   readonly compatibilityFallback?: boolean;
   readonly diagnostics?: Diagnostic[];
 }
@@ -33,6 +35,22 @@ interface ClosureAnalysis {
 interface LocalBinding {
   readonly register: Register;
   readonly boxed: boolean;
+}
+
+type CompletionKind = 0 | 1 | 2 | 3 | 4;
+
+interface FinallyCompletionTarget {
+  readonly code: number;
+  readonly kind: 'break' | 'continue';
+  readonly blockId: string;
+}
+
+interface FinallyContext {
+  readonly finallyBlockId: string;
+  readonly completionKindLocal: Register;
+  readonly completionValueLocal: Register;
+  readonly completionTargetLocal: Register;
+  readonly targets: FinallyCompletionTarget[];
 }
 
 function pushUnique(target: string[], value: string): void {
@@ -158,6 +176,10 @@ class ASTLowering {
   private readonly sourceFile: ts.SourceFile;
   private readonly capturedLocals: ReadonlySet<string>;
   private readonly outerCaptureBindings = new Map<string, number>();
+  private readonly breakTargets: string[] = [];
+  private readonly continueTargets: string[] = [];
+  private readonly finallyContexts: FinallyContext[] = [];
+  private throwPassthroughFinallyDepth = 0;
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
@@ -220,9 +242,14 @@ class ASTLowering {
   }
 
   private isSyntheticDeadBlock(block: BasicBlockBuilder): boolean {
+    const label = block.label;
+    const syntheticLabel =
+      label === 'unreachable' ||
+      label === 'after_break' ||
+      label === 'after_continue';
     return (
+      syntheticLabel &&
       block.getInstructionCount() === 0 &&
-      block.getPredecessorCount() === 0 &&
       (block.getTerminatorKind() === undefined || block.getTerminatorKind() === 'unreachable') &&
       this.fnBuilder.getBlockCount() > 0
     );
@@ -236,11 +263,40 @@ class ASTLowering {
     return termKind === undefined || termKind === 'unreachable';
   }
 
+  private enterBreakTarget(target: string): void {
+    this.breakTargets.push(target);
+  }
+
+  private leaveBreakTarget(): void {
+    this.breakTargets.pop();
+  }
+
+  private enterContinueTarget(target: string): void {
+    this.continueTargets.push(target);
+  }
+
+  private leaveContinueTarget(): void {
+    this.continueTargets.pop();
+  }
+
+  private emitJumpAndAdvance(targetBlockId: string, nextLabel: string): void {
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [targetBlockId] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+    this.currentBlock = this.fnBuilder.createBlock(nextLabel);
+  }
+
   private emitConstant(kind: ConstantKind, value: string | number | boolean | null): Register {
     const idx = this.modBuilder.addConstant(kind, value);
     const reg = this.fnBuilder.allocRegister();
     this.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: idx }], reg);
     return reg;
+  }
+
+  private storeToLocal(localReg: Register, valueReg: Register): void {
+    this.currentBlock.addInstruction(OpCode.StoreLocal, [
+      { kind: OperandKind.Register, value: localReg },
+      { kind: OperandKind.Register, value: valueReg },
+    ]);
   }
 
   private boxCapturedParameters(): void {
@@ -463,10 +519,496 @@ class ASTLowering {
     return this.fnBuilder.addLocal(`$${prefix}_${this.tempLocalCount++}`, IRType.Any);
   }
 
+  private declareScopedIdentifier(name: string): LocalBinding {
+    const existing = this.scope.get(name);
+    if (existing) {
+      return existing;
+    }
+    const boxed = this.capturedLocals.has(name);
+    const register = this.fnBuilder.addLocal(name, IRType.Any);
+    const binding = { register, boxed };
+    this.scope.set(name, binding);
+    return binding;
+  }
+
+  private initializeDeclaredIdentifier(name: string, initializerReg?: Register): void {
+    const existing = this.scope.get(name);
+    const binding = this.declareScopedIdentifier(name);
+    if (initializerReg !== undefined) {
+      if (binding.boxed) {
+        if (existing) {
+          this.currentBlock.addInstruction(OpCode.CellSet, [
+            { kind: OperandKind.Register, value: binding.register },
+            { kind: OperandKind.Register, value: initializerReg },
+          ]);
+        } else {
+          this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: initializerReg }], binding.register);
+          this.fnBuilder.addCapturedVariable(name);
+        }
+      } else {
+        this.currentBlock.addInstruction(OpCode.StoreLocal, [
+          { kind: OperandKind.Register, value: binding.register },
+          { kind: OperandKind.Register, value: initializerReg },
+        ]);
+      }
+      return;
+    }
+
+    if (binding.boxed) {
+      const undefReg = this.emitConstant(ConstantKind.Undefined, null);
+      this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], binding.register);
+      this.fnBuilder.addCapturedVariable(name);
+    }
+  }
+
+  private materializeBindingElementValue(element: ts.BindingElement, sourceReg: Register): Register {
+    if (!element.initializer) {
+      return sourceReg;
+    }
+
+    const undefinedReg = this.emitConstant(ConstantKind.Undefined, null);
+    const isUndefinedReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: sourceReg },
+        { kind: OperandKind.Register, value: undefinedReg },
+      ],
+      isUndefinedReg,
+    );
+    return this.lowerConditionalExpression(
+      isUndefinedReg,
+      () => this.visitExpression(element.initializer!),
+      () => sourceReg,
+    );
+  }
+
+  private bindPattern(bindingName: ts.BindingName, sourceReg: Register): void {
+    if (ts.isIdentifier(bindingName)) {
+      this.initializeDeclaredIdentifier(bindingName.text, sourceReg);
+      return;
+    }
+
+    if (ts.isObjectBindingPattern(bindingName)) {
+      for (const element of bindingName.elements) {
+        if (element.dotDotDotToken) {
+          this.failUnsupported(element, 'Object rest binding is not supported yet');
+        }
+        const propertyName = element.propertyName ?? element.name;
+        const keyText =
+          ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName) || ts.isNumericLiteral(propertyName)
+            ? propertyName.text
+            : undefined;
+        if (!keyText) {
+          this.failUnsupported(propertyName, 'Unsupported object binding property name');
+        }
+        const keyReg = this.emitConstant(ConstantKind.String, keyText);
+        const valueReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(
+          OpCode.PropGet,
+          [
+            { kind: OperandKind.Register, value: sourceReg },
+            { kind: OperandKind.Register, value: keyReg },
+          ],
+          valueReg,
+        );
+        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg));
+      }
+      return;
+    }
+
+    if (ts.isArrayBindingPattern(bindingName)) {
+      bindingName.elements.forEach((element, index) => {
+        if (ts.isOmittedExpression(element)) {
+          return;
+        }
+        if (element.dotDotDotToken) {
+          this.failUnsupported(element, 'Array rest binding is not supported yet');
+        }
+        const indexReg = this.emitConstant(ConstantKind.Number, index);
+        const valueReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(
+          OpCode.ComputedGet,
+          [
+            { kind: OperandKind.Register, value: sourceReg },
+            { kind: OperandKind.Register, value: indexReg },
+          ],
+          valueReg,
+        );
+        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg));
+      });
+      return;
+    }
+
+    this.failUnsupported(bindingName, 'Unsupported binding pattern');
+  }
+
+  private initializeVariableDeclaration(decl: ts.VariableDeclaration): void {
+    const initializerReg = decl.initializer ? this.visitExpression(decl.initializer) : undefined;
+    if (ts.isIdentifier(decl.name)) {
+      this.initializeDeclaredIdentifier(decl.name.text, initializerReg);
+      return;
+    }
+    if (initializerReg === undefined) {
+      this.failUnsupported(decl.name, 'Destructuring declarations require an initializer');
+    }
+    this.bindPattern(decl.name, initializerReg);
+  }
+
+  private assignLoopBinding(initializer: ts.ForInitializer | ts.ForInOrOfStatement['initializer'], valueReg: Register, loopKind: string): void {
+    if (ts.isVariableDeclarationList(initializer)) {
+      if (initializer.declarations.length !== 1) {
+        this.failUnsupported(initializer, `${loopKind} supports a single declaration only`);
+      }
+      const decl = initializer.declarations[0]!;
+      if (decl.initializer) {
+        this.failUnsupported(decl, `${loopKind} declaration initializers are not supported`);
+      }
+      if (ts.isIdentifier(decl.name)) {
+        this.initializeDeclaredIdentifier(decl.name.text, valueReg);
+        return;
+      }
+      this.bindPattern(decl.name, valueReg);
+      return;
+    }
+
+    this.storeValue(initializer, valueReg);
+  }
+
   private loadFromLocal(localReg: Register): Register {
     const destReg = this.fnBuilder.allocRegister();
     this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: localReg }], destReg);
     return destReg;
+  }
+
+  private getActiveFinallyContext(): FinallyContext | undefined {
+    return this.finallyContexts[this.finallyContexts.length - 1];
+  }
+
+  private withFinallyContext<T>(context: FinallyContext, callback: () => T): T {
+    this.finallyContexts.push(context);
+    try {
+      return callback();
+    } finally {
+      this.finallyContexts.pop();
+    }
+  }
+
+  private withPassthroughThrow<T>(callback: () => T): T {
+    this.throwPassthroughFinallyDepth += 1;
+    try {
+      return callback();
+    } finally {
+      this.throwPassthroughFinallyDepth -= 1;
+    }
+  }
+
+  private createFinallyContext(finallyBlockId: string): FinallyContext {
+    return {
+      finallyBlockId,
+      completionKindLocal: this.createTempLocal('completion_kind'),
+      completionValueLocal: this.createTempLocal('completion_value'),
+      completionTargetLocal: this.createTempLocal('completion_target'),
+      targets: [],
+    };
+  }
+
+  private getCompletionTargetCode(context: FinallyContext, kind: 'break' | 'continue', blockId: string): number {
+    const existing = context.targets.find((target) => target.kind === kind && target.blockId === blockId);
+    if (existing) {
+      return existing.code;
+    }
+    const code = context.targets.length + 1;
+    context.targets.push({ code, kind, blockId });
+    return code;
+  }
+
+  private setFinallyCompletion(context: FinallyContext, kind: CompletionKind, valueReg?: Register, target?: { kind: 'break' | 'continue'; blockId: string }): void {
+    this.storeToLocal(context.completionKindLocal, this.emitConstant(ConstantKind.Number, kind));
+    if (valueReg) {
+      this.storeToLocal(context.completionValueLocal, valueReg);
+    }
+    if (target) {
+      const codeReg = this.emitConstant(ConstantKind.Number, this.getCompletionTargetCode(context, target.kind, target.blockId));
+      this.storeToLocal(context.completionTargetLocal, codeReg);
+    }
+  }
+
+  private routeAbruptCompletionThroughFinally(kind: CompletionKind, valueReg?: Register, target?: { kind: 'break' | 'continue'; blockId: string }): void {
+    if (kind === 2 && this.throwPassthroughFinallyDepth > 0) {
+      this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      this.currentBlock = this.fnBuilder.createBlock('unreachable');
+      return;
+    }
+
+    const context = this.getActiveFinallyContext();
+    if (!context) {
+      if (kind === 1) {
+        this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valueReg });
+      } else if (kind === 2) {
+        this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
+      } else if ((kind === 3 || kind === 4) && target) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [target.blockId] });
+      }
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      this.currentBlock = this.fnBuilder.createBlock('unreachable');
+      return;
+    }
+
+    this.setFinallyCompletion(context, kind, valueReg, target);
+    this.emitJumpAndAdvance(context.finallyBlockId, 'unreachable');
+  }
+
+  private emitCompletionTargetDispatch(context: FinallyContext, kind: 'break' | 'continue', fallbackTargetId: string): void {
+    const targets = context.targets.filter((target) => target.kind === kind);
+    if (targets.length === 0) {
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [fallbackTargetId] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      return;
+    }
+
+    targets.forEach((target, index) => {
+      const targetCodeReg = this.loadFromLocal(context.completionTargetLocal);
+      const expectedCodeReg = this.emitConstant(ConstantKind.Number, target.code);
+      const isMatchReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.StrictEq,
+        [
+          { kind: OperandKind.Register, value: targetCodeReg },
+          { kind: OperandKind.Register, value: expectedCodeReg },
+        ],
+        isMatchReg,
+      );
+      const fallbackBlock = index === targets.length - 1 ? undefined : this.fnBuilder.createBlock(`finally_${kind}_dispatch_${index}`);
+      this.currentBlock.setTerminator({
+        kind: 'branch',
+        condition: isMatchReg,
+        targets: [target.blockId, fallbackBlock?.id ?? fallbackTargetId],
+      });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      if (fallbackBlock) {
+        this.currentBlock = fallbackBlock;
+      }
+    });
+  }
+
+  private emitCompletionDispatch(context: FinallyContext, normalTargetId: string): void {
+    const normalCheckBlock = this.fnBuilder.createBlock('finally_normal_check');
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [normalCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = normalCheckBlock;
+    const normalKindReg = this.loadFromLocal(context.completionKindLocal);
+    const normalConstReg = this.emitConstant(ConstantKind.Number, 0);
+    const isNormalReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: normalKindReg },
+        { kind: OperandKind.Register, value: normalConstReg },
+      ],
+      isNormalReg,
+    );
+    const returnCheckBlock = this.fnBuilder.createBlock('finally_return_check');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isNormalReg, targets: [normalTargetId, returnCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = returnCheckBlock;
+    const returnKindReg = this.loadFromLocal(context.completionKindLocal);
+    const returnConstReg = this.emitConstant(ConstantKind.Number, 1);
+    const isReturnReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: returnKindReg },
+        { kind: OperandKind.Register, value: returnConstReg },
+      ],
+      isReturnReg,
+    );
+    const returnBlock = this.fnBuilder.createBlock('finally_return');
+    const throwCheckBlock = this.fnBuilder.createBlock('finally_throw_check');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isReturnReg, targets: [returnBlock.id, throwCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = returnBlock;
+    this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: this.loadFromLocal(context.completionValueLocal) });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = throwCheckBlock;
+    const throwKindReg = this.loadFromLocal(context.completionKindLocal);
+    const throwConstReg = this.emitConstant(ConstantKind.Number, 2);
+    const isThrowReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: throwKindReg },
+        { kind: OperandKind.Register, value: throwConstReg },
+      ],
+      isThrowReg,
+    );
+    const throwBlock = this.fnBuilder.createBlock('finally_throw');
+    const breakCheckBlock = this.fnBuilder.createBlock('finally_break_check');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isThrowReg, targets: [throwBlock.id, breakCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = throwBlock;
+    this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: this.loadFromLocal(context.completionValueLocal) });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = breakCheckBlock;
+    const breakKindReg = this.loadFromLocal(context.completionKindLocal);
+    const breakConstReg = this.emitConstant(ConstantKind.Number, 3);
+    const isBreakReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: breakKindReg },
+        { kind: OperandKind.Register, value: breakConstReg },
+      ],
+      isBreakReg,
+    );
+    const breakDispatchBlock = this.fnBuilder.createBlock('finally_break_dispatch');
+    const continueCheckBlock = this.fnBuilder.createBlock('finally_continue_check');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isBreakReg, targets: [breakDispatchBlock.id, continueCheckBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = breakDispatchBlock;
+    this.emitCompletionTargetDispatch(context, 'break', normalTargetId);
+
+    this.currentBlock = continueCheckBlock;
+    const continueKindReg = this.loadFromLocal(context.completionKindLocal);
+    const continueConstReg = this.emitConstant(ConstantKind.Number, 4);
+    const isContinueReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: continueKindReg },
+        { kind: OperandKind.Register, value: continueConstReg },
+      ],
+      isContinueReg,
+    );
+    const continueDispatchBlock = this.fnBuilder.createBlock('finally_continue_dispatch');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isContinueReg, targets: [continueDispatchBlock.id, normalTargetId] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = continueDispatchBlock;
+    this.emitCompletionTargetDispatch(context, 'continue', normalTargetId);
+  }
+
+  private bindCatchVariable(catchClause: ts.CatchClause, exceptionLocal: Register): void {
+    if (!catchClause.variableDeclaration) {
+      return;
+    }
+    const exceptionValue = this.loadFromLocal(exceptionLocal);
+    if (ts.isIdentifier(catchClause.variableDeclaration.name)) {
+      this.initializeDeclaredIdentifier(catchClause.variableDeclaration.name.text, exceptionValue);
+      return;
+    }
+    this.failUnsupported(catchClause.variableDeclaration.name, 'Catch bindings only support identifiers');
+  }
+
+  private lowerTryCatchStatement(stmt: ts.TryStatement): void {
+    if (!stmt.catchClause) {
+      this.failUnsupported(stmt, 'try without catch requires finally support');
+    }
+
+    const exceptionLocal = this.createTempLocal('try_exception');
+    const tryBlock = this.fnBuilder.createBlock('try_body');
+    const catchBlock = this.fnBuilder.createBlock('try_catch');
+    const endBlock = this.fnBuilder.createBlock('try_end');
+
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [tryBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = tryBlock;
+    this.currentBlock.addInstruction(OpCode.TryCatchBegin, [
+      { kind: OperandKind.BlockLabel, value: catchBlock.id },
+      { kind: OperandKind.BlockLabel, value: catchBlock.id },
+      { kind: OperandKind.Register, value: exceptionLocal },
+    ]);
+    this.visitStatement(stmt.tryBlock);
+    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+    }
+
+    this.currentBlock = catchBlock;
+    this.bindCatchVariable(stmt.catchClause, exceptionLocal);
+    this.visitStatement(stmt.catchClause.block);
+    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+    }
+
+    this.currentBlock = endBlock;
+  }
+
+  private lowerTryFinallyStatement(stmt: ts.TryStatement): void {
+    const finallyBlock = this.fnBuilder.createBlock('try_finally');
+    const afterBlock = this.fnBuilder.createBlock('try_end');
+    const completion = this.createFinallyContext(finallyBlock.id);
+    const tryBlock = this.fnBuilder.createBlock('try_body');
+    const tryExceptionLocal = this.createTempLocal('try_exception');
+    const tryExceptionBlock = this.fnBuilder.createBlock('try_exception');
+    const catchClause = stmt.catchClause;
+    const catchBlock = catchClause ? this.fnBuilder.createBlock('try_catch') : undefined;
+    const catchExceptionLocal = catchClause ? this.createTempLocal('catch_exception') : undefined;
+    const catchExceptionBlock = catchClause ? this.fnBuilder.createBlock('catch_exception') : undefined;
+
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [tryBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = tryBlock;
+    this.currentBlock.addInstruction(OpCode.TryCatchBegin, [
+      { kind: OperandKind.BlockLabel, value: catchBlock?.id ?? tryExceptionBlock.id },
+      { kind: OperandKind.BlockLabel, value: catchBlock?.id ?? tryExceptionBlock.id },
+      { kind: OperandKind.Register, value: tryExceptionLocal },
+    ]);
+    if (catchBlock) {
+      this.withFinallyContext(completion, () => this.withPassthroughThrow(() => this.visitStatement(stmt.tryBlock)));
+    } else {
+      this.withFinallyContext(completion, () => this.visitStatement(stmt.tryBlock));
+    }
+    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+      this.setFinallyCompletion(completion, 0);
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+    }
+
+    if (catchBlock && catchClause && catchExceptionLocal && catchExceptionBlock) {
+      this.currentBlock = catchBlock;
+      this.bindCatchVariable(catchClause, tryExceptionLocal);
+      this.currentBlock.addInstruction(OpCode.TryCatchBegin, [
+        { kind: OperandKind.BlockLabel, value: catchExceptionBlock.id },
+        { kind: OperandKind.BlockLabel, value: catchExceptionBlock.id },
+        { kind: OperandKind.Register, value: catchExceptionLocal },
+      ]);
+      this.withFinallyContext(completion, () => this.visitStatement(catchClause.block));
+      if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+        this.setFinallyCompletion(completion, 0);
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+
+      this.currentBlock = catchExceptionBlock;
+      this.setFinallyCompletion(completion, 2, this.loadFromLocal(catchExceptionLocal));
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+    }
+
+    this.currentBlock = tryExceptionBlock;
+    this.setFinallyCompletion(completion, 2, this.loadFromLocal(tryExceptionLocal));
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = finallyBlock;
+    this.visitStatement(stmt.finallyBlock!);
+    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+      this.emitCompletionDispatch(completion, afterBlock.id);
+    }
+
+    this.currentBlock = afterBlock;
   }
 
   private lowerConditionalExpression(
@@ -953,24 +1495,7 @@ class ASTLowering {
     }
     else if (ts.isVariableStatement(stmt)) {
       stmt.declarationList.declarations.forEach(decl => {
-        if (ts.isIdentifier(decl.name)) {
-          const locReg = this.fnBuilder.addLocal(decl.name.text, IRType.Any);
-          const boxed = this.capturedLocals.has(decl.name.text);
-          this.scope.set(decl.name.text, { register: locReg, boxed });
-          if (decl.initializer) {
-            const valReg = this.visitExpression(decl.initializer);
-            if (boxed) {
-              this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: valReg }], locReg);
-              this.fnBuilder.addCapturedVariable(decl.name.text);
-            } else {
-              this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
-            }
-          } else if (boxed) {
-            const undefReg = this.emitConstant(ConstantKind.Undefined, null);
-            this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], locReg);
-            this.fnBuilder.addCapturedVariable(decl.name.text);
-      }
-    }
+        this.initializeVariableDeclaration(decl);
       });
     }
     else if (ts.isExpressionStatement(stmt)) {
@@ -978,39 +1503,60 @@ class ASTLowering {
     }
     else if (ts.isReturnStatement(stmt)) {
       const valReg = stmt.expression ? this.visitExpression(stmt.expression) : this.emitConstant(ConstantKind.Undefined, null);
-      this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valReg });
-      const nextBlock = this.fnBuilder.createBlock('unreachable');
-      this.fnBuilder.addBlock(this.currentBlock.build());
-      this.currentBlock = nextBlock;
+      if (this.getActiveFinallyContext()) {
+        this.routeAbruptCompletionThroughFinally(1, valReg);
+      } else {
+        this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valReg });
+        const nextBlock = this.fnBuilder.createBlock('unreachable');
+        this.fnBuilder.addBlock(this.currentBlock.build());
+        this.currentBlock = nextBlock;
+      }
+    }
+    else if (ts.isThrowStatement(stmt)) {
+      const valueReg = stmt.expression ? this.visitExpression(stmt.expression) : this.emitConstant(ConstantKind.Undefined, null);
+      if (this.getActiveFinallyContext()) {
+        this.routeAbruptCompletionThroughFinally(2, valueReg);
+      } else {
+        this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
+        const nextBlock = this.fnBuilder.createBlock('unreachable');
+        this.fnBuilder.addBlock(this.currentBlock.build());
+        this.currentBlock = nextBlock;
+      }
+    }
+    else if (ts.isBreakStatement(stmt)) {
+      const target = this.breakTargets[this.breakTargets.length - 1];
+      if (!target) {
+        this.failUnsupported(stmt, 'break used outside a loop or switch');
+      }
+      if (this.getActiveFinallyContext()) {
+        this.routeAbruptCompletionThroughFinally(3, undefined, { kind: 'break', blockId: target });
+      } else {
+        this.emitJumpAndAdvance(target, 'after_break');
+      }
+    }
+    else if (ts.isContinueStatement(stmt)) {
+      const target = this.continueTargets[this.continueTargets.length - 1];
+      if (!target) {
+        this.failUnsupported(stmt, 'continue used outside a loop');
+      }
+      if (this.getActiveFinallyContext()) {
+        this.routeAbruptCompletionThroughFinally(4, undefined, { kind: 'continue', blockId: target });
+      } else {
+        this.emitJumpAndAdvance(target, 'after_continue');
+      }
     }
     else if (ts.isForStatement(stmt)) {
       if (stmt.initializer) {
         if (ts.isVariableDeclarationList(stmt.initializer)) {
-          stmt.initializer.declarations.forEach(decl => {
-            if (ts.isIdentifier(decl.name)) {
-              const locReg = this.fnBuilder.addLocal(decl.name.text, IRType.Any);
-              const boxed = this.capturedLocals.has(decl.name.text);
-              this.scope.set(decl.name.text, { register: locReg, boxed });
-              if (decl.initializer) {
-                const valReg = this.visitExpression(decl.initializer);
-                if (boxed) {
-                  this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: valReg }], locReg);
-                  this.fnBuilder.addCapturedVariable(decl.name.text);
-                } else {
-                  this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: locReg }, { kind: OperandKind.Register, value: valReg }]);
-                }
-              } else if (boxed) {
-                const undefReg = this.emitConstant(ConstantKind.Undefined, null);
-                this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], locReg);
-                this.fnBuilder.addCapturedVariable(decl.name.text);
-              }
-            }
-          });
+          stmt.initializer.declarations.forEach((decl) => this.initializeVariableDeclaration(decl));
+        } else {
+          this.visitExpression(stmt.initializer);
         }
       }
       
       const condBlock = this.fnBuilder.createBlock('for_cond');
       const bodyBlock = this.fnBuilder.createBlock('for_body');
+      const continueBlock = this.fnBuilder.createBlock('for_continue');
       const endBlock = this.fnBuilder.createBlock('for_end');
       
       this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
@@ -1027,14 +1573,225 @@ class ASTLowering {
       this.fnBuilder.addBlock(this.currentBlock.build());
       
       // Body
+      this.enterBreakTarget(endBlock.id);
+      this.enterContinueTarget(continueBlock.id);
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
+      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      if (bodyFallsThrough) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [continueBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+      
+      this.currentBlock = continueBlock;
       if (stmt.incrementor) {
         this.visitExpression(stmt.incrementor);
       }
       this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
+      this.leaveContinueTarget();
+      this.leaveBreakTarget();
       
+      this.currentBlock = endBlock;
+    }
+    else if (ts.isForOfStatement(stmt)) {
+      const iterableReg = this.visitExpression(stmt.expression);
+      const symbolReg = this.resolveVar('Symbol');
+      const iteratorKeyReg = this.emitConstant(ConstantKind.String, 'iterator');
+      const iteratorSymbolReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: symbolReg },
+          { kind: OperandKind.Register, value: iteratorKeyReg },
+        ],
+        iteratorSymbolReg,
+      );
+      const iteratorMethodReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.ComputedGet,
+        [
+          { kind: OperandKind.Register, value: iterableReg },
+          { kind: OperandKind.Register, value: iteratorSymbolReg },
+        ],
+        iteratorMethodReg,
+      );
+      const iteratorLocal = this.createTempLocal('forof_iter');
+      const iteratorReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.CallMethod,
+        [
+          { kind: OperandKind.Register, value: iteratorMethodReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'call') },
+          { kind: OperandKind.Register, value: iterableReg },
+        ],
+        iteratorReg,
+      );
+      this.currentBlock.addInstruction(OpCode.StoreLocal, [
+        { kind: OperandKind.Register, value: iteratorLocal },
+        { kind: OperandKind.Register, value: iteratorReg },
+      ]);
+
+      const stepLocal = this.createTempLocal('forof_step');
+      const condBlock = this.fnBuilder.createBlock('forof_cond');
+      const bodyBlock = this.fnBuilder.createBlock('forof_body');
+      const endBlock = this.fnBuilder.createBlock('forof_end');
+
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+
+      this.currentBlock = condBlock;
+      const liveIteratorReg = this.loadFromLocal(iteratorLocal);
+      const stepReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.CallMethod,
+        [
+          { kind: OperandKind.Register, value: liveIteratorReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'next') },
+        ],
+        stepReg,
+      );
+      this.currentBlock.addInstruction(OpCode.StoreLocal, [
+        { kind: OperandKind.Register, value: stepLocal },
+        { kind: OperandKind.Register, value: stepReg },
+      ]);
+      const doneReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: stepReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'done') },
+        ],
+        doneReg,
+      );
+      this.currentBlock.setTerminator({ kind: 'branch', condition: doneReg, targets: [endBlock.id, bodyBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+
+      this.enterBreakTarget(endBlock.id);
+      this.enterContinueTarget(condBlock.id);
+      this.currentBlock = bodyBlock;
+      const liveStepReg = this.loadFromLocal(stepLocal);
+      const valueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: liveStepReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'value') },
+        ],
+        valueReg,
+      );
+      this.assignLoopBinding(stmt.initializer, valueReg, 'for...of');
+      this.visitStatement(stmt.statement);
+      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      if (bodyFallsThrough) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+      this.leaveContinueTarget();
+      this.leaveBreakTarget();
+
+      this.currentBlock = endBlock;
+    }
+    else if (ts.isForInStatement(stmt)) {
+      const sourceReg = this.visitExpression(stmt.expression);
+      const objectReg = this.resolveVar('Object');
+      const keysReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.CallMethod,
+        [
+          { kind: OperandKind.Register, value: objectReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'keys') },
+          { kind: OperandKind.Register, value: sourceReg },
+        ],
+        keysReg,
+      );
+      const keysLocal = this.createTempLocal('forin_keys');
+      this.currentBlock.addInstruction(OpCode.StoreLocal, [
+        { kind: OperandKind.Register, value: keysLocal },
+        { kind: OperandKind.Register, value: keysReg },
+      ]);
+      const indexLocal = this.createTempLocal('forin_index');
+      const zeroReg = this.emitConstant(ConstantKind.Number, 0);
+      this.currentBlock.addInstruction(OpCode.StoreLocal, [
+        { kind: OperandKind.Register, value: indexLocal },
+        { kind: OperandKind.Register, value: zeroReg },
+      ]);
+
+      const condBlock = this.fnBuilder.createBlock('forin_cond');
+      const bodyBlock = this.fnBuilder.createBlock('forin_body');
+      const continueBlock = this.fnBuilder.createBlock('forin_continue');
+      const endBlock = this.fnBuilder.createBlock('forin_end');
+
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+
+      this.currentBlock = condBlock;
+      const liveKeysReg = this.loadFromLocal(keysLocal);
+      const liveIndexReg = this.loadFromLocal(indexLocal);
+      const lengthReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: liveKeysReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'length') },
+        ],
+        lengthReg,
+      );
+      const condReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.Lt,
+        [
+          { kind: OperandKind.Register, value: liveIndexReg },
+          { kind: OperandKind.Register, value: lengthReg },
+        ],
+        condReg,
+      );
+      this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+
+      this.enterBreakTarget(endBlock.id);
+      this.enterContinueTarget(continueBlock.id);
+      this.currentBlock = bodyBlock;
+      const bodyKeysReg = this.loadFromLocal(keysLocal);
+      const bodyIndexReg = this.loadFromLocal(indexLocal);
+      const keyReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.ComputedGet,
+        [
+          { kind: OperandKind.Register, value: bodyKeysReg },
+          { kind: OperandKind.Register, value: bodyIndexReg },
+        ],
+        keyReg,
+      );
+      this.assignLoopBinding(stmt.initializer, keyReg, 'for...in');
+      this.visitStatement(stmt.statement);
+      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      if (bodyFallsThrough) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [continueBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+
+      this.currentBlock = continueBlock;
+      const continueIndexReg = this.loadFromLocal(indexLocal);
+      const oneReg = this.emitConstant(ConstantKind.Number, 1);
+      const nextIndexReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.Add,
+        [
+          { kind: OperandKind.Register, value: continueIndexReg },
+          { kind: OperandKind.Register, value: oneReg },
+        ],
+        nextIndexReg,
+      );
+      this.currentBlock.addInstruction(OpCode.StoreLocal, [
+        { kind: OperandKind.Register, value: indexLocal },
+        { kind: OperandKind.Register, value: nextIndexReg },
+      ]);
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      this.leaveContinueTarget();
+      this.leaveBreakTarget();
+
       this.currentBlock = endBlock;
     }
     else if (ts.isIfStatement(stmt)) {
@@ -1089,12 +1846,122 @@ class ASTLowering {
       this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
       
+      this.enterBreakTarget(endBlock.id);
+      this.enterContinueTarget(condBlock.id);
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
-      this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
-      this.fnBuilder.addBlock(this.currentBlock.build());
+      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      if (bodyFallsThrough) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+      this.leaveContinueTarget();
+      this.leaveBreakTarget();
       
       this.currentBlock = endBlock;
+    }
+    else if (ts.isDoStatement(stmt)) {
+      const bodyBlock = this.fnBuilder.createBlock('do_body');
+      const condBlock = this.fnBuilder.createBlock('do_cond');
+      const endBlock = this.fnBuilder.createBlock('do_end');
+
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [bodyBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+
+      this.enterBreakTarget(endBlock.id);
+      this.enterContinueTarget(condBlock.id);
+      this.currentBlock = bodyBlock;
+      this.visitStatement(stmt.statement);
+      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      if (bodyFallsThrough) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+
+      this.currentBlock = condBlock;
+      const condReg = this.visitExpression(stmt.expression);
+      this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      this.leaveContinueTarget();
+      this.leaveBreakTarget();
+
+      this.currentBlock = endBlock;
+    }
+    else if (ts.isSwitchStatement(stmt)) {
+      const discriminantReg = this.visitExpression(stmt.expression);
+      const endBlock = this.fnBuilder.createBlock('switch_end');
+      const clauseBlocks = stmt.caseBlock.clauses.map((clause, index) => this.fnBuilder.createBlock(`switch_clause_${index}`));
+      const defaultClauseIndex = stmt.caseBlock.clauses.findIndex((clause) => ts.isDefaultClause(clause));
+
+      this.enterBreakTarget(endBlock.id);
+
+      let checkBlock = this.currentBlock;
+      const caseClauses = stmt.caseBlock.clauses
+        .map((clause, index) => ({ clause, index }))
+        .filter((entry) => ts.isCaseClause(entry.clause));
+      const checkBlocks = caseClauses.slice(1).map((_, index) => this.fnBuilder.createBlock(`switch_check_${index + 1}`));
+
+      if (caseClauses.length === 0) {
+        checkBlock.setTerminator({
+          kind: 'jump',
+          targets: [defaultClauseIndex >= 0 ? clauseBlocks[defaultClauseIndex]!.id : endBlock.id],
+        });
+        this.fnBuilder.addBlock(checkBlock.build());
+      } else {
+        caseClauses.forEach((entry, index) => {
+          const caseBlock = index === 0 ? checkBlock : checkBlocks[index - 1]!;
+          if (index > 0) {
+            this.currentBlock = caseBlock;
+          }
+          const caseValueReg = this.visitExpression((entry.clause as ts.CaseClause).expression);
+          const cmpReg = this.fnBuilder.allocRegister();
+          this.currentBlock.addInstruction(
+            OpCode.StrictEq,
+            [
+              { kind: OperandKind.Register, value: discriminantReg },
+              { kind: OperandKind.Register, value: caseValueReg },
+            ],
+            cmpReg,
+          );
+
+          const falseTarget =
+            index === caseClauses.length - 1
+              ? defaultClauseIndex >= 0
+                ? clauseBlocks[defaultClauseIndex]!.id
+                : endBlock.id
+              : checkBlocks[index]!.id;
+
+          this.currentBlock.setTerminator({
+            kind: 'branch',
+            condition: cmpReg,
+            targets: [clauseBlocks[entry.index]!.id, falseTarget],
+          });
+          this.fnBuilder.addBlock(this.currentBlock.build());
+        });
+      }
+
+      stmt.caseBlock.clauses.forEach((clause, index) => {
+        this.currentBlock = clauseBlocks[index]!;
+        clause.statements.forEach((caseStmt) => this.visitStatement(caseStmt));
+        const fallsThrough = !this.isSyntheticDeadBlock(this.currentBlock)
+          && this.currentBlock.getTerminatorKind() !== 'return'
+          && this.currentBlock.getTerminatorKind() !== 'throw';
+        if (fallsThrough) {
+          const nextTarget = clauseBlocks[index + 1]?.id ?? endBlock.id;
+          this.currentBlock.setTerminator({ kind: 'jump', targets: [nextTarget] });
+          this.fnBuilder.addBlock(this.currentBlock.build());
+        }
+      });
+
+      this.leaveBreakTarget();
+      this.currentBlock = endBlock;
+    }
+    else if (ts.isTryStatement(stmt)) {
+      if (stmt.finallyBlock) {
+        this.lowerTryFinallyStatement(stmt);
+      } else {
+        this.lowerTryCatchStatement(stmt);
+      }
     }
     else {
       this.failUnsupported(stmt);
@@ -1109,40 +1976,74 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
   for (const exp of moduleInfo.exports) modBuilder.addExport(exp);
 
   const sourceFile = ts.createSourceFile(filePath, ts.sys.readFile(filePath) || '', ts.ScriptTarget.ESNext, true);
+  const lowerTopLevelFunction = (functionName: string, functionNode: SupportedFunctionNode, isExported: boolean) => {
+    if (options.skipTopLevelFunctionNames?.has(functionName)) {
+      return;
+    }
+    const jsDoc = ts.getJSDocTags(functionNode);
+    const isVirtualized = options.forceVirtualizeAll
+      || options.forceVirtualizeFunctionNames?.has(functionName)
+      || jsDoc.some((tag) => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
+      || functionName === 'calculateSecretHash'
+      || functionName === 'encryptTEA';
+    const analysis = analyzeFunctionClosures(functionNode, new Set<string>());
+    try {
+      new ASTLowering(modBuilder, functionNode, {
+        name: functionName,
+        isExported,
+        isVirtualized,
+        analysis,
+      });
+    } catch (error) {
+      if (!options.compatibilityFallback) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      const position = sourceFile.getLineAndCharacterOfPosition(functionNode.getStart(sourceFile));
+      options.diagnostics?.push({
+        severity: DiagnosticSeverity.Warning,
+        code: 'IR_UNIVERSAL_FALLBACK',
+        message: `Skipped VM lowering for function "${functionName}" due to unsupported syntax: ${message}`,
+        location: {
+          filePath,
+          line: position.line + 1,
+          column: position.character + 1,
+          offset: functionNode.getStart(sourceFile),
+          length: functionNode.getWidth(sourceFile),
+        },
+      });
+    }
+  };
   
   ts.forEachChild(sourceFile, function visit(node) {
-    if (ts.isFunctionDeclaration(node) && node.name) {
+    if (node.parent === sourceFile && ts.isFunctionDeclaration(node) && node.name) {
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
-      const jsDoc = ts.getJSDocTags(node);
-      const isVirtualized = options.forceVirtualizeAll || jsDoc.some(tag => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
-        || node.name.text === 'calculateSecretHash'
-        || node.name.text === 'encryptTEA';
-      const analysis = analyzeFunctionClosures(node, new Set<string>());
-      try {
-        new ASTLowering(modBuilder, node, {
-          name: node.name.text,
-          isExported,
-          isVirtualized,
-          analysis,
-        });
-      } catch (error) {
-        if (!options.compatibilityFallback) {
-          throw error;
+      lowerTopLevelFunction(node.name.text, node, isExported);
+    } else if (node.parent === sourceFile && ts.isVariableStatement(node)) {
+      const isExported = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+      for (const declaration of node.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+          continue;
         }
-        const message = error instanceof Error ? error.message : String(error);
-        const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-        options.diagnostics?.push({
-          severity: DiagnosticSeverity.Warning,
-          code: 'IR_UNIVERSAL_FALLBACK',
-          message: `Skipped VM lowering for function "${node.name.text}" due to unsupported syntax: ${message}`,
-          location: {
-            filePath,
-            line: position.line + 1,
-            column: position.character + 1,
-            offset: node.getStart(sourceFile),
-            length: node.getWidth(sourceFile),
-          },
-        });
+        if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) {
+          lowerTopLevelFunction(declaration.name.text, declaration.initializer, isExported);
+          continue;
+        }
+        if (options.compatibilityFallback && options.forceVirtualizeAll) {
+          const position = sourceFile.getLineAndCharacterOfPosition(declaration.getStart(sourceFile));
+          options.diagnostics?.push({
+            severity: DiagnosticSeverity.Warning,
+            code: 'IR_UNIVERSAL_FALLBACK',
+            message: `Skipped VM lowering for declaration "${declaration.name.text}" because it is not a function-like initializer`,
+            location: {
+              filePath,
+              line: position.line + 1,
+              column: position.character + 1,
+              offset: declaration.getStart(sourceFile),
+              length: declaration.getWidth(sourceFile),
+            },
+          });
+        }
       }
     }
     ts.forEachChild(node, visit);

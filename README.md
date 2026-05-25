@@ -135,7 +135,11 @@ graph TD
 - Property assignment like `obj.x = y`
 - Computed assignment like `arr[i] = y`
 - Basic `if / else` branch lowering
+- `do / while`, `for`, `for...of`, and `for...in`
+- `break`, `continue`, `switch`, and `throw`
 - `while` loops
+- `try / catch / finally` for synchronous control flow
+- Object and array destructuring declarations with simple default values
 - Prefix unary expressions (e.g. `!x`, `-x`, `~x`, `typeof x`)
 - `delete` operator expressions
 - Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
@@ -152,6 +156,9 @@ graph TD
 - `CellGet`
 - `CellSet`
 - `EnvGet`
+- `Throw`
+- `TryCatchBegin`
+- `TryCatchEnd`
 
 ### Workspace Layout
 
@@ -259,6 +266,7 @@ Notable limits:
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
+- `try / catch / finally` support is currently limited to synchronous control flow, with identifier or no-binding `catch` clauses as the verified path.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
 ## Troubleshooting

@@ -204,7 +204,7 @@ export interface ObfuscationProfile {
   readonly seed: number;
 }
 
-export type FunctionExecutionTier = 'vm_safe' | 'js_lowered' | 'native_fallback';
+export type FunctionExecutionTier = 'vm_safe' | 'js_lowered' | 'unsupported';
 
 export interface FunctionCapabilityReport {
   readonly filePath: string;

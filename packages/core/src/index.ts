@@ -21,6 +21,9 @@
  *   - Polymorphic: opcode mapping, encoding, handler layout all randomized per build
  */
 
+import {
+  DiagnosticSeverity,
+} from '@tsvm/shared';
 import type {
   ObfuscationProfile,
   ProjectSemanticGraph,
@@ -32,7 +35,6 @@ import type {
   PipelineEventHandler,
   PipelineStage,
   Diagnostic,
-  DiagnosticSeverity,
   SeededRandom,
   BenchmarkSuiteResult,
   TransformPass,
@@ -45,6 +47,10 @@ import type {
 import { buildUniversalBundle } from './universal-bundler.js';
 
 export { SeededRandom } from '@tsvm/shared';
+
+function getUniversalOutputExtension(profile: ObfuscationProfile): '.js' | '.mjs' {
+  return profile.target === 'universal' ? '.mjs' : '.js';
+}
 
 // ─────────────────────────────────────────────────────────────
 // Pipeline Configuration
@@ -301,19 +307,45 @@ export class ObfuscationPipeline {
     let irModules: IRModule[];
     let functionReports: FunctionCapabilityReport[] | undefined;
     try {
-      const { analyzeFunctionCapabilities, lowerToIR } = await import('@tsvm/ir');
+      const { analyzeFunctionCapabilities, analyzeTopLevelFunctionCapabilities, lowerToIR } = await import('@tsvm/ir');
       const t0 = Date.now();
       irModules = [];
       if (this.options.profile.target === 'universal') {
         functionReports = [];
       }
       for (const [filePath, moduleInfo] of semanticGraph.modules) {
+        const universalTopLevelReports =
+          this.options.profile.target === 'universal'
+            ? analyzeTopLevelFunctionCapabilities(filePath)
+            : [];
         if (functionReports) {
           functionReports.push(...analyzeFunctionCapabilities(filePath));
         }
+        const forcedVmSafeFunctionNames = new Set(
+          universalTopLevelReports
+            .filter((report) => report.tier === 'vm_safe')
+            .map((report) => report.functionName),
+        );
+        const skippedJsLoweredFunctionNames = new Set(
+          universalTopLevelReports
+            .filter((report) => report.tier === 'js_lowered')
+            .map((report) => report.functionName),
+        );
+        const unsupportedTopLevelReports = universalTopLevelReports.filter((report) => report.tier === 'unsupported');
+        for (const report of unsupportedTopLevelReports) {
+          this.diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: 'UNIVERSAL_UNSUPPORTED_FUNCTION',
+            message: `Universal profile cannot lower function "${report.functionName}" in ${report.filePath}:${report.startLine}:${report.startColumn}: ${report.reasons.join(', ')}`,
+          });
+        }
         const irModule = lowerToIR(moduleInfo, semanticGraph, filePath, {
-          forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program',
-          compatibilityFallback: this.options.profile.virtualization.compatibilityFallback,
+          forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program' && this.options.profile.target !== 'universal',
+          forceVirtualizeFunctionNames: forcedVmSafeFunctionNames,
+          skipTopLevelFunctionNames: skippedJsLoweredFunctionNames,
+          compatibilityFallback: this.options.profile.target === 'universal'
+            ? false
+            : this.options.profile.virtualization.compatibilityFallback,
           diagnostics: this.diagnostics,
         });
         irModules.push(irModule);
@@ -475,7 +507,7 @@ export class ObfuscationPipeline {
       timestamp: startTime,
       profile: this.options.profile,
       inputFiles: Array.from(semanticGraph.modules.keys()),
-      outputFiles: vmBundles.map((b) => `${this.options.outDir}/${b.buildId}.js`),
+      outputFiles: vmBundles.map((b) => `${this.options.outDir}/${b.buildId}${getUniversalOutputExtension(this.options.profile)}`),
       seed: this.options.profile.seed,
       diagnostics: this.diagnostics,
       metrics: [],

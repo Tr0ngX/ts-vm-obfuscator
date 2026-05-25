@@ -168,6 +168,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   
   declareHandler(OpCode.Return, `${readArgs} ctx.returnValue = args.length > 0 ? ctx.regs[args[0]] : undefined; ctx.running = false;`);
   declareHandler(OpCode.ReturnVoid, `${readArgs} ctx.returnValue = undefined; ctx.running = false;`);
+  declareHandler(OpCode.Throw, `${readArgs} throw (args.length > 0 ? ctx.regs[args[0]] : undefined);`);
+  declareHandler(OpCode.TryCatchBegin, `
+    ${readArgs}
+    ctx.tryStack.push({
+      catchPc: args[0],
+      endPc: args[1],
+      exceptionReg: args[2],
+    });
+  `);
+  declareHandler(OpCode.TryCatchEnd, `${readArgs} if (ctx.tryStack.length > 0) { ctx.tryStack.pop(); }`);
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `ctx.running = false;`);
 
@@ -258,6 +268,7 @@ ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join
         globalScope: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
         running: true,
         returnValue: undefined,
+        tryStack: [],
         rollingKey: ${config.rollingKeys ? 'seed & 0xFF' : '0'}
       };
 
@@ -270,9 +281,22 @@ ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join
       
       // Threaded Dispatch Loop
       while(ctx.running && ctx.pc < ctx.bytecode.length) {
+        while (ctx.tryStack.length > 0 && ctx.pc >= ctx.tryStack[ctx.tryStack.length - 1].endPc) {
+          ctx.tryStack.pop();
+        }
         let op = ctx.bytecode[ctx.pc++];
         ${config.rollingKeys ? 'op ^= ctx.rollingKey; ctx.rollingKey = (ctx.rollingKey + op) & 0xFF;' : ''}
-        handlers[op](ctx);
+        try {
+          handlers[op](ctx);
+        } catch (error) {
+          if (ctx.tryStack.length === 0) {
+            throw error;
+          }
+          const handler = ctx.tryStack.pop();
+          ctx.regs[handler.exceptionReg] = error;
+          ctx.running = true;
+          ctx.pc = handler.catchPc;
+        }
       }
       
       return ctx.returnValue;

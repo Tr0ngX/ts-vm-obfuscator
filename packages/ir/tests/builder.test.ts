@@ -113,12 +113,69 @@ describe('IR builder', () => {
     expect(fn!.blocks.some((block) => block.terminator.kind === 'branch')).toBe(true);
   });
 
+  it('lowers do-while, switch, break/continue, and throw', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'control-flow-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'controlFlowPack');
+    const throwing = module.functions.find((candidate) => candidate.name === 'throwingPack');
+
+    expect(fn).toBeDefined();
+    expect(throwing).toBeDefined();
+
+    const controlOpcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(controlOpcodes).toContain(OpCode.StrictEq);
+    expect(controlOpcodes).toContain(OpCode.Add);
+    expect(fn!.blocks.some((block) => block.terminator.kind === 'branch')).toBe(true);
+    expect(fn!.blocks.some((block) => block.label.includes('switch'))).toBe(true);
+
+    expect(throwing!.blocks.some((block) => block.terminator.kind === 'throw')).toBe(true);
+  });
+
+  it('lowers for-of, for-in, and destructuring declarations', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'iteration-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'iterationPack');
+
+    expect(fn).toBeDefined();
+    const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+
+    expect(opcodes).toContain(OpCode.CallMethod);
+    expect(opcodes).toContain(OpCode.ComputedGet);
+    expect(opcodes).toContain(OpCode.PropGet);
+    expect(opcodes).toContain(OpCode.Lt);
+    expect(fn!.blocks.some((block) => block.label.includes('forof'))).toBe(true);
+    expect(fn!.blocks.some((block) => block.label.includes('forin'))).toBe(true);
+  });
+
   it('analyzes function capabilities for universal tiering', () => {
     const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
     const reports = analyzeFunctionCapabilities(filePath);
 
     expect(reports.find((report) => report.functionName === 'supportedAdd')?.tier).toBe('vm_safe');
-    expect(reports.find((report) => report.functionName === 'unsupportedTryCatch')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'unsupportedTryCatch')?.tier).toBe('vm_safe');
+  });
+
+  it('keeps iteration-heavy syntax in vm_safe tier after lowering support is added', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'iteration-pack.ts');
+    const reports = analyzeFunctionCapabilities(filePath);
+
+    expect(reports.find((report) => report.functionName === 'iterationPack')?.tier).toBe('vm_safe');
+  });
+
+  it('lowers try/catch/finally syntax into vm-safe IR', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'exception-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const tryCatchFn = module.functions.find((candidate) => candidate.name === 'tryCatchPack');
+    const tryCatchFinallyFn = module.functions.find((candidate) => candidate.name === 'tryCatchFinallyPack');
+
+    expect(tryCatchFn).toBeDefined();
+    expect(tryCatchFinallyFn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'tryCatchPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'tryCatchFinallyPack')?.tier).toBe('vm_safe');
+    expect(tryCatchFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).toContain(OpCode.TryCatchBegin);
+    expect(tryCatchFn!.blocks.some((block) => block.terminator.kind === 'throw')).toBe(true);
+    expect(tryCatchFinallyFn!.blocks.some((block) => block.label.includes('try_finally'))).toBe(true);
   });
 
   it('skips unsupported functions in compatibility fallback mode', () => {
@@ -131,7 +188,7 @@ describe('IR builder', () => {
     });
 
     expect(module.functions.some((candidate) => candidate.name === 'supportedAdd')).toBe(true);
-    expect(module.functions.some((candidate) => candidate.name === 'unsupportedTryCatch')).toBe(false);
-    expect(diagnostics.some((diag) => diag.code === 'IR_UNIVERSAL_FALLBACK' && diag.severity === DiagnosticSeverity.Warning)).toBe(true);
+    expect(module.functions.some((candidate) => candidate.name === 'unsupportedTryCatch')).toBe(true);
+    expect(diagnostics.some((diag) => diag.code === 'IR_UNIVERSAL_FALLBACK' && diag.severity === DiagnosticSeverity.Warning)).toBe(false);
   });
 });

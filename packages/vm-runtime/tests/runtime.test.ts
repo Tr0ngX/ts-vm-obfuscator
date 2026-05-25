@@ -254,4 +254,102 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('!_isNative(Math.sin)');
     expect(bundle.fullSource).toContain('ctx.globalScope = {};');
   });
+
+  it('should execute the control-flow regression fixture and throw correctly', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'control-flow-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 23,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 23,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.controlFlowPack(6)).toBe(85);
+    expect(moduleShim.exports.controlFlowPack(3)).toBe(43);
+    expect(moduleShim.exports.throwingPack(false)).toBe('ok');
+    expect(() => moduleShim.exports.throwingPack(true)).toThrowError('boom');
+  });
+
+  it('should execute for-of, for-in, and destructuring through the VM runtime', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'iteration-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 29,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 29,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.iterationPack(['go', 'skip', 'stop', 'tail'], { alpha: 2, beta: 3 })).toBe('gostop:11:go:skip:2:3');
+  });
+
+  it('should execute try/catch/finally semantics through the VM runtime', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'exception-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 31,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 31,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.tryCatchPack(false)).toBe('ok');
+    expect(moduleShim.exports.tryCatchPack(true)).toBe('boom');
+    expect(moduleShim.exports.tryFinallyPack(2)).toBe(3);
+    expect(moduleShim.exports.tryCatchFinallyPack(false)).toBe('clean');
+    expect(moduleShim.exports.tryCatchFinallyPack(true)).toBe('boom');
+    expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
+  });
 });

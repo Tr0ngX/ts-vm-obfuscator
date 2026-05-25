@@ -59,8 +59,9 @@ export function createProgram() {
         }
 
         if (result.vmBundles) {
+          const outputExtension = profile.target === 'universal' ? '.mjs' : '.js';
           for (const bundle of result.vmBundles) {
-            const filePath = path.join(outDir, `${bundle.buildId}.js`);
+            const filePath = path.join(outDir, `${bundle.buildId}${outputExtension}`);
             await fs.writeFile(filePath, bundle.fullSource, 'utf-8');
           }
         }

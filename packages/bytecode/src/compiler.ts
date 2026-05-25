@@ -115,6 +115,14 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               opcode: OpCode.Return,
               operands: ops
             });
+          } else if (block.terminator.kind === 'throw') {
+            const ops = block.terminator.returnValue
+              ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }]
+              : [];
+            flatInsts.push({
+              opcode: OpCode.Throw,
+              operands: ops,
+            });
           }
         }
       }
@@ -249,6 +257,14 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
                (ops[3] as any).value = instRollingKey[targetTrueIdx]!;
                (ops[4] as any).value = instRollingKey[targetFalseIdx]!;
              }
+          }
+        } else {
+          for (const op of inst.operands) {
+            if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
+              const targetIdx = blockInstIndices.get(op.value as string)!;
+              (op as any).value = instByteOffset[targetIdx]!;
+              (op as any).kind = OperandKind.Immediate;
+            }
           }
         }
       }

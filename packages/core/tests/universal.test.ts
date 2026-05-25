@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { ObfuscationPipeline, createDefaultProfile } from '../src/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe('universal profile', () => {
-  it('builds a compatibility bundle that preserves lowered and fallback exports', async () => {
+  it('builds an ESM universal bundle that preserves vm-safe and js-lowered exports', async () => {
     const fixtureRoot = path.join(__dirname, 'fixtures', 'universal-project');
     const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tsvm-universal-'));
     const pipeline = new ObfuscationPipeline({
@@ -21,15 +21,23 @@ describe('universal profile', () => {
 
     expect(result.success).toBe(true);
     expect(result.vmBundles?.length).toBe(1);
-    expect(result.functionReports?.some((report) => report.functionName === 'switchTry' && report.tier === 'js_lowered')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'vmArrow' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'switchTry' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'destructured' && report.tier === 'js_lowered')).toBe(true);
+    expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
+    expect(result.vmBundles![0]!.fullSource.includes('module.exports')).toBe(false);
+    expect(result.vmBundles![0]!.fullSource.includes('Object.assign(__nativeModule.exports')).toBe(false);
+    expect(result.vmBundles![0]!.fullSource.includes('const __nativeModule')).toBe(false);
 
-    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
-    new Function('module', result.vmBundles![0]!.fullSource)(moduleShim);
+    const bundlePath = path.join(outDir, `${result.vmBundles![0]!.buildId}.mjs`);
+    await fs.writeFile(bundlePath, result.vmBundles![0]!.fullSource, 'utf-8');
+    const imported = await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`) as Record<string, (...args: any[]) => any>;
 
-    expect(moduleShim.exports.vmAdd(2, 3)).toBe(5);
-    expect(moduleShim.exports.switchTry(1)).toBe('one');
-    expect(moduleShim.exports.switchTry(7)).toBe('other');
-    expect(moduleShim.exports.destructured({ a: 2 }, 3, 4, 5)).toBe(12);
+    expect(imported.vmAdd(2, 3)).toBe(5);
+    expect(imported.vmArrow(4, 5)).toBe(21);
+    expect(imported.switchTry(1)).toBe('one');
+    expect(imported.switchTry(7)).toBe('other');
+    expect(imported.destructured({ a: 2 }, 3, 4, 5)).toBe(12);
+    expect(imported.lifted({ value: 2 })).toBe(5);
   });
 });
