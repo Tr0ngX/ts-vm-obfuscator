@@ -16,8 +16,6 @@ const VM_BLOCKERS = new Set<ts.SyntaxKind>([
   ts.SyntaxKind.JsxExpression,
   ts.SyntaxKind.JsxOpeningElement,
   ts.SyntaxKind.JsxClosingElement,
-  ts.SyntaxKind.SpreadElement,
-  ts.SyntaxKind.SpreadAssignment,
 ]);
 
 type SupportedFunctionNode =
@@ -95,23 +93,6 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
 
   if (node.body) {
     ts.forEachChild(node.body, visit);
-  }
-
-  for (const param of node.parameters) {
-    if (param.dotDotDotToken) {
-      syntaxKinds.add('RestParameter');
-      reasons.add('uses rest parameters');
-      if (tier === 'vm_safe') {
-        tier = 'js_lowered';
-      }
-    }
-    if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-      syntaxKinds.add(ts.SyntaxKind[param.name.kind]);
-      reasons.add(`uses parameter ${ts.SyntaxKind[param.name.kind]}`);
-      if (tier === 'vm_safe') {
-        tier = 'js_lowered';
-      }
-    }
   }
 
   const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));

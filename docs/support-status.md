@@ -25,7 +25,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Control flow | `switch` | `Fully Supported` | Routed as `vm_safe` on the verified path. |
 | Control flow | `throw` | `Fully Supported` | VM runtime executes explicit throws correctly. |
 | Control flow | `try / catch / finally` | `Supported With Limits` | Verified only for synchronous flow. |
-| Control flow | `catch` binding | `Supported With Limits` | Verified for identifier binding or no-binding `catch`. |
+| Control flow | `catch` binding | `Fully Supported` | Verified for identifier, no-binding, and destructured catch bindings on the VM path. |
 | Data / objects | array literals | `Fully Supported` | Includes indexed reads and writes on verified path. |
 | Data / objects | object literals, shorthand props, object-literal methods | `Supported With Limits` | Common forms are covered; not every property form is modeled yet. |
 | Data / objects | property access / element access | `Fully Supported` | Verified in lowering and runtime fixtures. |
@@ -36,9 +36,9 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Expressions | `new` | `Fully Supported` | VM runtime includes constructor path. |
 | Iteration | `for...of` | `Fully Supported` | Verified in runtime fixture. |
 | Iteration | `for...in` | `Fully Supported` | Verified in runtime fixture. |
-| Bindings | object/array destructuring declarations | `Supported With Limits` | Verified for declarations with simple default values. |
-| Bindings | destructuring assignment | `In Progress / Not Yet Stable` | Not part of the fully verified VM path yet. |
-| Bindings | rest/spread on VM path | `In Progress / Not Yet Stable` | Broad lowering is not complete yet. |
+| Bindings | object/array destructuring declarations | `Fully Supported` | Verified for declarations, loop bindings, and simple default values. |
+| Bindings | destructuring assignment | `Fully Supported` | Verified for array/object assignments, simple nesting, and default values. |
+| Bindings | rest/spread on VM path | `Fully Supported` | Verified for object/array rest binding, rest parameters, and spread in literals plus call/new arguments. |
 | Functions | nested `FunctionExpression` / `ArrowFunction` / local `FunctionDeclaration` / object-literal `MethodDeclaration` | `Fully Supported` | Compiled as nested VM functions. |
 | Closures | lexical capture of outer locals | `Supported With Limits` | Correct, but captured bindings are boxed and add targeted overhead. |
 | Semantics | `this` | `Supported With Limits` | Not part of the fully verified VM-safe surface yet. |

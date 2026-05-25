@@ -23,7 +23,8 @@ describe('universal profile', () => {
     expect(result.vmBundles?.length).toBe(1);
     expect(result.functionReports?.some((report) => report.functionName === 'vmArrow' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'switchTry' && report.tier === 'vm_safe')).toBe(true);
-    expect(result.functionReports?.some((report) => report.functionName === 'destructured' && report.tier === 'js_lowered')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'destructured' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'lifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
     expect(result.vmBundles![0]!.fullSource.includes('module.exports')).toBe(false);
     expect(result.vmBundles![0]!.fullSource.includes('Object.assign(__nativeModule.exports')).toBe(false);

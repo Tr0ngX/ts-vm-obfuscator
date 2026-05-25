@@ -293,6 +293,10 @@ export enum OpCode {
   CellGet = 0x48,
   CellSet = 0x49,
   EnvGet = 0x4A,
+  CallWithArray = 0x4B,
+  CallMethodWithArray = 0x4C,
+  NewWithArray = 0x4D,
+  RestArgs = 0x4E,
 
   // Object/Array
   PropGet = 0x50,

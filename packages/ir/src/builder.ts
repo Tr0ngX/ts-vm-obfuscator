@@ -37,6 +37,11 @@ interface LocalBinding {
   readonly boxed: boolean;
 }
 
+interface PendingParameterBinding {
+  readonly param: ts.ParameterDeclaration;
+  readonly register: Register;
+}
+
 type CompletionKind = 0 | 1 | 2 | 3 | 4;
 
 interface FinallyCompletionTarget {
@@ -95,11 +100,21 @@ function isIdentifierReference(node: ts.Identifier): boolean {
 
 function collectFunctionLocalNames(node: SupportedFunctionNode): Set<string> {
   const names = new Set<string>();
+  const collectBindingNames = (bindingName: ts.BindingName) => {
+    if (ts.isIdentifier(bindingName)) {
+      names.add(bindingName.text);
+      return;
+    }
+    for (const element of bindingName.elements) {
+      if (ts.isOmittedExpression(element)) {
+        continue;
+      }
+      collectBindingNames(element.name);
+    }
+  };
 
   node.parameters.forEach((param) => {
-    if (ts.isIdentifier(param.name)) {
-      names.add(param.name.text);
-    }
+    collectBindingNames(param.name);
   });
   if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) {
     names.add(node.name.text);
@@ -109,8 +124,11 @@ function collectFunctionLocalNames(node: SupportedFunctionNode): Set<string> {
     if (current !== node && isNestedFunctionLike(current)) {
       return;
     }
-    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
-      names.add(current.name.text);
+    if (ts.isVariableDeclaration(current)) {
+      collectBindingNames(current.name);
+    }
+    if (ts.isCatchClause(current) && current.variableDeclaration) {
+      collectBindingNames(current.variableDeclaration.name);
     }
     ts.forEachChild(current, visit);
   };
@@ -180,6 +198,7 @@ class ASTLowering {
   private readonly continueTargets: string[] = [];
   private readonly finallyContexts: FinallyContext[] = [];
   private throwPassthroughFinallyDepth = 0;
+  private readonly pendingParameterBindings: PendingParameterBinding[] = [];
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
@@ -202,13 +221,18 @@ class ASTLowering {
       this.fnBuilder.addCapturedVariable(name);
     });
 
-    node.parameters.forEach(p => {
-      if (ts.isIdentifier(p.name)) {
-        const reg = this.fnBuilder.addParam(p.name.text, IRType.Any);
-        this.scope.set(p.name.text, { register: reg, boxed: this.capturedLocals.has(p.name.text) });
+    node.parameters.forEach((param, index) => {
+      const isPlainIdentifier = ts.isIdentifier(param.name) && !param.dotDotDotToken && !param.initializer;
+      const paramName = isPlainIdentifier ? param.name.text : `$param_${index}`;
+      const reg = this.fnBuilder.addParam(paramName, IRType.Any, !!param.dotDotDotToken);
+      if (isPlainIdentifier && ts.isIdentifier(param.name)) {
+        this.scope.set(param.name.text, { register: reg, boxed: this.capturedLocals.has(param.name.text) });
+      } else {
+        this.pendingParameterBindings.push({ param, register: reg });
       }
     });
     this.boxCapturedParameters();
+    this.lowerPendingParameterBindings();
 
     if (node.body) {
       if (ts.isBlock(node.body)) {
@@ -306,6 +330,20 @@ class ASTLowering {
         this.fnBuilder.addCapturedVariable(name);
       }
     }
+  }
+
+  private lowerPendingParameterBindings(): void {
+    this.pendingParameterBindings.forEach(({ param, register }, index) => {
+      let valueReg = param.dotDotDotToken ? this.emitRestArgs(index) : this.loadFromLocal(register);
+      valueReg = this.applyDefaultValue(valueReg, param.initializer);
+
+      if (ts.isIdentifier(param.name)) {
+        this.initializeDeclaredIdentifier(param.name.text, valueReg);
+        return;
+      }
+
+      this.bindPattern(param.name, valueReg, 'declare');
+    });
   }
 
   private loadOuterCaptureCell(name: string): Register {
@@ -433,6 +471,7 @@ class ASTLowering {
   }
 
   private storeValue(target: ts.Expression, valueReg: Register): void {
+    target = this.normalizeExpression(target);
     if (ts.isIdentifier(target)) {
       if (this.scope.has(target.text)) {
         const binding = this.scope.get(target.text)!;
@@ -473,6 +512,16 @@ class ASTLowering {
         { kind: OperandKind.Register, value: indexReg },
         { kind: OperandKind.Register, value: valueReg },
       ]);
+      return;
+    }
+
+    if (ts.isArrayLiteralExpression(target)) {
+      this.storeArrayPattern(target, valueReg);
+      return;
+    }
+
+    if (ts.isObjectLiteralExpression(target)) {
+      this.storeObjectPattern(target, valueReg);
       return;
     }
 
@@ -561,8 +610,8 @@ class ASTLowering {
     }
   }
 
-  private materializeBindingElementValue(element: ts.BindingElement, sourceReg: Register): Register {
-    if (!element.initializer) {
+  private applyDefaultValue(sourceReg: Register, initializer?: ts.Expression): Register {
+    if (!initializer) {
       return sourceReg;
     }
 
@@ -578,21 +627,64 @@ class ASTLowering {
     );
     return this.lowerConditionalExpression(
       isUndefinedReg,
-      () => this.visitExpression(element.initializer!),
+      () => this.visitExpression(initializer),
       () => sourceReg,
     );
   }
 
-  private bindPattern(bindingName: ts.BindingName, sourceReg: Register): void {
+  private materializeBindingElementValue(element: ts.BindingElement, sourceReg: Register): Register {
+    return this.applyDefaultValue(sourceReg, element.initializer);
+  }
+
+  private emitRestArgs(startIndex: number): Register {
+    const destReg = this.fnBuilder.allocRegister();
+    const indexReg = this.emitConstant(ConstantKind.Number, startIndex);
+    this.currentBlock.addInstruction(OpCode.RestArgs, [{ kind: OperandKind.Register, value: indexReg }], destReg);
+    return destReg;
+  }
+
+  private emitArraySlice(sourceReg: Register, startIndex: number): Register {
+    const destReg = this.fnBuilder.allocRegister();
+    const indexReg = this.emitConstant(ConstantKind.Number, startIndex);
+    this.currentBlock.addInstruction(
+      OpCode.CallMethod,
+      [
+        { kind: OperandKind.Register, value: sourceReg },
+        { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'slice') },
+        { kind: OperandKind.Register, value: indexReg },
+      ],
+      destReg,
+    );
+    return destReg;
+  }
+
+  private emitSpreadInto(targetReg: Register, sourceReg: Register): void {
+    this.currentBlock.addInstruction(
+      OpCode.Spread,
+      [
+        { kind: OperandKind.Register, value: targetReg },
+        { kind: OperandKind.Register, value: sourceReg },
+      ],
+    );
+  }
+
+  private bindPattern(bindingName: ts.BindingName, sourceReg: Register, mode: 'declare' | 'assign' = 'declare'): void {
     if (ts.isIdentifier(bindingName)) {
-      this.initializeDeclaredIdentifier(bindingName.text, sourceReg);
+      if (mode === 'declare') {
+        this.initializeDeclaredIdentifier(bindingName.text, sourceReg);
+      } else {
+        this.storeValue(bindingName, sourceReg);
+      }
       return;
     }
 
     if (ts.isObjectBindingPattern(bindingName)) {
+      let restElement: ts.BindingElement | undefined;
+      const excludedKeys: string[] = [];
       for (const element of bindingName.elements) {
         if (element.dotDotDotToken) {
-          this.failUnsupported(element, 'Object rest binding is not supported yet');
+          restElement = element;
+          continue;
         }
         const propertyName = element.propertyName ?? element.name;
         const keyText =
@@ -602,6 +694,7 @@ class ASTLowering {
         if (!keyText) {
           this.failUnsupported(propertyName, 'Unsupported object binding property name');
         }
+        excludedKeys.push(keyText);
         const keyReg = this.emitConstant(ConstantKind.String, keyText);
         const valueReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(
@@ -612,7 +705,19 @@ class ASTLowering {
           ],
           valueReg,
         );
-        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg));
+        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg), mode);
+      }
+      if (restElement) {
+        const restReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.ObjectNew, [], restReg);
+        this.emitSpreadInto(restReg, sourceReg);
+        excludedKeys.forEach((key) => {
+          this.currentBlock.addInstruction(OpCode.Delete, [
+            { kind: OperandKind.Register, value: restReg },
+            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, key) },
+          ]);
+        });
+        this.bindPattern(restElement.name, restReg, mode);
       }
       return;
     }
@@ -623,7 +728,8 @@ class ASTLowering {
           return;
         }
         if (element.dotDotDotToken) {
-          this.failUnsupported(element, 'Array rest binding is not supported yet');
+          this.bindPattern(element.name, this.emitArraySlice(sourceReg, index), mode);
+          return;
         }
         const indexReg = this.emitConstant(ConstantKind.Number, index);
         const valueReg = this.fnBuilder.allocRegister();
@@ -635,7 +741,7 @@ class ASTLowering {
           ],
           valueReg,
         );
-        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg));
+        this.bindPattern(element.name, this.materializeBindingElementValue(element, valueReg), mode);
       });
       return;
     }
@@ -652,7 +758,7 @@ class ASTLowering {
     if (initializerReg === undefined) {
       this.failUnsupported(decl.name, 'Destructuring declarations require an initializer');
     }
-    this.bindPattern(decl.name, initializerReg);
+    this.bindPattern(decl.name, initializerReg, 'declare');
   }
 
   private assignLoopBinding(initializer: ts.ForInitializer | ts.ForInOrOfStatement['initializer'], valueReg: Register, loopKind: string): void {
@@ -668,7 +774,7 @@ class ASTLowering {
         this.initializeDeclaredIdentifier(decl.name.text, valueReg);
         return;
       }
-      this.bindPattern(decl.name, valueReg);
+      this.bindPattern(decl.name, valueReg, 'declare');
       return;
     }
 
@@ -901,11 +1007,7 @@ class ASTLowering {
       return;
     }
     const exceptionValue = this.loadFromLocal(exceptionLocal);
-    if (ts.isIdentifier(catchClause.variableDeclaration.name)) {
-      this.initializeDeclaredIdentifier(catchClause.variableDeclaration.name.text, exceptionValue);
-      return;
-    }
-    this.failUnsupported(catchClause.variableDeclaration.name, 'Catch bindings only support identifiers');
+    this.bindPattern(catchClause.variableDeclaration.name, exceptionValue, 'declare');
   }
 
   private lowerTryCatchStatement(stmt: ts.TryStatement): void {
@@ -1300,17 +1402,25 @@ class ASTLowering {
       const arrayReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(OpCode.ArrayNew, [], arrayReg);
 
-      expr.elements.forEach((element, index) => {
-        if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) {
-          this.failUnsupported(element, 'Spread elements and sparse array holes are not supported yet');
+      expr.elements.forEach((element) => {
+        if (ts.isOmittedExpression(element)) {
+          this.failUnsupported(element, 'Sparse array holes are not supported yet');
         }
-        const indexReg = this.emitConstant(ConstantKind.Number, index);
+        if (ts.isSpreadElement(element)) {
+          const spreadReg = this.visitExpression(element.expression);
+          this.emitSpreadInto(arrayReg, spreadReg);
+          return;
+        }
         const valueReg = this.visitExpression(element);
-        this.currentBlock.addInstruction(OpCode.ComputedSet, [
-          { kind: OperandKind.Register, value: arrayReg },
-          { kind: OperandKind.Register, value: indexReg },
-          { kind: OperandKind.Register, value: valueReg },
-        ]);
+        this.currentBlock.addInstruction(
+          OpCode.CallMethod,
+          [
+            { kind: OperandKind.Register, value: arrayReg },
+            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'push') },
+            { kind: OperandKind.Register, value: valueReg },
+          ],
+          this.fnBuilder.allocRegister(),
+        );
       });
 
       return arrayReg;
@@ -1353,6 +1463,12 @@ class ASTLowering {
           continue;
         }
 
+        if (ts.isSpreadAssignment(property)) {
+          const valueReg = this.visitExpression(property.expression);
+          this.emitSpreadInto(objectReg, valueReg);
+          continue;
+        }
+
         this.failUnsupported(property, 'Unsupported object literal property kind');
       }
 
@@ -1360,8 +1476,36 @@ class ASTLowering {
     }
 
     if (ts.isCallExpression(expr)) {
-      const args = expr.arguments.map(a => this.visitExpression(a));
       const resReg = this.fnBuilder.allocRegister();
+      const hasSpread = expr.arguments.some((arg) => ts.isSpreadElement(arg));
+      if (hasSpread) {
+        const argArrayReg = this.materializeArgumentArray(expr.arguments);
+        if (ts.isPropertyAccessExpression(expr.expression)) {
+          const objReg = this.visitExpression(expr.expression.expression);
+          const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
+          this.currentBlock.addInstruction(
+            OpCode.CallMethodWithArray,
+            [
+              { kind: OperandKind.Register, value: objReg },
+              { kind: OperandKind.Register, value: propReg },
+              { kind: OperandKind.Register, value: argArrayReg },
+            ],
+            resReg,
+          );
+          return resReg;
+        }
+        const calleeReg = this.visitExpression(expr.expression);
+        this.currentBlock.addInstruction(
+          OpCode.CallWithArray,
+          [
+            { kind: OperandKind.Register, value: calleeReg },
+            { kind: OperandKind.Register, value: argArrayReg },
+          ],
+          resReg,
+        );
+        return resReg;
+      }
+      const args = expr.arguments.map(a => this.visitExpression(a));
       
       if (ts.isPropertyAccessExpression(expr.expression)) {
         const objReg = this.visitExpression(expr.expression.expression);
@@ -1385,8 +1529,21 @@ class ASTLowering {
 
     if (ts.isNewExpression(expr)) {
       const calleeReg = this.visitExpression(expr.expression);
-      const args = (expr.arguments ?? []).map((arg) => this.visitExpression(arg));
       const resReg = this.fnBuilder.allocRegister();
+      const argsList = expr.arguments ? [...expr.arguments] : [];
+      if (argsList.some((arg) => ts.isSpreadElement(arg))) {
+        const argArrayReg = this.materializeArgumentArray(argsList);
+        this.currentBlock.addInstruction(
+          OpCode.NewWithArray,
+          [
+            { kind: OperandKind.Register, value: calleeReg },
+            { kind: OperandKind.Register, value: argArrayReg },
+          ],
+          resReg,
+        );
+        return resReg;
+      }
+      const args = argsList.map((arg) => this.visitExpression(arg));
       const ops: Operand[] = [
         { kind: OperandKind.Register, value: calleeReg },
         ...args.map((arg) => ({ kind: OperandKind.Register, value: arg } as Operand)),
@@ -1472,6 +1629,109 @@ class ASTLowering {
       return name.text;
     }
     this.failUnsupported(name, 'Unsupported property name');
+  }
+
+  private materializeArgumentArray(args: readonly ts.Expression[]): Register {
+    const arrayReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.ArrayNew, [], arrayReg);
+    args.forEach((arg) => {
+      if (ts.isSpreadElement(arg)) {
+        const spreadReg = this.visitExpression(arg.expression);
+        this.emitSpreadInto(arrayReg, spreadReg);
+        return;
+      }
+      const valueReg = this.visitExpression(arg);
+      this.currentBlock.addInstruction(
+        OpCode.CallMethod,
+        [
+          { kind: OperandKind.Register, value: arrayReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'push') },
+          { kind: OperandKind.Register, value: valueReg },
+        ],
+        this.fnBuilder.allocRegister(),
+      );
+    });
+    return arrayReg;
+  }
+
+  private parseAssignmentTargetWithDefault(expr: ts.Expression): { target: ts.Expression; initializer?: ts.Expression } {
+    const normalized = this.normalizeExpression(expr);
+    if (ts.isBinaryExpression(normalized) && normalized.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      return { target: normalized.left as ts.Expression, initializer: normalized.right };
+    }
+    return { target: normalized };
+  }
+
+  private storeArrayPattern(target: ts.ArrayLiteralExpression, sourceReg: Register): void {
+    target.elements.forEach((element, index) => {
+      if (ts.isOmittedExpression(element)) {
+        return;
+      }
+      if (ts.isSpreadElement(element)) {
+        this.storeValue(element.expression, this.emitArraySlice(sourceReg, index));
+        return;
+      }
+      const { target: nestedTarget, initializer } = this.parseAssignmentTargetWithDefault(element);
+      const valueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.ComputedGet,
+        [
+          { kind: OperandKind.Register, value: sourceReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.Number, index) },
+        ],
+        valueReg,
+      );
+      this.storeValue(nestedTarget, this.applyDefaultValue(valueReg, initializer));
+    });
+  }
+
+  private storeObjectPattern(target: ts.ObjectLiteralExpression, sourceReg: Register): void {
+    const excludedKeys: string[] = [];
+    let restTarget: ts.Expression | undefined;
+
+    for (const property of target.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        restTarget = property.expression;
+        continue;
+      }
+
+      if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
+        this.failUnsupported(property, 'Unsupported object assignment target');
+      }
+
+      const keyText = this.getPropertyNameText(property.name);
+      excludedKeys.push(keyText);
+      const valueReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: sourceReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, keyText) },
+        ],
+        valueReg,
+      );
+
+      if (ts.isShorthandPropertyAssignment(property)) {
+        this.storeValue(property.name, this.applyDefaultValue(valueReg, property.objectAssignmentInitializer));
+        continue;
+      }
+
+      const { target: nestedTarget, initializer } = this.parseAssignmentTargetWithDefault(property.initializer);
+      this.storeValue(nestedTarget, this.applyDefaultValue(valueReg, initializer));
+    }
+
+    if (restTarget) {
+      const restReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(OpCode.ObjectNew, [], restReg);
+      this.emitSpreadInto(restReg, sourceReg);
+      excludedKeys.forEach((key) => {
+        this.currentBlock.addInstruction(OpCode.Delete, [
+          { kind: OperandKind.Register, value: restReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, key) },
+        ]);
+      });
+      this.storeValue(restTarget, restReg);
+    }
   }
 
   private visitStatement(stmt: ts.Statement) {

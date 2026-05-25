@@ -153,7 +153,7 @@ describe('VM Runtime', () => {
 
   it('should execute closures with shared captured state', () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'nested-closures.ts');
-    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
     const bytecode = compileToBytecode(ir, {
       opcodeRemapping: true,
       immediateEncoding: ImmediateEncodingScheme.VariableLength,
@@ -210,6 +210,40 @@ describe('VM Runtime', () => {
 
     expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
     expect(moduleShim.exports.syntaxPack(false, null)).toBe('no:ANON:empty:1');
+  });
+
+  it('should execute binding-pack fixtures with destructuring, rest/spread, and catch binding', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'binding-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 23,
+    });
+    const bundle = buildVMRuntime(bytecode, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 23,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.bindingPack({ a: 7, b: undefined, extra: 11, drop: 2 }, [3, 5, 8])).toBe('boom:detail:3:7:6:5,8:5:13:3');
+    expect(moduleShim.exports.parameterPack({ a: 2 }, 4, 6, 8)).toBe(13);
+    expect(moduleShim.exports.arrayPatternArrow([9, 10, 11])).toBe(11);
+    expect(moduleShim.exports.callSpreadPack(3, [4, 5])).toBe(19);
+    expect(moduleShim.exports.catchPack(true)).toBe('boom:2');
   });
 
   it('should inject anti-debug and tamper logic when enabled', () => {

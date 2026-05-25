@@ -126,9 +126,26 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.CellGet, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]].v;`);
   declareHandler(OpCode.CellSet, `${readArgs} ctx.regs[args[0]].v = ctx.regs[args[1]];`);
   declareHandler(OpCode.EnvGet, `${readArgs} ctx.regs[args[1]] = ctx.env[args[0]];`);
+  declareHandler(OpCode.RestArgs, `${readArgs} ctx.regs[args[1]] = ctx.fnArgs.slice(ctx.regs[args[0]]);`);
   declareHandler(OpCode.ClosureNew, `
     ${readArgs}
     ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);
+  `);
+  declareHandler(OpCode.Spread, `
+    ${readArgs}
+    var spreadTarget = ctx.regs[args[0]];
+    var spreadSource = ctx.regs[args[1]];
+    if (Array.isArray(spreadTarget)) {
+      for (var si = 0; si < spreadSource.length; si++) {
+        spreadTarget.push(spreadSource[si]);
+      }
+    } else if (spreadSource != null) {
+      var spreadKeys = Object.keys(spreadSource);
+      for (var ski = 0; ski < spreadKeys.length; ski++) {
+        var spreadKey = spreadKeys[ski];
+        spreadTarget[spreadKey] = spreadSource[spreadKey];
+      }
+    }
   `);
   
   declareHandler(OpCode.CallMethod, `
@@ -150,6 +167,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
     ctx.regs[args[args.length - 1]] = fn.apply(null, callArgs2);
   `);
+  declareHandler(OpCode.CallWithArray, `
+    ${readArgs}
+    var fnArray = ctx.regs[args[0]];
+    ctx.regs[args[2]] = fnArray.apply(null, ctx.regs[args[1]]);
+  `);
+  declareHandler(OpCode.CallMethodWithArray, `
+    ${readArgs}
+    var methodObj = ctx.regs[args[0]];
+    var methodFn = methodObj[ctx.regs[args[1]]];
+    ctx.regs[args[3]] = methodFn.apply(methodObj, ctx.regs[args[2]]);
+  `);
   declareHandler(OpCode.New, `
     ${readArgs}
     var ctor = ctx.regs[args[0]];
@@ -160,6 +188,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ctx.regs[args[args.length - 1]] = typeof Reflect !== 'undefined' && Reflect.construct
       ? Reflect.construct(ctor, ctorArgs)
       : new (Function.prototype.bind.apply(ctor, [null].concat(ctorArgs)))();
+  `);
+  declareHandler(OpCode.NewWithArray, `
+    ${readArgs}
+    var ctorArray = ctx.regs[args[0]];
+    var ctorArrayArgs = ctx.regs[args[1]];
+    ctx.regs[args[2]] = typeof Reflect !== 'undefined' && Reflect.construct
+      ? Reflect.construct(ctorArray, ctorArrayArgs)
+      : new (Function.prototype.bind.apply(ctorArray, [null].concat(ctorArrayArgs)))();
   `);
   
   declareHandler(OpCode.Jmp, `${readArgs} ctx.pc = args[0]; ${config.rollingKeys ? 'ctx.rollingKey = args[1];' : ''}`);
@@ -219,7 +255,7 @@ const vmFunctions = (function() {
   function getCP(index) {
     if (cpCache.has(index)) return cpCache.get(index);
     let c = rawCP[index];
-    let val = c.value;
+    let val = c.kind === 'undefined' ? undefined : c.value;
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
       let decoded = '';
       for (let i = 0; i < val.length; i++) {
@@ -264,6 +300,7 @@ ${module.functions.map(fn => `    '${fn.id}': new Uint8Array([${fn.bytecode.join
         pc: 0,
         bytecode: bytecodeArr,
         regs: new Array(256).fill(undefined),
+        fnArgs,
         env: envArr || [],
         globalScope: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
         running: true,

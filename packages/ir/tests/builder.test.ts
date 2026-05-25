@@ -178,6 +178,33 @@ describe('IR builder', () => {
     expect(tryCatchFinallyFn!.blocks.some((block) => block.label.includes('try_finally'))).toBe(true);
   });
 
+  it('lowers the binding pack into vm-safe IR', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'binding-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'bindingPack');
+    const paramFn = module.functions.find((candidate) => candidate.name === 'parameterPack');
+    const arrowFn = module.functions.find((candidate) => candidate.name === 'arrayPatternArrow');
+
+    expect(fn).toBeDefined();
+    expect(paramFn).toBeDefined();
+    expect(arrowFn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'bindingPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'parameterPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'arrayPatternArrow')?.tier).toBe('vm_safe');
+
+    const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(opcodes).toContain(OpCode.ArrayNew);
+    expect(opcodes).toContain(OpCode.ObjectNew);
+    expect(opcodes).toContain(OpCode.ComputedGet);
+    expect(opcodes).toContain(OpCode.ComputedSet);
+    expect(opcodes).toContain(OpCode.PropGet);
+    expect(opcodes).toContain(OpCode.PropSet);
+    expect(opcodes).toContain(OpCode.CallMethod);
+    expect(opcodes).toContain(OpCode.Spread);
+    expect(fn!.blocks.some((block) => block.label.includes('try_catch'))).toBe(true);
+  });
+
   it('skips unsupported functions in compatibility fallback mode', () => {
     const filePath = path.join(__dirname, 'fixtures', 'mixed-support.ts');
     const diagnostics: Diagnostic[] = [];

@@ -140,6 +140,9 @@ graph TD
 - `while` loops
 - `try / catch / finally` for synchronous control flow
 - Object and array destructuring declarations with simple default values
+- Destructuring assignment for verified array/object forms, including defaults and simple nesting
+- Object/array rest binding, parameter destructuring, and rest parameters
+- Spread in array/object literals and in call/new argument lists
 - Prefix unary expressions (e.g. `!x`, `-x`, `~x`, `typeof x`)
 - `delete` operator expressions
 - Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
