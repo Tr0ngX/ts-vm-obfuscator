@@ -7,7 +7,10 @@ type SupportedFunctionNode =
   | ts.FunctionDeclaration
   | ts.FunctionExpression
   | ts.ArrowFunction
-  | ts.MethodDeclaration;
+  | ts.MethodDeclaration
+  | ts.GetAccessorDeclaration
+  | ts.SetAccessorDeclaration
+  | ts.ConstructorDeclaration;
 
 interface LoweringOptions {
   readonly name: string;
@@ -16,6 +19,7 @@ interface LoweringOptions {
   readonly analysis: ClosureAnalysis;
   readonly attributes?: readonly FunctionAttribute[];
   readonly isNested?: boolean;
+  readonly prologueEmitter?: ((lowering: ASTLowering) => void) | undefined;
 }
 
 export interface LowerToIROptions {
@@ -58,6 +62,38 @@ interface FinallyContext {
   readonly targets: FinallyCompletionTarget[];
 }
 
+interface NormalizedComputedName {
+  readonly bindingName: string;
+  readonly expression: ts.Expression;
+}
+
+interface NormalizedClassMethodElement {
+  readonly kind: 'constructor' | 'method' | 'getter' | 'setter';
+  readonly node: ts.ConstructorDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration;
+  readonly isStatic: boolean;
+  readonly keyName?: string;
+  readonly computedBindingName?: string;
+}
+
+interface NormalizedClassFieldElement {
+  readonly kind: 'field';
+  readonly node: ts.PropertyDeclaration;
+  readonly isStatic: boolean;
+  readonly keyName?: string;
+  readonly computedBindingName?: string;
+}
+
+type NormalizedClassElement = NormalizedClassMethodElement | NormalizedClassFieldElement;
+
+interface NormalizedClass {
+  readonly bindingName?: string;
+  readonly restoreBinding?: LocalBinding;
+  readonly constructorElement?: NormalizedClassMethodElement;
+  readonly computedNames: readonly NormalizedComputedName[];
+  readonly instanceElements: readonly NormalizedClassElement[];
+  readonly staticElements: readonly NormalizedClassElement[];
+}
+
 const LEXICAL_THIS_CAPTURE = '$$vm_lexical_this';
 const LEXICAL_NEW_TARGET_CAPTURE = '$$vm_lexical_new_target';
 
@@ -68,7 +104,15 @@ function pushUnique(target: string[], value: string): void {
 }
 
 function isNestedFunctionLike(node: ts.Node): node is SupportedFunctionNode {
-  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isConstructorDeclaration(node)
+  );
 }
 
 function isTypePosition(node: ts.Node): boolean {
@@ -264,6 +308,7 @@ class ASTLowering {
     this.boxCapturedParameters();
     this.lowerPendingParameterBindings();
     this.initializeLexicalSemanticCaptures(options.analysis);
+    options.prologueEmitter?.(this);
 
     if (node.body) {
       if (ts.isBlock(node.body)) {
@@ -506,27 +551,260 @@ class ASTLowering {
     return this.resolveVar(name);
   }
 
-  private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
-    const nestedName = this.createNestedFunctionName();
-    const availableOuterNames = this.getAvailableOuterCaptureNames();
-    const analysis = analyzeFunctionClosures(expr, availableOuterNames);
+  private collectReferencedOuterNames(nodes: readonly ts.Node[], availableOuterNames: ReadonlySet<string>): string[] {
+    const referenced = new Set<string>();
+    const visit = (node: ts.Node) => {
+      if (ts.isIdentifier(node) && availableOuterNames.has(node.text)) {
+        referenced.add(node.text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    nodes.forEach((node) => visit(node));
+    return [...referenced];
+  }
+
+  private getFunctionAttributes(node: SupportedFunctionNode): FunctionAttribute[] {
     const attributes: FunctionAttribute[] = [];
-    if (expr.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
+    if (node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
       attributes.push(FunctionAttribute.Async);
     }
-    if (ts.isArrowFunction(expr)) {
+    if (ts.isArrowFunction(node)) {
       attributes.push(FunctionAttribute.Arrow);
     }
-    if (ts.isMethodDeclaration(expr)) {
+    if (ts.isMethodDeclaration(node)) {
       attributes.push(FunctionAttribute.Method);
     }
+    if (ts.isGetAccessorDeclaration(node)) {
+      attributes.push(FunctionAttribute.Getter);
+    }
+    if (ts.isSetAccessorDeclaration(node)) {
+      attributes.push(FunctionAttribute.Setter);
+    }
+    if (ts.isConstructorDeclaration(node)) {
+      attributes.push(FunctionAttribute.Constructor);
+    }
+    if (node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) {
+      attributes.push(FunctionAttribute.Static);
+    }
+    return attributes;
+  }
+
+  private normalizeClassLike(node: ts.ClassDeclaration | ts.ClassExpression): NormalizedClass {
+    if (node.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) {
+      this.failUnsupported(node, 'class extends is not supported on the vm-safe path');
+    }
+
+    const computedNames: NormalizedComputedName[] = [];
+    const instanceElements: NormalizedClassElement[] = [];
+    const staticElements: NormalizedClassElement[] = [];
+    let constructorElement: NormalizedClassMethodElement | undefined;
+
+    const pushElement = (element: NormalizedClassElement) => {
+      if (element.kind === 'constructor') {
+        if (constructorElement) {
+          this.failUnsupported(element.node, 'multiple constructors are not supported');
+        }
+        constructorElement = element;
+        instanceElements.push(element);
+        return;
+      }
+      if (element.isStatic) {
+        staticElements.push(element);
+      } else {
+        instanceElements.push(element);
+      }
+    };
+
+    for (const member of node.members) {
+      if (ts.isSemicolonClassElement(member)) {
+        continue;
+      }
+      if (ts.isClassStaticBlockDeclaration(member)) {
+        this.failUnsupported(member, 'static blocks are not supported on the vm-safe path');
+      }
+      if ('name' in member && member.name && ts.isPrivateIdentifier(member.name)) {
+        this.failUnsupported(member.name, 'private class elements are not supported on the vm-safe path');
+      }
+      const modifiers = ts.canHaveModifiers(member) ? ts.getModifiers(member) ?? [] : [];
+      if (ts.isPropertyDeclaration(member) && modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)) {
+        continue;
+      }
+
+      const isStatic = modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+      const computedBindingName =
+        'name' in member && member.name && ts.isComputedPropertyName(member.name)
+          ? this.createSyntheticBindingName('class_key')
+          : undefined;
+
+      if (computedBindingName && 'name' in member && member.name && ts.isComputedPropertyName(member.name)) {
+        computedNames.push({
+          bindingName: computedBindingName,
+          expression: member.name.expression,
+        });
+      }
+
+      const keyName =
+        'name' in member && member.name && !ts.isComputedPropertyName(member.name)
+          ? this.getPropertyNameText(member.name)
+          : undefined;
+
+      if (ts.isConstructorDeclaration(member)) {
+        if (member.parameters.some((parameter) => parameter.modifiers?.length)) {
+          this.failUnsupported(member, 'parameter properties are not supported on the vm-safe path');
+        }
+        pushElement({
+          kind: 'constructor',
+          node: member,
+          isStatic: false,
+        });
+        continue;
+      }
+
+      if (ts.isMethodDeclaration(member)) {
+        pushElement({
+          kind: 'method',
+          node: member,
+          isStatic,
+          keyName,
+          computedBindingName,
+        });
+        continue;
+      }
+
+      if (ts.isGetAccessorDeclaration(member)) {
+        pushElement({
+          kind: 'getter',
+          node: member,
+          isStatic,
+          keyName,
+          computedBindingName,
+        });
+        continue;
+      }
+
+      if (ts.isSetAccessorDeclaration(member)) {
+        pushElement({
+          kind: 'setter',
+          node: member,
+          isStatic,
+          keyName,
+          computedBindingName,
+        });
+        continue;
+      }
+
+      if (ts.isPropertyDeclaration(member)) {
+        pushElement({
+          kind: 'field',
+          node: member,
+          isStatic,
+          keyName,
+          computedBindingName,
+        });
+        continue;
+      }
+
+      this.failUnsupported(member, 'unsupported class element');
+    }
+
+    return {
+      bindingName: node.name?.text,
+      constructorElement,
+      computedNames,
+      instanceElements,
+      staticElements,
+    };
+  }
+
+  private lowerClassConstructor(
+    normalized: NormalizedClass,
+    availableOuterNames: ReadonlySet<string>,
+    classDisplayName: string,
+  ): Register {
+    const instanceFields = normalized.instanceElements.filter(
+      (element): element is NormalizedClassFieldElement => element.kind === 'field',
+    );
+    const explicitCtor = normalized.constructorElement?.kind === 'constructor' ? normalized.constructorElement.node : undefined;
+    const ctorNode: SupportedFunctionNode = explicitCtor
+      ?? ts.factory.createFunctionExpression(undefined, undefined, undefined, undefined, [], undefined, ts.factory.createBlock([], true));
+
+    const fieldInitializerNodes = instanceFields.flatMap((field) => {
+      const nodes: ts.Node[] = [];
+      if (field.node.initializer) {
+        nodes.push(field.node.initializer);
+      }
+      return nodes;
+    });
+    const computedFieldCaptureNames = instanceFields
+      .map((field) => field.computedBindingName)
+      .filter((name): name is string => !!name);
+    const extraCapturedFromOuter = [
+      ...this.collectReferencedOuterNames(fieldInitializerNodes, availableOuterNames),
+      ...computedFieldCaptureNames,
+    ];
+    const analysisBase = analyzeFunctionClosures(ctorNode, new Set<string>(availableOuterNames));
+    const analysis: ClosureAnalysis = {
+      ...analysisBase,
+      capturedFromOuter: [...new Set([...analysisBase.capturedFromOuter, ...extraCapturedFromOuter])],
+    };
+
+    const nestedName = this.createNestedFunctionName();
+    const nestedLowering = new ASTLowering(this.modBuilder, ctorNode, {
+      name: nestedName,
+      isExported: false,
+      isVirtualized: true,
+      analysis,
+      attributes: [FunctionAttribute.Constructor],
+      isNested: true,
+      prologueEmitter: (lowering) => {
+        lowering.emitClassConstructorGuard(classDisplayName);
+        lowering.emitInstanceFieldInitializers(instanceFields);
+      },
+    });
+    const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
+    const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
+    const closureReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.ClosureNew,
+      [
+        { kind: OperandKind.ConstantIndex, value: functionIdIndex },
+        { kind: OperandKind.Register, value: envReg },
+      ],
+      closureReg,
+    );
+    return closureReg;
+  }
+
+  private lowerNestedFunctionLike(
+    expr: SupportedFunctionNode,
+    explicitName?: string,
+    overrides?: {
+      readonly extraCapturedFromOuter?: readonly string[];
+      readonly attributes?: readonly FunctionAttribute[];
+      readonly prologueEmitter?: ((lowering: ASTLowering) => void) | undefined;
+      readonly availableOuterNames?: ReadonlySet<string>;
+    },
+  ): Register {
+    const nestedName = explicitName ?? this.createNestedFunctionName();
+    const availableOuterNames = overrides?.availableOuterNames ?? this.getAvailableOuterCaptureNames();
+    const baseAnalysis = analyzeFunctionClosures(expr, new Set<string>(availableOuterNames));
+    const analysis: ClosureAnalysis = {
+      ...baseAnalysis,
+      capturedFromOuter: [
+        ...new Set([
+          ...baseAnalysis.capturedFromOuter,
+          ...(overrides?.extraCapturedFromOuter ?? []),
+        ]),
+      ],
+    };
     const nestedLowering = new ASTLowering(this.modBuilder, expr, {
       name: nestedName,
       isExported: false,
       isVirtualized: true,
       analysis,
-      attributes,
+      attributes: [...this.getFunctionAttributes(expr), ...(overrides?.attributes ?? [])],
       isNested: true,
+      prologueEmitter: overrides?.prologueEmitter,
     });
     const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
     const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
@@ -540,6 +818,182 @@ class ASTLowering {
       closureReg
     );
     return closureReg;
+  }
+
+  private emitClassMethodOrAccessorDescriptor(
+    targetReg: Register,
+    keyReg: Register,
+    computed: boolean,
+    element: NormalizedClassMethodElement,
+    fnReg: Register,
+  ): void {
+    const descriptorReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.ObjectNew, [], descriptorReg);
+    const enumerableReg = this.emitConstant(ConstantKind.Boolean, false);
+    const configurableReg = this.emitConstant(ConstantKind.Boolean, true);
+    this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'enumerable'), enumerableReg, false);
+    this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'configurable'), configurableReg, false);
+
+    if (element.kind === 'method' || element.kind === 'constructor') {
+      const writableReg = this.emitConstant(ConstantKind.Boolean, true);
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'writable'), writableReg, false);
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'value'), fnReg, false);
+      this.emitDefineProperty(targetReg, keyReg, descriptorReg);
+      return;
+    }
+
+    const existingDescriptorReg = this.buildAccessorDescriptorSource(targetReg, keyReg, computed);
+    const accessorValueReg = this.fnBuilder.allocRegister();
+    if (element.kind === 'getter') {
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'get'), fnReg, false);
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: existingDescriptorReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'set') },
+        ],
+        accessorValueReg,
+      );
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'set'), accessorValueReg, false);
+    } else {
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'set'), fnReg, false);
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: existingDescriptorReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'get') },
+        ],
+        accessorValueReg,
+      );
+      this.emitObjectPropertyWrite(descriptorReg, this.emitConstant(ConstantKind.String, 'get'), accessorValueReg, false);
+    }
+    this.emitDefineProperty(targetReg, keyReg, descriptorReg);
+  }
+
+  private lowerClassLike(node: ts.ClassDeclaration | ts.ClassExpression, classBindingNameOverride?: string): Register {
+    const normalized = this.normalizeClassLike(node);
+    const classBindingName = classBindingNameOverride ?? normalized.bindingName;
+
+    let classBinding: LocalBinding | undefined;
+    let restoreBinding: LocalBinding | undefined;
+    if (classBindingName) {
+      if (classBindingNameOverride && classBindingNameOverride === normalized.bindingName) {
+        restoreBinding = this.scope.get(classBindingName);
+        classBinding = this.declareForcedBoxedIdentifier(classBindingName);
+      } else if (this.scope.has(classBindingName)) {
+        classBinding = this.scope.get(classBindingName);
+      } else {
+        classBinding = this.declareForcedBoxedIdentifier(classBindingName);
+      }
+    }
+
+    for (const computedName of normalized.computedNames) {
+      this.declareForcedBoxedIdentifier(computedName.bindingName);
+      const valueReg = this.visitExpression(computedName.expression);
+      this.initializeDeclaredIdentifier(computedName.bindingName, valueReg);
+    }
+
+    const availableOuterNames = this.getAvailableOuterCaptureNames();
+    const ctorReg = this.lowerClassConstructor(normalized, availableOuterNames, classBindingName ?? '<anonymous>');
+    if (classBindingName) {
+      this.initializeDeclaredIdentifier(classBindingName, ctorReg);
+    }
+
+    const prototypeReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.PropGet,
+      [
+        { kind: OperandKind.Register, value: ctorReg },
+        { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'prototype') },
+      ],
+      prototypeReg,
+    );
+
+    for (const element of normalized.instanceElements) {
+      if (element.kind === 'field' || element.kind === 'constructor') {
+        continue;
+      }
+      const methodReg = this.lowerNestedFunctionLike(element.node, undefined, { availableOuterNames });
+      const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(prototypeReg, key.register, key.computed, element, methodReg);
+    }
+
+    for (const element of normalized.staticElements) {
+      if (element.kind === 'field') {
+        const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
+        const valueReg = element.node.initializer
+          ? this.visitExpression(element.node.initializer)
+          : this.emitConstant(ConstantKind.Undefined, null);
+        this.emitObjectPropertyWrite(ctorReg, key.register, valueReg, key.computed);
+        continue;
+      }
+      const methodReg = this.lowerNestedFunctionLike(element.node, undefined, { availableOuterNames });
+      const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(ctorReg, key.register, key.computed, element, methodReg);
+    }
+
+    if (restoreBinding) {
+      this.scope.set(classBindingName!, restoreBinding);
+    } else if (classBindingNameOverride && classBindingNameOverride === normalized.bindingName) {
+      this.scope.delete(classBindingName!);
+    }
+
+    return ctorReg;
+  }
+
+  private emitClassConstructorGuard(classDisplayName: string): void {
+    const newTargetReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.LoadNewTarget, [], newTargetReg);
+    const undefinedReg = this.emitConstant(ConstantKind.Undefined, null);
+    const isUndefinedReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: newTargetReg },
+        { kind: OperandKind.Register, value: undefinedReg },
+      ],
+      isUndefinedReg,
+    );
+    const throwBlock = this.fnBuilder.createBlock('class_ctor_throw');
+    const continueBlock = this.fnBuilder.createBlock('class_ctor_continue');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isUndefinedReg, targets: [throwBlock.id, continueBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = throwBlock;
+    const typeErrorReg = this.resolveVar('TypeError');
+    const messageReg = this.emitConstant(ConstantKind.String, `Class constructor ${classDisplayName} cannot be invoked without 'new'`);
+    const errorReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.New,
+      [
+        { kind: OperandKind.Register, value: typeErrorReg },
+        { kind: OperandKind.Register, value: messageReg },
+      ],
+      errorReg,
+    );
+    this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: errorReg });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = continueBlock;
+  }
+
+  private emitInstanceFieldInitializers(fields: readonly NormalizedClassFieldElement[]): void {
+    if (fields.length === 0) {
+      return;
+    }
+    const thisReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
+    for (const field of fields) {
+      const key = this.getPropertyKeyRegister(field.keyName, field.computedBindingName);
+      const valueReg = field.node.initializer
+        ? this.visitExpression(field.node.initializer)
+        : this.emitConstant(ConstantKind.Undefined, null);
+      this.emitObjectPropertyWrite(thisReg, key.register, valueReg, key.computed);
+    }
+  }
+
+  private lowerNestedFunction(expr: ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration): Register {
+    return this.lowerNestedFunctionLike(expr);
   }
 
   private buildClosureEnvironment(capturedNames: readonly string[]): Register {
@@ -563,7 +1017,10 @@ class ASTLowering {
     const localBinding = this.scope.get(name);
     if (localBinding) {
       if (!localBinding.boxed) {
-        this.failUnsupported(this.findIdentifierNode(name) ?? this.node, `Closure capture expected boxed local "${name}"`);
+        this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: localBinding.register }], localBinding.register);
+        this.scope.set(name, { register: localBinding.register, boxed: true });
+        this.fnBuilder.addCapturedVariable(name);
+        return localBinding.register;
       }
       return localBinding.register;
     }
@@ -678,6 +1135,10 @@ class ASTLowering {
     return this.fnBuilder.addLocal(`$${prefix}_${this.tempLocalCount++}`, IRType.Any);
   }
 
+  private createSyntheticBindingName(prefix: string): string {
+    return `$$${prefix}_${this.tempLocalCount++}`;
+  }
+
   private declareScopedIdentifier(name: string): LocalBinding {
     const existing = this.scope.get(name);
     if (existing) {
@@ -688,6 +1149,110 @@ class ASTLowering {
     const binding = { register, boxed };
     this.scope.set(name, binding);
     return binding;
+  }
+
+  private declareForcedBoxedIdentifier(name: string): LocalBinding {
+    const register = this.fnBuilder.addLocal(name, IRType.Any, true);
+    const binding = { register, boxed: true } as const;
+    this.scope.set(name, binding);
+    const undefReg = this.emitConstant(ConstantKind.Undefined, null);
+    this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], binding.register);
+    this.fnBuilder.addCapturedVariable(name);
+    return binding;
+  }
+
+  private withTemporaryBinding<T>(name: string, callback: () => T): { readonly result: T; readonly binding: LocalBinding; readonly restoreBinding?: LocalBinding } {
+    const restoreBinding = this.scope.get(name);
+    const binding = this.declareForcedBoxedIdentifier(name);
+    const result = callback();
+    if (restoreBinding) {
+      this.scope.set(name, restoreBinding);
+    } else {
+      this.scope.delete(name);
+    }
+    return { result, binding, restoreBinding };
+  }
+
+  private getPropertyKeyRegister(keyName?: string, computedBindingName?: string): { readonly register: Register; readonly computed: boolean } {
+    if (computedBindingName) {
+      return {
+        register: this.resolveVar(computedBindingName),
+        computed: true,
+      };
+    }
+    if (keyName === undefined) {
+      this.failUnsupported(this.node, 'Missing class element key');
+    }
+    return {
+      register: this.emitConstant(ConstantKind.String, keyName),
+      computed: false,
+    };
+  }
+
+  private buildAccessorDescriptorSource(targetReg: Register, keyReg: Register, computed: boolean): Register {
+    const descriptorReg = this.fnBuilder.allocRegister();
+    const objectReg = this.resolveVar('Object');
+    const descriptorMethod = this.emitConstant(ConstantKind.String, 'getOwnPropertyDescriptor');
+    const callArgs: Operand[] = [
+      { kind: OperandKind.Register, value: objectReg },
+      { kind: OperandKind.Register, value: descriptorMethod },
+      { kind: OperandKind.Register, value: targetReg },
+      { kind: OperandKind.Register, value: keyReg },
+    ];
+    this.currentBlock.addInstruction(OpCode.CallMethod, callArgs, descriptorReg);
+    const descriptorLocal = this.createTempLocal('accessor_desc');
+    this.storeToLocal(descriptorLocal, descriptorReg);
+    const undefinedReg = this.emitConstant(ConstantKind.Undefined, null);
+    const isUndefinedReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(
+      OpCode.StrictEq,
+      [
+        { kind: OperandKind.Register, value: descriptorReg },
+        { kind: OperandKind.Register, value: undefinedReg },
+      ],
+      isUndefinedReg,
+    );
+    const undefinedBlock = this.fnBuilder.createBlock('accessor_desc_undefined');
+    const endBlock = this.fnBuilder.createBlock('accessor_desc_end');
+    this.currentBlock.setTerminator({ kind: 'branch', condition: isUndefinedReg, targets: [undefinedBlock.id, endBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = undefinedBlock;
+    const emptyDescriptorReg = this.fnBuilder.allocRegister();
+    this.currentBlock.addInstruction(OpCode.ObjectNew, [], emptyDescriptorReg);
+    this.storeToLocal(descriptorLocal, emptyDescriptorReg);
+    this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
+    this.fnBuilder.addBlock(this.currentBlock.build());
+
+    this.currentBlock = endBlock;
+    return this.loadFromLocal(descriptorLocal);
+  }
+
+  private emitObjectPropertyWrite(targetReg: Register, keyReg: Register, valueReg: Register, computed: boolean): void {
+    this.currentBlock.addInstruction(
+      computed ? OpCode.ComputedSet : OpCode.PropSet,
+      [
+        { kind: OperandKind.Register, value: targetReg },
+        { kind: OperandKind.Register, value: keyReg },
+        { kind: OperandKind.Register, value: valueReg },
+      ],
+    );
+  }
+
+  private emitDefineProperty(targetReg: Register, keyReg: Register, descriptorReg: Register): void {
+    const objectReg = this.resolveVar('Object');
+    const definePropertyReg = this.emitConstant(ConstantKind.String, 'defineProperty');
+    this.currentBlock.addInstruction(
+      OpCode.CallMethod,
+      [
+        { kind: OperandKind.Register, value: objectReg },
+        { kind: OperandKind.Register, value: definePropertyReg },
+        { kind: OperandKind.Register, value: targetReg },
+        { kind: OperandKind.Register, value: keyReg },
+        { kind: OperandKind.Register, value: descriptorReg },
+      ],
+      this.fnBuilder.allocRegister(),
+    );
   }
 
   private initializeDeclaredIdentifier(name: string, initializerReg?: Register): void {
@@ -1361,36 +1926,7 @@ class ASTLowering {
   }
 
   private lowerNestedFunctionNode(expr: SupportedFunctionNode, explicitName?: string): Register {
-    const nestedName = explicitName ?? this.createNestedFunctionName();
-    const availableOuterNames = this.getAvailableOuterCaptureNames();
-    const analysis = analyzeFunctionClosures(expr, availableOuterNames);
-    const attributes: FunctionAttribute[] = [];
-    if (ts.isArrowFunction(expr)) {
-      attributes.push(FunctionAttribute.Arrow);
-    }
-    if (ts.isMethodDeclaration(expr)) {
-      attributes.push(FunctionAttribute.Method);
-    }
-    const nestedLowering = new ASTLowering(this.modBuilder, expr, {
-      name: nestedName,
-      isExported: false,
-      isVirtualized: true,
-      analysis,
-      attributes,
-      isNested: true,
-    });
-    const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
-    const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
-    const closureReg = this.fnBuilder.allocRegister();
-    this.currentBlock.addInstruction(
-      OpCode.ClosureNew,
-      [
-        { kind: OperandKind.ConstantIndex, value: functionIdIndex },
-        { kind: OperandKind.Register, value: envReg },
-      ],
-      closureReg
-    );
-    return closureReg;
+    return this.lowerNestedFunctionLike(expr, explicitName);
   }
 
   private visitExpression(expr: ts.Expression): Register {
@@ -1758,6 +2294,10 @@ class ASTLowering {
       return this.lowerNestedFunctionNode(expr);
     }
 
+    if (ts.isClassExpression(expr)) {
+      return this.lowerClassLike(expr, expr.name?.text);
+    }
+
     if (ts.isPostfixUnaryExpression(expr)) {
       if (expr.operator === ts.SyntaxKind.PlusPlusToken) {
         if (ts.isIdentifier(expr.operand)) {
@@ -1954,6 +2494,9 @@ class ASTLowering {
           { kind: OperandKind.Register, value: closureReg },
         ]);
       }
+    }
+    else if (ts.isClassDeclaration(stmt) && stmt.name) {
+      this.lowerClassLike(stmt);
     }
     else if (ts.isVariableStatement(stmt)) {
       stmt.declarationList.declarations.forEach(decl => {

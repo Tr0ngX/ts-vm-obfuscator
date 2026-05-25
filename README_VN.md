@@ -145,6 +145,7 @@ graph TD
 - Verified `async/await` cho async function declarations và async arrows
 - Biểu thức Prefix unary (ví dụ `!x`, `-x`, `~x`, `typeof x`)
 - Biểu thức toán tử `delete`
+- Base `class` declarations và `class` expressions không có `extends`, gồm constructor, methods, accessors, public fields, static fields, và computed names
 - `this` và `new.target` cho regular function path, constructor-style VM execution, và nested arrows capture lexical semantics
 - `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, và `MethodDeclaration` trong object literal
 - True lexical closures cho outer locals đã capture thông qua cell boxing và closure environment
@@ -279,7 +280,7 @@ Một số giới hạn cần biết:
 - Closure support đã đúng ngữ nghĩa cho captured outer locals, nhưng các binding bị capture sẽ phải đi qua boxing nên có overhead cục bộ.
 - `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` mới chỉ được verify cho subset async hiện tại; generators và async generators vẫn chưa có VM path.
 - `this` và `new.target` đã được verify cho regular function path, constructor-style VM execution, và nested arrows có enclosing function context để capture lexical semantics. Top-level arrows không có lexical provider vẫn chưa nằm trong `vm_safe`.
-- `super`, classes / class expressions, generators / `yield`, và decorators vẫn đang ở ngoài verified VM path.
+- Base `class` declarations và `class` expressions đã được verify trên VM path, nhưng chỉ cho các case không có `extends` / `super`. Derived classes, private elements, static blocks, generators / `yield`, và decorators vẫn đang ở ngoài verified VM path.
 - `apps/visualizer` hiện vẫn là bản demo chưa kết nối thực tế với runtime gốc.
 
 ## Xử Lý Sự Cố (Troubleshooting)

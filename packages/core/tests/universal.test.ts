@@ -30,6 +30,7 @@ describe('universal profile', () => {
     expect(result.functionReports?.some((report) => report.functionName === 'ctorAware' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'lexicalThisLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'lexicalCtorLifted' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'classLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'asyncVm' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.some((report) => report.functionName === 'asyncLifted' && report.tier === 'vm_safe')).toBe(true);
     expect(result.functionReports?.every((report) => report.tier !== 'unsupported')).toBe(true);
@@ -56,6 +57,7 @@ describe('universal profile', () => {
     expect(imported.lexicalThisLifted('hello')).toBe('hello:none');
     expect(new (imported.lexicalCtorLifted as new (value: number) => { value: number })(7).value).toBe(7);
     expect(imported.lexicalCtorLifted(7)).toBe(6);
+    expect(imported.classLifted(4)).toBe('Local:6');
     await expect(imported.asyncVm(4)).resolves.toBe(12);
     await expect(imported.asyncLifted(4)).resolves.toBe(15);
   });

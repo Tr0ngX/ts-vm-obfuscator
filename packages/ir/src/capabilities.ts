@@ -3,8 +3,6 @@ import type { FunctionCapabilityReport, FunctionExecutionTier } from '@tsvm/shar
 
 const VM_BLOCKERS = new Set<ts.SyntaxKind>([
   ts.SyntaxKind.DebuggerStatement,
-  ts.SyntaxKind.ClassDeclaration,
-  ts.SyntaxKind.ClassExpression,
   ts.SyntaxKind.SuperKeyword,
   ts.SyntaxKind.WithStatement,
   ts.SyntaxKind.YieldExpression,
@@ -84,6 +82,32 @@ function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
   return !ts.isArrowFunction(enclosing) || hasLexicalNewTargetProvider(enclosing);
 }
 
+function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): string[] {
+  const reasons = new Set<string>();
+  if (node.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) {
+    reasons.add('class uses extends');
+  }
+
+  const visit = (current: ts.Node) => {
+    if (current.kind === ts.SyntaxKind.SuperKeyword) {
+      reasons.add('class contains super');
+    }
+    if (ts.isPrivateIdentifier(current)) {
+      reasons.add('class contains private identifier');
+    }
+    if (ts.isClassStaticBlockDeclaration(current)) {
+      reasons.add('class contains static block');
+    }
+    if (ts.isConstructorDeclaration(current) && current.parameters.some((parameter) => parameter.modifiers?.length)) {
+      reasons.add('class uses parameter properties');
+    }
+    ts.forEachChild(current, visit);
+  };
+
+  node.members.forEach((member) => visit(member));
+  return [...reasons];
+}
+
 function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceFile): FunctionCapabilityReport {
   const syntaxKinds = new Set<string>();
   const reasons = new Set<string>();
@@ -101,6 +125,15 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
       if (tier === 'vm_safe') {
         tier = 'js_lowered';
       } 
+    }
+
+    if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+      syntaxKinds.add(ts.SyntaxKind[current.kind]);
+      const classReasons = analyzeClassSupport(current);
+      classReasons.forEach((reason) => reasons.add(reason));
+      if (tier === 'vm_safe' && classReasons.length > 0) {
+        tier = 'js_lowered';
+      }
     }
 
     if (ts.isAwaitExpression(current)) {

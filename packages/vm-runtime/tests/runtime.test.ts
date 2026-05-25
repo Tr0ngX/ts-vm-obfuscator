@@ -385,6 +385,18 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.lexicalNewTargetArrowHost(9)).toBe(8);
   });
 
+  it('should execute base class semantics without extends through the VM runtime', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'class-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(71));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(71));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.classPack(4)).toBe('2:Named:7:Named:10:6:20');
+  });
+
   it('should execute verified async/await functions through the VM runtime', async () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-pack.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });

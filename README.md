@@ -146,6 +146,7 @@ graph TD
 - Verified async/await lowering for async function declarations and async arrows
 - Prefix unary expressions (e.g. `!x`, `-x`, `~x`, `typeof x`)
 - `delete` operator expressions
+- Base `class` declarations and `class` expressions without `extends`, including constructors, methods, accessors, public fields, static fields, and computed names
 - Nested `FunctionExpression`, `ArrowFunction`, and object-literal `MethodDeclaration`
 - True lexical closures for captured outer locals via boxed cells and closure environments
 - Runtime `this` and `new.target` for verified function/constructor paths, plus lexical capture for nested arrows
@@ -280,7 +281,7 @@ Notable limits:
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
 - `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified only for the current async-function subset; generators and async generators are still outside the VM path.
 - `this` and `new.target` are verified for regular function paths, constructor-style VM execution, and nested arrows that capture them lexically from an enclosing function context. Top-level arrows without an enclosing lexical provider are still kept off the `vm_safe` path.
-- `super`, classes / class expressions, generators / `yield`, and decorators are still outside the verified VM path.
+- Base `class` declarations and `class` expressions are now verified on the VM path, but only without `extends` / `super`. Derived classes, private elements, static blocks, generators / `yield`, and decorators are still outside the verified VM path.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
 ## Troubleshooting

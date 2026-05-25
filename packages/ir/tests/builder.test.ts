@@ -91,10 +91,10 @@ describe('IR builder', () => {
   });
 
   it('still fails loudly for unsupported AST with location context', () => {
-    const filePath = path.join(__dirname, 'fixtures', 'nested-capture-failure.ts');
+    const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
 
     expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
-      /Unsupported AST in IR builder: .* at .*nested-capture-failure\.ts:\d+:\d+ near /
+      /Unsupported AST in IR builder: .* at .*class-blocked\.ts:\d+:\d+ near /
     );
   });
 
@@ -238,6 +238,35 @@ describe('IR builder', () => {
     const newTargetOpcodes = newTargetFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
     expect(thisOpcodes).toContain(OpCode.LoadThis);
     expect(newTargetOpcodes).toContain(OpCode.LoadNewTarget);
+  });
+
+  it('lowers base classes and class expressions without extends into vm-safe IR', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'class-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'classPack');
+
+    expect(fn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'classPack')?.tier).toBe('vm_safe');
+
+    const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(opcodes).toContain(OpCode.ClosureNew);
+    expect(opcodes).toContain(OpCode.CallMethod);
+    expect(opcodes).toContain(OpCode.PropGet);
+    expect(opcodes).toContain(OpCode.PropSet);
+    expect(module.functions.some((candidate) => candidate.attributes.includes(FunctionAttribute.Constructor))).toBe(true);
+    expect(module.functions.some((candidate) => candidate.attributes.includes(FunctionAttribute.Getter))).toBe(true);
+    expect(module.functions.some((candidate) => candidate.attributes.includes(FunctionAttribute.Setter))).toBe(true);
+    expect(module.functions.some((candidate) => candidate.capturedVariables.some((name) => name.startsWith('$$class_key_')))).toBe(true);
+  });
+
+  it('keeps extends/private/static-block classes off the vm-safe path', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
+    const reports = analyzeFunctionCapabilities(filePath);
+
+    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'classPrivatePack')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('js_lowered');
   });
 
   it('lowers nested lexical this and lexical new.target arrows through closure captures', () => {

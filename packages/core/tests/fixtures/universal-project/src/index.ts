@@ -63,6 +63,29 @@ export function lexicalCtorLifted(this: { value?: number }, value: number) {
   return readCtor();
 }
 
+export function classLifted(value: number) {
+  let count = 0;
+  const key = () => {
+    count = count + 1;
+    return `m${count}`;
+  };
+
+  const Local = class Named {
+    static label = 'Local';
+    value = value + 1;
+
+    constructor(next: number) {
+      this.value = next;
+    }
+
+    [key()]() {
+      return `${Named.label}:${this.value}`;
+    }
+  };
+
+  return new Local(value + 2).m1();
+}
+
 export async function asyncVm(value: number) {
   const first = await Promise.resolve(value + 2);
   return first * 2;

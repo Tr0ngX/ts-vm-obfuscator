@@ -47,7 +47,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
 | Language | `super` | `Not Supported` | Still outside VM support. |
-| Language | classes / class expressions | `Not Supported` | Not part of the verified VM path yet. |
+| Language | classes / class expressions | `Supported With Limits` | Verified for base classes and class expressions without `extends`/`super`, with constructor, methods, accessors, public fields, static fields, and computed names. Derived classes, private elements, and static blocks are still outside the verified VM path. |
 | Language | `await` | `Supported With Limits` | Verified for async function declarations and async arrows, including current `try/catch/finally` await coverage. |
 | Language | generators / `yield` | `Not Supported` | Generator semantics are not modeled yet. |
 | Language | decorators | `Not Supported` | Not part of verified VM virtualization support. |
