@@ -130,13 +130,24 @@ graph TD
 **Hệ thống IR hiện đã bao phủ các cấu trúc quan trọng (an toàn cho runtime):**
 - Mảng (Array literals) ví dụ `[1, 2, 3]`
 - Đối tượng (Object literals) bao gồm `PropertyAssignment` và `ShorthandPropertyAssignment`
+- Object literal methods như `{ f() {} }`
 - Truy cập phần tử qua ngoặc vuông ví dụ `arr[i]`
 - Gán thuộc tính ví dụ `obj.x = y`
 - Gán phần tử động ví dụ `arr[i] = y`
 - Phân nhánh cơ bản `if / else`
-- Vòng lặp `while`
+- Vòng lặp `while`, `do / while`, `for`, `for...of`, và `for...in`
+- `break`, `continue`, `switch`, và `throw`
+- `try / catch / finally` cho luồng đồng bộ
+- Khai báo destructuring object/array với default values đơn giản
+- Destructuring assignment cho các form array/object đã verify, gồm cả default values và nesting đơn giản
+- Object/array rest binding, parameter destructuring, và rest parameters
+- Spread trong array/object literals và trong call/new arguments
+- Verified `async/await` cho async function declarations và async arrows
 - Biểu thức Prefix unary (ví dụ `!x`, `-x`, `~x`, `typeof x`)
 - Biểu thức toán tử `delete`
+- `this` và `new.target` cho regular function path và constructor-style VM execution
+- `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, và `MethodDeclaration` trong object literal
+- True lexical closures cho outer locals đã capture thông qua cell boxing và closure environment
 
 **VM runtime đã tích hợp các handlers cho:**
 - `ArrayNew`
@@ -144,6 +155,21 @@ graph TD
 - `ComputedGet`
 - `ComputedSet`
 - `Delete`
+- `ClosureNew`
+- `CellNew`
+- `CellGet`
+- `CellSet`
+- `EnvGet`
+- `LoadThis`
+- `LoadNewTarget`
+- `Throw`
+- `TryCatchBegin`
+- `TryCatchEnd`
+- `Await`
+
+Tài liệu trạng thái chi tiết:
+- [AST Support Matrix](docs/ast-support.md)
+- [Support Status Guide](docs/support-status.md)
 
 ### Cấu Trúc Monorepo
 
@@ -245,12 +271,15 @@ Nếu bạn thay đổi cơ chế biên dịch, hãy tuân theo:
 
 ## Trạng Thái & Giới Hạn Hiện Tại
 
-Đây là một trình biên dịch chuyên nghiệp và đang ở trong trạng thái **SUPER UPGRADE (Siêu Nâng Cấp)**, hoàn toàn vượt qua các bài kiểm thử logic phức tạp. Tuy nhiên, dự án không cam kết hỗ trợ toàn bộ cú pháp dị thường của JavaScript bên trong hàm bảo mật.
+Đây là một trình biên dịch VM nghiêm túc và hiện đã được verify trên nhiều cấu trúc logic phức tạp. Tuy nhiên, dự án vẫn không claim hỗ trợ toàn bộ cú pháp JavaScript/TypeScript trong mọi hàm được ảo hóa.
 
 Một số giới hạn cần biết:
-- Khai báo phương thức bên trong object literal (ví dụ `{ f() {} }`) chưa được tài liệu hóa là hỗ trợ.
-- Các hàm mũi tên (arrow functions) và biểu thức hàm lồng trong object chưa nằm trong nhóm hỗ trợ được verified.
 - Cú pháp AST không được hỗ trợ nay sẽ lập tức ném lỗi (fail loudly) thay vì tự động đẩy ra register rỗng sai lệch.
+- Hỗ trợ cú pháp vẫn được mở rộng theo từng syntax pack có regression coverage, không phải “mọi JavaScript đều chạy trong VM”.
+- Closure support đã đúng ngữ nghĩa cho captured outer locals, nhưng các binding bị capture sẽ phải đi qua boxing nên có overhead cục bộ.
+- `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` mới chỉ được verify cho subset async hiện tại; generators và async generators vẫn chưa có VM path.
+- `this` và `new.target` đã được verify cho regular function path và constructor-style VM execution, nhưng lexical `this` / lexical `new.target` trong arrow functions vẫn chưa nằm trong `vm_safe`.
+- `super`, classes / class expressions, generators / `yield`, và decorators vẫn đang ở ngoài verified VM path.
 - `apps/visualizer` hiện vẫn là bản demo chưa kết nối thực tế với runtime gốc.
 
 ## Xử Lý Sự Cố (Troubleshooting)
