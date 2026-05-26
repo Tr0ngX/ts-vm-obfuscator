@@ -30,6 +30,13 @@ function createRuntimeNames(config: VMBuildConfig) {
         rawCP: 'rawCP',
         cpCache: 'cpCache',
         getCP: 'getCP',
+        weakMapCtor: 'VMWeakMap',
+        reflectObj: 'VMReflect',
+        objectObj: 'VMObject',
+        arraySlice: 'sliceArgs',
+        promiseResolve: 'resolvePromise',
+        iteratorSymbol: 'iteratorSymbol',
+        asyncIteratorSymbol: 'asyncIteratorSymbol',
         functionBytecodes: 'functionBytecodes',
         executorCache: 'executorCache',
         getExecutorById: 'getExecutorById',
@@ -79,6 +86,13 @@ function createRuntimeNames(config: VMBuildConfig) {
       rawCP: next(),
       cpCache: next(),
       getCP: next(),
+      weakMapCtor: next(),
+      reflectObj: next(),
+      objectObj: next(),
+      arraySlice: next(),
+      promiseResolve: next(),
+      iteratorSymbol: next(),
+      asyncIteratorSymbol: next(),
       functionBytecodes: next(),
       executorCache: next(),
       getExecutorById: next(),
@@ -391,27 +405,35 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(OpCode.SuperPropGet, `
     ${readArgs}
-    var superProto = Object.getPrototypeOf(Object.getPrototypeOf(ctx.thisArg));
+    var superProto = ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(ctx.thisArg));
     ctx.regs[args[1]] = superProto[ctx.regs[args[0]]];
   `);
   declareHandler(OpCode.SuperPropSet, `
     ${readArgs}
-    var superProto = Object.getPrototypeOf(Object.getPrototypeOf(ctx.thisArg));
+    var superProto = ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(ctx.thisArg));
     superProto[ctx.regs[args[0]]] = ctx.regs[args[1]];
   `);
   declareHandler(OpCode.SuperCall, `
     ${readArgs}
-    var superCtor = Object.getPrototypeOf(ctx.thisArg.constructor);
+    if (!${top.reflectObj} || !${top.reflectObj}.construct) {
+      throw new TypeError('Reflect.construct is required for super()');
+    }
+    var superCtor = ${top.objectObj}.getPrototypeOf(ctx.thisArg.constructor);
     var aa = [];
     for (var ci = 0; ci < args.length - 1; ci++) {
       aa.push(ctx.regs[args[ci]]);
     }
-    ctx.regs[args[args.length - 1]] = superCtor.apply(ctx.thisArg, aa);
+    ctx.thisArg = ${top.reflectObj}.construct(superCtor, aa, ctx.newTarget || ctx.thisArg.constructor);
+    ctx.regs[args[args.length - 1]] = ctx.thisArg;
   `);
   declareHandler(OpCode.SuperCallWithArray, `
     ${readArgs}
-    var superCtor = Object.getPrototypeOf(ctx.thisArg.constructor);
-    ctx.regs[args[1]] = superCtor.apply(ctx.thisArg, ctx.regs[args[0]]);
+    if (!${top.reflectObj} || !${top.reflectObj}.construct) {
+      throw new TypeError('Reflect.construct is required for super()');
+    }
+    var superCtor = ${top.objectObj}.getPrototypeOf(ctx.thisArg.constructor);
+    ctx.thisArg = ${top.reflectObj}.construct(superCtor, ctx.regs[args[0]], ctx.newTarget || ctx.thisArg.constructor);
+    ctx.regs[args[1]] = ctx.thisArg;
   `);
 
   declareHandler(OpCode.Yield, `
@@ -498,7 +520,14 @@ const ${top.vmFunctions} = (function() {
   const ${top.seed} = ${config.seed};
   const ${top.rawCP} = ${cp};
   const ${top.cpCache} = new Map();
-  const ${top.privateData} = new WeakMap();
+  const ${top.weakMapCtor} = WeakMap;
+  const ${top.reflectObj} = typeof Reflect !== 'undefined' ? Reflect : undefined;
+  const ${top.objectObj} = Object;
+  const ${top.arraySlice} = Array.prototype.slice;
+  const ${top.promiseResolve} = Promise.resolve.bind(Promise);
+  const ${top.iteratorSymbol} = typeof Symbol !== 'undefined' ? Symbol.iterator : '@@iterator';
+  const ${top.asyncIteratorSymbol} = typeof Symbol !== 'undefined' && Symbol.asyncIterator ? Symbol.asyncIterator : null;
+  const ${top.privateData} = new ${top.weakMapCtor}();
   
   // Lazy Decryption
   function ${top.getCP}(index) {
@@ -521,7 +550,7 @@ const ${top.vmFunctions} = (function() {
   ${runtimeDispatch.declarations}
 
   const ${top.functionBytecodes} = {
-${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.bytecode.join(',')}]), attributes: ${JSON.stringify(fn.attributes ?? [])} }`).join(',\n')}
+${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.bytecode.join(',')}]), attributes: ${JSON.stringify(fn.attributes ?? [])}, registerCount: ${fn.maxRegisters} }`).join(',\n')}
   };
   const ${top.executorCache} = Object.create(null);
 
@@ -533,18 +562,18 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
     if (!functionMeta) {
       throw new Error('Unknown VM function id: ' + functionId);
     }
-    const executor = ${top.createExecutor}(functionMeta.bytecode, env || [], functionMeta.attributes || []);
+    const executor = ${top.createExecutor}(functionMeta.bytecode, env || [], functionMeta.attributes || [], functionMeta.registerCount || 0);
     if (!env || env.length === 0) {
       ${top.executorCache}[functionId] = executor;
     }
     return executor;
   }
 
-  function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr) {
+  function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr, registerCount) {
     const ctx = {
       ${ctx.pc}: 0,
       ${ctx.bytecode}: bytecodeArr,
-      ${ctx.regs}: new Array(256).fill(undefined),
+      ${ctx.regs}: new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined),
       ${ctx.fnArgs}: argsArr,
       ${ctx.env}: envArr || [],
       ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
@@ -607,11 +636,92 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
     return { kind: 'return', value: ${ctxRef('returnValue')} };
   }
 
-  function ${top.createExecutor}(bytecodeArr, envArr, attributes) {
-    if (attributes && attributes.indexOf('async') >= 0) {
+  function ${top.createExecutor}(bytecodeArr, envArr, attributes, registerCount) {
+    const isAsync = attributes && attributes.indexOf('async') >= 0;
+    const isGenerator = attributes && attributes.indexOf('generator') >= 0;
+    if (isAsync && isGenerator) {
+      return function execute() {
+        const ${ctx.fnArgs} = ${top.arraySlice}.call(arguments);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount);
+        let delegateIterator = null;
+        let delegateIsAsync = false;
+        let finished = false;
+        const resumeAwait = async (promise, mode) => {
+          try {
+            ctx.${ctx.resumeMode} = 'store';
+            ctx.${ctx.resumeValue} = await ${top.promiseResolve}(promise);
+            ctx.${ctx.running} = true;
+          } catch (error) {
+            ctx.${ctx.resumeMode} = 'throw';
+            ctx.${ctx.resumeValue} = error;
+            ctx.${ctx.running} = true;
+          }
+          return mode;
+        };
+        return {
+          [${top.asyncIteratorSymbol} || ${top.iteratorSymbol}]: function() { return this; },
+          next: async function(v) {
+            if (finished) return { value: undefined, done: true };
+            while (true) {
+              if (delegateIterator) {
+                const step = delegateIsAsync ? await delegateIterator.next(v) : delegateIterator.next(v);
+                if (step.done) {
+                  v = step.value;
+                  delegateIterator = null;
+                  delegateIsAsync = false;
+                } else {
+                  return step;
+                }
+              }
+              if (ctx.${ctx.resumeMode} === 'yield' || ctx.${ctx.resumeMode} === 'yieldStar') {
+                ctx.${ctx.resumeMode} = 'normal';
+                ctx.${ctx.regs}[ctx.${ctx.resumeReg}] = v;
+                ctx.${ctx.resumeReg} = -1;
+                ctx.${ctx.running} = true;
+              }
+              const outcome = __runVm(ctx);
+              if (outcome.kind === 'await') {
+                await resumeAwait(outcome.promise, 'await');
+                v = undefined;
+                continue;
+              }
+              if (outcome.kind === 'return') {
+                finished = true;
+                return { value: outcome.value, done: true };
+              }
+              if (outcome.kind === 'yield') {
+                return { value: outcome.value, done: false };
+              }
+              if (outcome.kind === 'yieldStar') {
+                if (${top.asyncIteratorSymbol} && outcome.value[${top.asyncIteratorSymbol}]) {
+                  delegateIterator = outcome.value[${top.asyncIteratorSymbol}]();
+                  delegateIsAsync = true;
+                } else {
+                  delegateIterator = outcome.value[${top.iteratorSymbol}]();
+                  delegateIsAsync = false;
+                }
+                v = undefined;
+              }
+            }
+          },
+          return: async function(v) {
+            finished = true;
+            ctx.${ctx.running} = false;
+            return { value: v, done: true };
+          },
+          throw: async function(e) {
+            ctx.${ctx.resumeMode} = 'throw';
+            ctx.${ctx.resumeValue} = e;
+            ctx.${ctx.running} = true;
+            return this.next();
+          }
+        };
+      };
+    }
+    if (isAsync) {
       return async function execute() {
-        const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
-        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+        const ${ctx.fnArgs} = ${top.arraySlice}.call(arguments);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount);
         while (true) {
           const outcome = __runVm(ctx);
           if (outcome.kind === 'return') {
@@ -619,7 +729,7 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
           }
           try {
             ctx.${ctx.resumeMode} = 'store';
-            ctx.${ctx.resumeValue} = await outcome.promise;
+            ctx.${ctx.resumeValue} = await ${top.promiseResolve}(outcome.promise);
             ctx.${ctx.running} = true;
           } catch (error) {
             ctx.${ctx.resumeMode} = 'throw';
@@ -629,15 +739,16 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
         }
       };
     }
-    if (attributes && attributes.indexOf('generator') >= 0) {
+    if (isGenerator) {
       return function execute() {
-        const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
-        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+        const ${ctx.fnArgs} = ${top.arraySlice}.call(arguments);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount);
         let delegateIterator = null;
+        let finished = false;
         return {
-          [Symbol.iterator]: function() { return this; },
+          [${top.iteratorSymbol}]: function() { return this; },
           next: function(v) {
-            if (!ctx.${ctx.running}) return { value: undefined, done: true };
+            if (finished) return { value: undefined, done: true };
             while(true) {
               if (delegateIterator) {
                 let step = delegateIterator.next(v);
@@ -655,20 +766,25 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
                 ctx.${ctx.running} = true;
               }
               const outcome = __runVm(ctx);
+              if (outcome.kind === 'await') {
+                throw new Error('VM await suspension reached sync generator');
+              }
               if (outcome.kind === 'return') {
+                finished = true;
                 return { value: outcome.value, done: true };
               }
               if (outcome.kind === 'yield') {
                 return { value: outcome.value, done: false };
               }
               if (outcome.kind === 'yieldStar') {
-                delegateIterator = outcome.value[Symbol.iterator]();
+                delegateIterator = outcome.value[${top.iteratorSymbol}]();
                 v = undefined;
                 continue;
               }
             }
           },
           return: function(v) {
+             finished = true;
              ctx.${ctx.running} = false;
              return { value: v, done: true };
           },
@@ -682,8 +798,8 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
       };
     }
     return function execute() {
-      const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
-      const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+      const ${ctx.fnArgs} = ${top.arraySlice}.call(arguments);
+      const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount);
       const outcome = __runVm(ctx);
       if (outcome.kind === 'await') {
         throw new Error('VM await suspension reached sync executor');

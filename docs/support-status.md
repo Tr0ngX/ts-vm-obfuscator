@@ -24,7 +24,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Control flow | `break`, `continue` | `Fully Supported` | Verified through loop control-flow fixtures. |
 | Control flow | `switch` | `Fully Supported` | Routed as `vm_safe` on the verified path. |
 | Control flow | `throw` | `Fully Supported` | VM runtime executes explicit throws correctly. |
-| Control flow | `try / catch / finally` | `Supported With Limits` | Fully verified for synchronous flow; async `await` inside the current async subset is verified separately, but generators are still outside scope. |
+| Control flow | `try / catch / finally` | `Supported With Limits` | Fully verified for synchronous flow; async `await` inside the current async subset, including async generators, is verified separately. |
 | Control flow | `catch` binding | `Fully Supported` | Verified for identifier, no-binding, and destructured catch bindings on the VM path. |
 | Data / objects | array literals | `Fully Supported` | Includes indexed reads and writes on verified path. |
 | Data / objects | object literals, shorthand props, object-literal methods | `Supported With Limits` | Common forms are covered; not every property form is modeled yet. |
@@ -44,12 +44,14 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Semantics | `this` | `Supported With Limits` | Verified for regular function paths, constructor-style VM execution, and nested arrows that capture lexical `this` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
 | Semantics | `new.target` | `Supported With Limits` | Verified for constructor-style VM execution and nested arrows that capture lexical `new.target` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
+| Runtime backend | `js` | `Fully Supported` | Default generated JavaScript VM runtime. Covered by the normal build, runtime, and pipeline verification flow. |
+| Runtime backend | `wasm_hybrid` | `Supported With Limits` | Opt-in via `--runtime wasm-hybrid`. Verified as a real WebAssembly bootstrap plus JS VM semantic fallback; not yet a full native WASM opcode dispatcher. |
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
-| Language | `super` | `Fully Supported` | Supported for property accesses (super.prop) and super calls in derived constructors. |
-| Language | classes / class expressions | `Fully Supported` | Verified for base/derived classes, constructor, methods, accessors, public/private fields, static fields, computed names, and static blocks. |
+| Language | `super` | `In Progress / Not Yet Stable` | Runtime handlers are being hardened, but derived-class lowering is still outside the verified VM path. |
+| Language | classes / class expressions | `Supported With Limits` | Verified for base classes, constructor, methods, accessors, public/private instance fields, static fields, and computed names. Derived classes and static blocks stay outside the verified VM path. |
 | Language | `await` | `Supported With Limits` | Verified for async function declarations and async arrows, including current `try/catch/finally` await coverage. |
-| Language | generators / `yield` | `Fully Supported` | Fully supported, including yield and yield* interpretation via standard Iterator protocol (Async generators remain unsupported). |
+| Language | generators / `yield` | `Fully Supported` | Fully supported for synchronous and async generator functions, including `yield` and `yield*` interpretation via iterator protocols. |
 | Language | decorators | `Not Supported` | Not part of verified VM virtualization support. |
 
 ## Notes
@@ -58,6 +60,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | --- | --- |
 | Unsupported AST | Still expected to fail loudly during IR lowering when no safe lowering path exists. |
 | `universal` compatibility | A compatibility-lowered result is not the same thing as VM support. |
+| `wasm_hybrid` backend | The current hybrid backend validates the native WebAssembly bootstrap and preserves semantics through the JS VM executor. Promote individual opcode execution to WASM only after runtime and pipeline evidence exists. |
 | Promotion rule | Only move an item to `Fully Supported` after fresh IR/runtime/pipeline evidence exists. |
 
 ## Updating Rule

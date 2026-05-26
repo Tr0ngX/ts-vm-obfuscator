@@ -439,14 +439,18 @@ export class ObfuscationPipeline {
     }
 
     // ── Stage 6: VM Build ──
-    this.emit('vm_build' as PipelineStage, 'Building polymorphic VM runtime...');
+    const runtimeBackend = this.options.profile.vm.runtimeBackend ?? 'js';
+    this.emit('vm_build' as PipelineStage, `Building ${runtimeBackend} VM runtime...`);
     let vmBundles: VMRuntimeBundle[];
     try {
-      const { buildVMRuntime } = await import('@tsvm/vm-runtime');
       const t0 = Date.now();
       vmBundles = [];
+      const buildRuntime =
+        runtimeBackend === 'wasm_hybrid'
+          ? (await import('@tsvm/wasm-runtime')).buildWasmHybridRuntime
+          : (await import('@tsvm/vm-runtime')).buildVMRuntime;
       for (const bcModule of bytecodeModules) {
-        const bundle = buildVMRuntime(bcModule, this.options.profile.vm);
+        const bundle = buildRuntime(bcModule, this.options.profile.vm);
         vmBundles.push(bundle);
       }
       this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} VM bundles`, Date.now() - t0);

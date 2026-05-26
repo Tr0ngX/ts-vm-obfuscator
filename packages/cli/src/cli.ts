@@ -7,14 +7,15 @@ import fs from 'fs/promises';
 import { pathToFileURL } from 'url';
 import { ObfuscationPipeline, createDefaultProfile } from '@tsvm/core';
 import type { ObfuscationProfile } from '@tsvm/shared';
-import { applySeedToProfile, parseSeed, resolveProfileTarget } from './options.js';
+import { applyRuntimeBackendToProfile, applySeedToProfile, parseRuntimeBackend, parseSeed, resolveProfileTarget } from './options.js';
 
-export function createCliProfile(profileOption: string, seedOption?: string): ObfuscationProfile {
+export function createCliProfile(profileOption: string, seedOption?: string, runtimeOption?: string): ObfuscationProfile {
   const target = resolveProfileTarget(profileOption);
   const seed = parseSeed(seedOption);
   const baseProfile = createDefaultProfile(target);
+  const runtimeBackend = parseRuntimeBackend(runtimeOption);
 
-  return applySeedToProfile(baseProfile, seed);
+  return applyRuntimeBackendToProfile(applySeedToProfile(baseProfile, seed), runtimeBackend);
 }
 
 export function createProgram() {
@@ -25,13 +26,14 @@ export function createProgram() {
     .requiredOption('-p, --project <path>', 'path to tsconfig.json')
     .option('-o, --out <dir>', 'output directory', 'dist-obf')
     .option('--profile <type>', 'obfuscation profile (default, generic, react, electron, library, universal)', 'default')
+    .option('--runtime <type>', 'VM runtime backend (js, wasm-hybrid)', 'js')
     .option('--seed <number>', 'random seed for polymorphic generation')
     .action(async (options) => {
       const spinner = ora('Initializing pipeline...').start();
       try {
         const tsconfigPath = path.resolve(process.cwd(), options.project);
         const outDir = path.resolve(process.cwd(), options.out);
-        const profile = createCliProfile(options.profile, options.seed);
+        const profile = createCliProfile(options.profile, options.seed, options.runtime);
 
         const pipeline = new ObfuscationPipeline({
           tsconfigPath,

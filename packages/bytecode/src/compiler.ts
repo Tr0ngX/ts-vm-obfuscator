@@ -1,7 +1,42 @@
-import type { IRModule, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, ConstantPoolEntry } from '@tsvm/shared';
+import type { IRModule, IRFunction, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, ConstantPoolEntry } from '@tsvm/shared';
 import { FunctionAttribute, OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
+
+function collectMaxRegisterIndex(irFn: IRFunction): number {
+  let maxRegister = -1;
+  const consider = (value: unknown) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    const match = /^r(\d+)$/.exec(value);
+    if (!match) {
+      return;
+    }
+    maxRegister = Math.max(maxRegister, Number.parseInt(match[1]!, 10));
+  };
+
+  for (const param of irFn.params) {
+    consider(param.register);
+  }
+  for (const local of irFn.locals) {
+    consider(local.register);
+  }
+  for (const block of irFn.blocks) {
+    for (const inst of block.instructions) {
+      consider(inst.result);
+      for (const operand of inst.operands) {
+        if (operand.kind === OperandKind.Register) {
+          consider(operand.value);
+        }
+      }
+    }
+    consider(block.terminator.condition);
+    consider(block.terminator.returnValue);
+  }
+
+  return maxRegister + 1;
+}
 
 export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): BytecodeModule {
   const bcFunctions: BytecodeFunction[] = [];
@@ -35,7 +70,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
     if (irFn.isVirtualized) {
       // 2. Local symbol / Register ID Shuffle
       const paramCount = irFn.params.length;
-      const maxRegs = irFn.locals.length + paramCount + 150;
+      const maxRegs = Math.max(collectMaxRegisterIndex(irFn), paramCount);
       const regIds = Array.from({ length: maxRegs - paramCount }, (_, i) => i + paramCount);
       const shuffledRegIds = rng.shuffle([...regIds]);
 

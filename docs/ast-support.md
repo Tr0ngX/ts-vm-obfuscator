@@ -20,15 +20,13 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Calls and `new`
 - `this` and `new.target` for regular function and constructor-style lowering
 - lexical `this` and lexical `new.target` in nested arrows with an enclosing function context
-- base and derived `class` declarations and `class` expressions (including `extends`/`super`), constructor, methods, accessors, public/private fields, static blocks, static fields, and computed names
+- base `class` declarations and `class` expressions, constructor, methods, accessors, public/private instance fields, static fields, and computed names
 - Nested `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, and object-literal `MethodDeclaration`
 - `await` inside verified async function declarations and async arrows
 - Prefix unary subset: `!`, unary `-`, `~`, `typeof`
 - `delete`
-- `super` property/element access and `super` constructor calls
-- Private class fields and methods (`#field`)
-- Class static blocks (`static {}`)
-- Synchronous generators with `yield` and `yield*` expressions
+- Private class fields (`#field`)
+- Synchronous and async generators with `yield` and `yield*` expressions
 
 ### Statements
 
@@ -65,7 +63,7 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Captured bindings incur targeted boxing overhead
 - Lexical `this` and lexical `new.target` are only verified for nested arrows with an enclosing function context; top-level arrows without a lexical provider stay off the VM-safe path
 - Object literals do not yet cover every property form
-- Async support is currently limited to verified `await` patterns (async generators are not supported)
+- Async support is currently limited to the verified async-function and async-generator subset
 
 ## Unsupported / Planned
 
@@ -74,6 +72,9 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 ### Language Features
 
 - Decorators
+- Derived classes (`extends` / `super`)
+- Private class methods and accessors
+- Class static blocks (`static {}`)
 
 ## Expansion Rule
 

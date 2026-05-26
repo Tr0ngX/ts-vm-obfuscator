@@ -22,6 +22,7 @@ It is designed for high-value business logic such as license checks, billing rul
 
 - **Semantic-Aware Compilation:** Uses the official TypeScript Compiler API to seamlessly resolve module exports, scope rules, typed variables, and dependency calls.
 - **Polymorphic Virtual Machine Runtime:** Generates a Threaded Dispatch execution engine with randomized handlers and integrity traps.
+- **Optional WASM Hybrid Runtime:** `--runtime wasm-hybrid` emits a WebAssembly bootstrap with the existing JS VM semantic executor as the correctness-preserving bridge.
 - **1-to-N Opcode Aliasing & Shuffling:** Defeats statistical pattern-matching by mapping one instruction type to multiple virtual opcodes, randomized per build.
 - **Rolling XOR Key Encryption:** Instruction opcodes and immediate values are encrypted within the bytecode stream and dynamically decrypted.
 - **JIT Constant Pool Decryption:** Strings, numerical constants, and property lookups are extracted into an encrypted constant pool and decrypted lazily.
@@ -35,6 +36,7 @@ It is designed for high-value business logic such as license checks, billing rul
 - **Monorepo Manager**: pnpm
 - **Bundler**: tsup
 - **IR & Bytecode Backend**: Custom Register-Based TSVM
+- **Optional Native Layer**: WebAssembly bootstrap for the hybrid VM backend
 
 ## Prerequisites
 
@@ -72,6 +74,10 @@ node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf 
 
 The protected production files will be built and output into the `dist-obf/` directory with a timestamped build signature (e.g., `build_1779526130061_index_ts.js`).
 Supported profiles: `default` (alias of `generic`), `generic`, `react`, `electron`, `library`.
+
+Runtime backends:
+- `--runtime js` is the default and uses the generated JavaScript VM runtime.
+- `--runtime wasm-hybrid` uses the WebAssembly hybrid backend. In the current phase, this validates and embeds a native WebAssembly bootstrap, then delegates bytecode semantics to the existing JS VM executor so behavior stays identical while the WASM core can be expanded incrementally.
 
 ## Architecture
 
@@ -123,6 +129,7 @@ graph TD
 - Register-based IR lowering for selected functions.
 - VM bytecode compilation with remapped opcodes.
 - Generated JS runtime with threaded dispatch and integrity trap handlers.
+- Optional `wasm_hybrid` runtime backend with a verified WebAssembly bootstrap and JS semantic fallback.
 - Constant-pool based lowering with runtime decoding.
 - React-safe and Electron-oriented profile switches.
 - Strip-debug transform in the obfuscation pipeline.
@@ -186,6 +193,7 @@ Detailed status references:
 │   ├── transforms/            # Obfuscation and virtualization passes
 │   ├── bytecode/              # IR to bytecode compiler and encoder
 │   ├── vm-runtime/            # Generated VM runtime builder
+│   ├── wasm-runtime/          # Optional WASM hybrid runtime bridge
 │   ├── shared/                # Shared types and config
 │   ├── react-safe/            # React safety rules
 │   ├── electron-hardening/    # Electron-oriented hardening hooks
@@ -257,6 +265,11 @@ Build an obfuscated bundle:
 node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist
 ```
 
+Build with the optional WASM hybrid runtime:
+```bash
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --runtime wasm-hybrid
+```
+
 Then compare native vs obfuscated execution:
 ```bash
 node examples/st/run-obf.js
@@ -279,9 +292,11 @@ Notable limits:
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
-- `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified only for the current async-function subset; generators and async generators are still outside the VM path.
+- `wasm_hybrid` is an opt-in phase-1 backend: the generated bundle includes a real WebAssembly bootstrap, but opcode execution still uses the JS VM semantic executor. Do not treat it as a full native WASM opcode core yet.
+- `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified for the current async-function subset, including async generators on the verified path.
 - `this` and `new.target` are verified for regular function paths, constructor-style VM execution, and nested arrows that capture them lexically from an enclosing function context. Top-level arrows without an enclosing lexical provider are still kept off the `vm_safe` path.
-- Base `class` declarations and `class` expressions are now verified on the VM path, but only without `extends` / `super`. Derived classes, private elements, static blocks, generators / `yield`, and decorators are still outside the verified VM path.
+- Base `class` declarations and `class` expressions are verified on the VM path, including public fields, private instance fields, methods, accessors, static fields, and computed names. Derived classes (`extends` / `super`), static blocks, and decorators are still outside the verified VM path.
+- Generators are verified on the VM path for both synchronous and async generator functions, including `yield` and `yield*`.
 - `apps/visualizer` is still a demo UI and not the source of truth for runtime behavior.
 
 ## Troubleshooting

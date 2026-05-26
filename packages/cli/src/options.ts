@@ -46,3 +46,27 @@ export function applySeedToProfile<T extends { seed: number; vm: { seed: number 
     },
   };
 }
+
+export function parseRuntimeBackend(runtimeOption?: string): 'js' | 'wasm_hybrid' {
+  const normalized = (runtimeOption ?? 'js').trim().toLowerCase();
+  if (normalized === 'js') {
+    return 'js';
+  }
+  if (normalized === 'wasm-hybrid' || normalized === 'wasm_hybrid') {
+    return 'wasm_hybrid';
+  }
+  throw new Error(`Unsupported runtime "${runtimeOption}". Expected one of: js, wasm-hybrid.`);
+}
+
+export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: 'js' | 'wasm_hybrid' } }>(
+  profile: T,
+  runtimeBackend: 'js' | 'wasm_hybrid',
+): T {
+  return {
+    ...profile,
+    vm: {
+      ...profile.vm,
+      runtimeBackend,
+    },
+  };
+}

@@ -260,12 +260,12 @@ describe('IR builder', () => {
     expect(module.functions.some((candidate) => candidate.capturedVariables.some((name) => name.startsWith('$$class_key_')))).toBe(true);
   });
 
-  it('puts extends/private/static-block classes on the vm-safe path', () => {
+  it('keeps only verified class features on the vm-safe path', () => {
     const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
     const reports = analyzeFunctionCapabilities(filePath);
-    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('js_lowered');
     expect(reports.find((report) => report.functionName === 'classPrivatePack')?.tier).toBe('vm_safe');
-    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('js_lowered');
   });
 
   it('lowers nested lexical this and lexical new.target arrows through closure captures', () => {
@@ -318,6 +318,23 @@ describe('IR builder', () => {
     const asyncOpcodes = asyncFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
     expect(asyncOpcodes).toContain(OpCode.Await);
     expect(asyncFn!.blocks.some((block) => block.label.includes('try_catch'))).toBe(true);
+  });
+
+  it('lowers async generators into vm-safe IR with await and yield suspension points', () => {
+    const filePath = path.join(__dirname, 'fixtures', 'async-generator-pack.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const reports = analyzeFunctionCapabilities(filePath);
+    const asyncGeneratorFn = module.functions.find((candidate) => candidate.name === 'asyncGeneratorPack');
+
+    expect(asyncGeneratorFn).toBeDefined();
+    expect(reports.find((report) => report.functionName === 'asyncGeneratorPack')?.tier).toBe('vm_safe');
+    expect(asyncGeneratorFn!.attributes).toContain(FunctionAttribute.Async);
+    expect(asyncGeneratorFn!.attributes).toContain(FunctionAttribute.Generator);
+
+    const opcodes = asyncGeneratorFn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(opcodes).toContain(OpCode.Await);
+    expect(opcodes).toContain(OpCode.Yield);
+    expect(opcodes).toContain(OpCode.YieldStar);
   });
 
   it('skips unsupported functions in compatibility fallback mode', () => {

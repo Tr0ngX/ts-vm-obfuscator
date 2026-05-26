@@ -397,6 +397,39 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.classPack(4)).toBe('2:Named:7:Named:10:6:20');
   });
 
+  it('should emit constructor-safe super handlers and opaque private storage for class runtime support', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'class-blocked.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, {
+      forceVirtualizeFunctionNames: new Set(['classPrivatePack', 'classStaticBlockPack']),
+      compatibilityFallback: true,
+    });
+    const bytecode = compileToBytecode(ir, createVMConfig(79));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(79));
+
+    expect(bundle.fullSource).toContain('Reflect.construct(superCtor');
+    expect(bundle.fullSource).not.toContain("superCtor.apply(ctx.thisArg");
+    expect(bundle.fullSource).toContain('const VMWeakMap = WeakMap;');
+    expect(bundle.fullSource).toContain('const privateData = new VMWeakMap();');
+    expect(bundle.fullSource).not.toContain('#value');
+  });
+
+  it('should execute private fields while skipping unsupported derived classes and static blocks', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'class-blocked.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, {
+      forceVirtualizeFunctionNames: new Set(['classPrivatePack', 'classStaticBlockPack']),
+      compatibilityFallback: true,
+    });
+    const bytecode = compileToBytecode(ir, createVMConfig(89));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(89));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.classPrivatePack()).toBe(1);
+    expect(moduleShim.exports.classStaticBlockPack).toBeUndefined();
+    expect(moduleShim.exports.classExtendsPack).toBeUndefined();
+  });
+
   it('should execute verified async/await functions through the VM runtime', async () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-pack.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
@@ -409,6 +442,22 @@ describe('VM Runtime', () => {
     await expect(moduleShim.exports.asyncPack(true, 4)).resolves.toBe(5);
     await expect(moduleShim.exports.asyncPack(false, 4)).resolves.toBe('boom:4');
     await expect(moduleShim.exports.asyncArrowPack(6)).resolves.toBe(13);
+  });
+
+  it('should execute async generators through the VM runtime', async () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-generator-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(83));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(83));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    const iter = moduleShim.exports.asyncGeneratorPack(4) as AsyncGenerator<number, number, unknown>;
+    await expect(iter.next()).resolves.toEqual({ value: 5, done: false });
+    await expect(iter.next()).resolves.toEqual({ value: 6, done: false });
+    await expect(iter.next()).resolves.toEqual({ value: 7, done: false });
+    await expect(iter.next()).resolves.toEqual({ value: 8, done: true });
   });
 
   it('should inject anti-debug and tamper logic when enabled', () => {

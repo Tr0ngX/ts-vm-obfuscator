@@ -24,6 +24,7 @@
     "@tsvm/transforms": "workspace:*",
     "@tsvm/bytecode": "workspace:*",
     "@tsvm/vm-runtime": "workspace:*",
+    "@tsvm/wasm-runtime": "workspace:*",
     "@tsvm/react-safe": "workspace:*",
     "@tsvm/electron-hardening": "workspace:*",
     "typescript": "^5.8.0"

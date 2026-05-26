@@ -14,6 +14,7 @@ export default defineConfig({
       '@tsvm/transforms': path.resolve(rootDir, 'packages/transforms/src/index.ts'),
       '@tsvm/ts-semantics': path.resolve(rootDir, 'packages/ts-semantics/src/index.ts'),
       '@tsvm/vm-runtime': path.resolve(rootDir, 'packages/vm-runtime/src/index.ts'),
+      '@tsvm/wasm-runtime': path.resolve(rootDir, 'packages/wasm-runtime/src/index.ts'),
       '@tsvm/react-safe': path.resolve(rootDir, 'packages/react-safe/src/index.ts'),
       '@tsvm/electron-hardening': path.resolve(rootDir, 'packages/electron-hardening/src/index.ts'),
       '@tsvm/benchmark': path.resolve(rootDir, 'packages/benchmark/src/index.ts'),

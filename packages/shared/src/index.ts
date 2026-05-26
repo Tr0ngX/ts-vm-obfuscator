@@ -179,6 +179,7 @@ export interface VMBuildConfig {
   readonly traceMode: boolean;
   readonly deterministicReplay: boolean;
   readonly seed: number;
+  readonly runtimeBackend?: 'js' | 'wasm_hybrid';
 
   // New polymorphic engine features
   readonly threadedDispatch?: boolean;

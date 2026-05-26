@@ -22,6 +22,7 @@ Hệ thống được thiết kế dành cho logic nghiệp vụ giá trị cao 
 
 - **Nhận Biết Ngữ Nghĩa (Semantic-Aware):** Phân tích mã thông qua TypeScript Compiler API chính thức để giải quyết chính xác các liên kết export/import, tầm vực biến, kiểu dữ liệu và lệnh gọi.
 - **Máy Ảo Đa Hình Luồng (Polymorphic VM Runtime):** Tạo cơ chế thực thi Threaded Dispatch với các hàm xử lý mã máy được ngẫu nhiên hóa kèm bẫy bảo mật tự vệ.
+- **Runtime WASM Hybrid Tùy Chọn:** `--runtime wasm-hybrid` sinh bootstrap WebAssembly và dùng JS VM hiện tại làm cầu thực thi đúng ngữ nghĩa.
 - **Ánh Xạ Biệt Danh Opcode 1-to-N & Xáo Trộn:** Đánh lừa phân tích thống kê bằng cách ánh xạ một chỉ thị máy ảo sang nhiều mã opcode ảo khác nhau, sắp xếp ngẫu nhiên mỗi lần build.
 - **Mã Hóa Bytecode Với Khóa Xoay Vòng (Rolling XOR Key):** Các opcode và hằng số được mã hóa trực tiếp trong bytecode và giải mã động khi chạy.
 - **Giải Mã JIT Constant Pool:** Chuỗi, hằng số và thuộc tính truy cập được trích xuất vào constant pool mã hóa và giải mã lazy (lười).
@@ -35,6 +36,7 @@ Hệ thống được thiết kế dành cho logic nghiệp vụ giá trị cao 
 - **Quản lý Monorepo**: pnpm
 - **Đóng gói**: tsup
 - **IR & Bytecode Backend**: Register-Based TSVM tùy chỉnh
+- **Lớp Native Tùy Chọn**: WebAssembly bootstrap cho backend VM hybrid
 
 ## Yêu Cầu Hệ Thống
 
@@ -72,6 +74,10 @@ node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf 
 
 File production đã được bảo vệ sẽ được sinh ra ở thư mục `dist-obf/` với hậu tố thời gian (ví dụ: `build_1779526130061_index_ts.js`).
 Các profile được hỗ trợ: `default` (tương đương `generic`), `generic`, `react`, `electron`, `library`.
+
+Backend runtime:
+- `--runtime js` là mặc định và dùng JavaScript VM runtime được sinh ra.
+- `--runtime wasm-hybrid` dùng backend WebAssembly hybrid. Ở phase hiện tại, bundle sẽ nhúng và xác thực bootstrap WebAssembly thật, sau đó ủy quyền ngữ nghĩa bytecode cho JS VM executor hiện có để giữ kết quả chạy không đổi trong khi lõi WASM được mở rộng dần.
 
 ## Kiến Trúc Hệ Thống
 
@@ -123,6 +129,7 @@ graph TD
 - IR dựa trên thanh ghi (Register-based IR) cho các hàm được chọn.
 - Biên dịch VM bytecode với opcode đã được tái ánh xạ (remapped opcodes).
 - Sinh runtime JavaScript tích hợp Threaded Dispatch và bẫy báo lỗi.
+- Backend runtime `wasm_hybrid` tùy chọn với WebAssembly bootstrap đã verify và JS semantic fallback.
 - Lowering qua constant-pool và giải mã runtime.
 - Hỗ trợ switch profile an toàn cho React và Electron.
 - Transform xóa debug (Strip-debug) trong chu trình làm rối.
@@ -185,6 +192,7 @@ Tài liệu trạng thái chi tiết:
 │   ├── transforms/            # Các bước bảo vệ và ảo hóa mã nguồn
 │   ├── bytecode/              # Biên dịch IR sang bytecode nhị phân
 │   ├── vm-runtime/            # Khởi tạo lõi máy ảo VM
+│   ├── wasm-runtime/          # Cầu runtime WASM hybrid tùy chọn
 │   ├── shared/                # Khai báo biến chung và model config
 │   ├── react-safe/            # Các quy tắc an toàn dành riêng cho React
 │   ├── electron-hardening/    # Cấu hình làm cứng ứng dụng Electron
@@ -256,6 +264,11 @@ Build mã bảo mật:
 node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist
 ```
 
+Build với runtime WASM hybrid tùy chọn:
+```bash
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --runtime wasm-hybrid
+```
+
 Đánh giá Native vs Obfuscated:
 ```bash
 node examples/st/run-obf.js
@@ -278,9 +291,11 @@ Một số giới hạn cần biết:
 - Cú pháp AST không được hỗ trợ nay sẽ lập tức ném lỗi (fail loudly) thay vì tự động đẩy ra register rỗng sai lệch.
 - Hỗ trợ cú pháp vẫn được mở rộng theo từng syntax pack có regression coverage, không phải “mọi JavaScript đều chạy trong VM”.
 - Closure support đã đúng ngữ nghĩa cho captured outer locals, nhưng các binding bị capture sẽ phải đi qua boxing nên có overhead cục bộ.
-- `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` mới chỉ được verify cho subset async hiện tại; generators và async generators vẫn chưa có VM path.
+- `wasm_hybrid` là backend opt-in phase 1: bundle có bootstrap WebAssembly thật, nhưng opcode execution vẫn đi qua JS VM semantic executor. Không nên xem đây là lõi opcode WASM native hoàn chỉnh.
+- `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` đã được verify cho subset async hiện tại, bao gồm async generators trên verified path.
 - `this` và `new.target` đã được verify cho regular function path, constructor-style VM execution, và nested arrows có enclosing function context để capture lexical semantics. Top-level arrows không có lexical provider vẫn chưa nằm trong `vm_safe`.
-- Base `class` declarations và `class` expressions đã được verify trên VM path, nhưng chỉ cho các case không có `extends` / `super`. Derived classes, private elements, static blocks, generators / `yield`, và decorators vẫn đang ở ngoài verified VM path.
+- Base `class` declarations và `class` expressions đã được verify trên VM path, gồm public fields, private instance fields, methods, accessors, static fields, và computed names. Derived classes (`extends` / `super`), private methods/accessors, static blocks, và decorators vẫn đang ở ngoài verified VM path.
+- Generators đã được verify trên VM path cho cả synchronous và async generator functions, gồm `yield` và `yield*`.
 - `apps/visualizer` hiện vẫn là bản demo chưa kết nối thực tế với runtime gốc.
 
 ## Xử Lý Sự Cố (Troubleshooting)

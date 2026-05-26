@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applySeedToProfile, parseSeed, resolveProfileTarget } from '../src/options.js';
+import {
+  applyRuntimeBackendToProfile,
+  applySeedToProfile,
+  parseRuntimeBackend,
+  parseSeed,
+  resolveProfileTarget,
+} from '../src/options.js';
 
 describe('CLI helpers', () => {
   it('maps the default profile alias to generic', () => {
@@ -27,5 +33,18 @@ describe('CLI helpers', () => {
 
   it('rejects unsupported profiles', () => {
     expect(() => resolveProfileTarget('max')).toThrow('Unsupported profile');
+  });
+
+  it('parses and applies VM runtime backend selection', () => {
+    const profile = applyRuntimeBackendToProfile(
+      {
+        vm: {},
+      },
+      parseRuntimeBackend('wasm-hybrid'),
+    );
+
+    expect(parseRuntimeBackend(undefined)).toBe('js');
+    expect(profile.vm.runtimeBackend).toBe('wasm_hybrid');
+    expect(() => parseRuntimeBackend('native')).toThrow('Unsupported runtime');
   });
 });
