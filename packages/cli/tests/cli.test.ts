@@ -6,8 +6,10 @@ import {
   parseRuntimeBackend,
   parseRuntimeHardening,
   parseSeed,
+  resolveRuntimeHardening,
   resolveProfileTarget,
 } from '../src/options.js';
+import { createCliProfile } from '../src/cli.js';
 
 describe('CLI helpers', () => {
   it('maps the default profile alias to generic', () => {
@@ -46,14 +48,17 @@ describe('CLI helpers', () => {
     );
 
     expect(parseRuntimeBackend(undefined)).toBe('js');
+    expect(parseRuntimeBackend('javascript')).toBe('js');
+    expect(parseRuntimeBackend('wasm')).toBe('wasm_hybrid');
+    expect(parseRuntimeBackend('hybrid')).toBe('wasm_hybrid');
     expect(profile.vm.runtimeBackend).toBe('wasm_hybrid');
     expect(() => parseRuntimeBackend('native')).toThrow('Unsupported runtime');
   });
 
   it('parses and applies VM hardening levels', () => {
     const stealthProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening(undefined));
-    const paranoidProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('paranoid'));
-    const offProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('off'));
+    const paranoidProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('max'));
+    const offProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('debug'));
 
     expect(stealthProfile.vm.runtimeHardening).toBe('stealth');
     expect(stealthProfile.vm.stealthDispatch).toBe(true);
@@ -61,6 +66,18 @@ describe('CLI helpers', () => {
     expect(stealthProfile.vm.antiDebug).toBe(false);
     expect(paranoidProfile.vm.antiDebug).toBe(true);
     expect(offProfile.vm.stealthDispatch).toBe(false);
+    expect(resolveRuntimeHardening('stealth', { debugVm: true })).toBe('off');
+    expect(resolveRuntimeHardening('off', { paranoid: true })).toBe('paranoid');
+    expect(() => resolveRuntimeHardening('stealth', { debugVm: true, paranoid: true })).toThrow('Conflicting');
     expect(() => parseRuntimeHardening('loose')).toThrow('Unsupported hardening');
+  });
+
+  it('creates CLI profiles with shorthand runtime and hardening flags', () => {
+    const profile = createCliProfile('generic', '123', 'wasm', 'stealth', { paranoid: true });
+
+    expect(profile.seed).toBe(123);
+    expect(profile.vm.runtimeBackend).toBe('wasm_hybrid');
+    expect(profile.vm.runtimeHardening).toBe('paranoid');
+    expect(profile.vm.antiDebug).toBe(true);
   });
 });

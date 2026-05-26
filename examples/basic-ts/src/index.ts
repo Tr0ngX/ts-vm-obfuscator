@@ -27,4 +27,84 @@ export function main() {
   console.log("TEA Encrypted:", encryptTEA(12345, 67890, 1, 2, 3, 4));
 }
 
+/** @virtualize */
+export function verifyArtemisCollatzAndMath(n: number, seed: number): number {
+  if (n <= 0 || seed <= 0) return 0;
+  let current = n;
+  let iterations = 0;
+  let accumulator = seed;
+
+  while (current > 1 && iterations < 100) {
+    if ((current % 2) === 0) {
+      current = (current / 2) | 0;
+    } else {
+      current = ((current * 3) + 1) | 0;
+    }
+    
+    accumulator = (accumulator ^ (current + iterations)) | 0;
+    accumulator = (accumulator << 3) - accumulator + current;
+    accumulator |= 0;
+    iterations++;
+  }
+
+  return accumulator;
+}
+
+/** @virtualize */
+export function verifyArtemisStateDecimation(key: string, multiplier: number, limit: number): number {
+  if (!key || multiplier === 0) return -1;
+
+  const telemetry: { [key: string]: any } = {
+    status: 1,
+    oxygen: 100,
+    pressure: 1013,
+    active: true,
+    sensorData: [10, 20, 30, 40, 50]
+  };
+
+  telemetry[key] = (multiplier * 42) | 0;
+  
+  delete telemetry.active;
+  delete telemetry.status;
+
+  let score = 0;
+  
+  if (telemetry[key]) {
+    score = (telemetry[key] + telemetry.pressure) | 0;
+  } else {
+    score = telemetry.pressure;
+  }
+
+  let idx = 0;
+  while (idx < limit && idx < 5) {
+    const baseValue = telemetry.sensorData[idx] as number;
+    telemetry.sensorData[idx] = (baseValue * multiplier) | 0;
+    score = (score + telemetry.sensorData[idx]) | 0;
+    idx++;
+  }
+
+  return score;
+}
+
+/** @virtualize */
+export function verifyArtemisGatingSystem(sensorA: number, sensorB: number, threshold: number): number {
+  let criticalLevel = 0;
+
+  if ((sensorA > threshold && sensorB > threshold) || ((sensorA + sensorB) > ((threshold * 2) | 0))) {
+    if (sensorA === sensorB) {
+      criticalLevel = 100;
+    } else if (sensorA > sensorB) {
+      criticalLevel = ((sensorA - sensorB) * 2) | 0;
+    } else {
+      criticalLevel = ((sensorB - sensorA) * 3) | 0;
+    }
+  } else if (sensorA < 0 || sensorB < 0) {
+    criticalLevel = -999;
+  } else {
+    criticalLevel = (sensorA ^ sensorB) | 0;
+  }
+
+  return criticalLevel;
+}
+
 main();

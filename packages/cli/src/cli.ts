@@ -12,7 +12,7 @@ import {
   applyRuntimeHardeningToProfile,
   applySeedToProfile,
   parseRuntimeBackend,
-  parseRuntimeHardening,
+  resolveRuntimeHardening,
   parseSeed,
   resolveProfileTarget,
 } from './options.js';
@@ -22,12 +22,13 @@ export function createCliProfile(
   seedOption?: string,
   runtimeOption?: string,
   hardeningOption?: string,
+  flags: { readonly debugVm?: boolean; readonly paranoid?: boolean } = {},
 ): ObfuscationProfile {
   const target = resolveProfileTarget(profileOption);
   const seed = parseSeed(seedOption);
   const baseProfile = createDefaultProfile(target);
   const runtimeBackend = parseRuntimeBackend(runtimeOption);
-  const runtimeHardening = parseRuntimeHardening(hardeningOption);
+  const runtimeHardening = resolveRuntimeHardening(hardeningOption, flags);
 
   return applyRuntimeHardeningToProfile(
     applyRuntimeBackendToProfile(applySeedToProfile(baseProfile, seed), runtimeBackend),
@@ -39,19 +40,41 @@ export function createProgram() {
   return baseProgram
     .name('ts-obfuscate')
     .description('TypeScript semantic-aware obfuscator')
+    .addHelpText(
+      'after',
+      `
+
+Examples:
+  $ ts-obfuscate -p examples/basic-ts/tsconfig.json
+  $ ts-obfuscate -p examples/st/tsconfig.json --runtime wasm --hardening max
+  $ ts-obfuscate -p examples/st/tsconfig.json --debug-vm
+
+Runtime notes:
+  --runtime js            Stable generated JavaScript VM backend
+  --runtime wasm-hybrid   WASM bootstrap + JS VM semantic executor
+  --hardening stealth     Default production-safe runtime hardening
+  --hardening paranoid    Adds heavier anti-debug probes
+  --debug-vm              Alias for --hardening off
+`,
+    )
     .version('0.1.0')
     .requiredOption('-p, --project <path>', 'path to tsconfig.json')
     .option('-o, --out <dir>', 'output directory', 'dist-obf')
     .option('--profile <type>', 'obfuscation profile (default, generic, react, electron, library, universal)', 'default')
-    .option('--runtime <type>', 'VM runtime backend (js, wasm-hybrid)', 'js')
-    .option('--hardening <level>', 'VM hardening level (off, stealth, paranoid)', 'stealth')
+    .option('--runtime <backend>', 'VM runtime backend: js, wasm-hybrid (aliases: wasm, hybrid)', 'js')
+    .option('--hardening <level>', 'VM hardening level: off, stealth, paranoid (aliases: debug, max)', 'stealth')
+    .option('--debug-vm', 'debug-friendly alias for --hardening off')
+    .option('--paranoid', 'shortcut for --hardening paranoid')
     .option('--seed <number>', 'random seed for polymorphic generation')
     .action(async (options) => {
       const spinner = ora('Initializing pipeline...').start();
       try {
         const tsconfigPath = path.resolve(process.cwd(), options.project);
         const outDir = path.resolve(process.cwd(), options.out);
-        const profile = createCliProfile(options.profile, options.seed, options.runtime, options.hardening);
+        const profile = createCliProfile(options.profile, options.seed, options.runtime, options.hardening, {
+          debugVm: options.debugVm,
+          paranoid: options.paranoid,
+        });
 
         const pipeline = new ObfuscationPipeline({
           tsconfigPath,

@@ -1,5 +1,9 @@
 export const SUPPORTED_PROFILE_TARGETS = ['generic', 'react', 'electron', 'library', 'universal'] as const;
 export type SupportedProfileTarget = (typeof SUPPORTED_PROFILE_TARGETS)[number];
+export const SUPPORTED_RUNTIME_BACKENDS = ['js', 'wasm-hybrid'] as const;
+export type SupportedRuntimeBackend = 'js' | 'wasm_hybrid';
+export const SUPPORTED_HARDENING_LEVELS = ['off', 'stealth', 'paranoid'] as const;
+export type SupportedRuntimeHardening = (typeof SUPPORTED_HARDENING_LEVELS)[number];
 
 const PROFILE_ALIASES: Record<string, SupportedProfileTarget> = {
   default: 'generic',
@@ -8,6 +12,32 @@ const PROFILE_ALIASES: Record<string, SupportedProfileTarget> = {
   electron: 'electron',
   library: 'library',
   universal: 'universal',
+};
+
+const RUNTIME_ALIASES: Record<string, SupportedRuntimeBackend> = {
+  js: 'js',
+  javascript: 'js',
+  default: 'js',
+  wasm: 'wasm_hybrid',
+  hybrid: 'wasm_hybrid',
+  'wasm-hybrid': 'wasm_hybrid',
+  wasm_hybrid: 'wasm_hybrid',
+};
+
+const HARDENING_ALIASES: Record<string, SupportedRuntimeHardening> = {
+  off: 'off',
+  none: 'off',
+  debug: 'off',
+  plain: 'off',
+  false: 'off',
+  stealth: 'stealth',
+  default: 'stealth',
+  balanced: 'stealth',
+  true: 'stealth',
+  paranoid: 'paranoid',
+  strict: 'paranoid',
+  max: 'paranoid',
+  maximum: 'paranoid',
 };
 
 export function parseSeed(seedOption?: string): number {
@@ -47,20 +77,20 @@ export function applySeedToProfile<T extends { seed: number; vm: { seed: number 
   };
 }
 
-export function parseRuntimeBackend(runtimeOption?: string): 'js' | 'wasm_hybrid' {
+export function parseRuntimeBackend(runtimeOption?: string): SupportedRuntimeBackend {
   const normalized = (runtimeOption ?? 'js').trim().toLowerCase();
-  if (normalized === 'js') {
-    return 'js';
+  const runtimeBackend = RUNTIME_ALIASES[normalized];
+  if (runtimeBackend) {
+    return runtimeBackend;
   }
-  if (normalized === 'wasm-hybrid' || normalized === 'wasm_hybrid') {
-    return 'wasm_hybrid';
-  }
-  throw new Error(`Unsupported runtime "${runtimeOption}". Expected one of: js, wasm-hybrid.`);
+  throw new Error(
+    `Unsupported runtime "${runtimeOption}". Expected one of: ${SUPPORTED_RUNTIME_BACKENDS.join(', ')}.`,
+  );
 }
 
-export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: 'js' | 'wasm_hybrid' } }>(
+export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: SupportedRuntimeBackend } }>(
   profile: T,
-  runtimeBackend: 'js' | 'wasm_hybrid',
+  runtimeBackend: SupportedRuntimeBackend,
 ): T {
   return {
     ...profile,
@@ -71,18 +101,37 @@ export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: 
   };
 }
 
-export function parseRuntimeHardening(hardeningOption?: string): 'off' | 'stealth' | 'paranoid' {
+export function parseRuntimeHardening(hardeningOption?: string): SupportedRuntimeHardening {
   const normalized = (hardeningOption ?? 'stealth').trim().toLowerCase();
-  if (normalized === 'off' || normalized === 'stealth' || normalized === 'paranoid') {
-    return normalized;
+  const runtimeHardening = HARDENING_ALIASES[normalized];
+  if (runtimeHardening) {
+    return runtimeHardening;
   }
-  throw new Error(`Unsupported hardening "${hardeningOption}". Expected one of: off, stealth, paranoid.`);
+  throw new Error(
+    `Unsupported hardening "${hardeningOption}". Expected one of: ${SUPPORTED_HARDENING_LEVELS.join(', ')}.`,
+  );
+}
+
+export function resolveRuntimeHardening(
+  hardeningOption?: string,
+  flags: { readonly debugVm?: boolean; readonly paranoid?: boolean } = {},
+): SupportedRuntimeHardening {
+  if (flags.debugVm && flags.paranoid) {
+    throw new Error('Conflicting VM hardening options: --debug-vm cannot be used with --paranoid.');
+  }
+  if (flags.debugVm) {
+    return 'off';
+  }
+  if (flags.paranoid) {
+    return 'paranoid';
+  }
+  return parseRuntimeHardening(hardeningOption);
 }
 
 export function applyRuntimeHardeningToProfile<
   T extends {
     vm: {
-      runtimeHardening?: 'off' | 'stealth' | 'paranoid';
+      runtimeHardening?: SupportedRuntimeHardening;
       stealthDispatch?: boolean;
       tamperDetection?: boolean;
       antiDebug?: boolean;
@@ -90,7 +139,7 @@ export function applyRuntimeHardeningToProfile<
       rollingKeys?: boolean;
     };
   },
->(profile: T, runtimeHardening: 'off' | 'stealth' | 'paranoid'): T {
+>(profile: T, runtimeHardening: SupportedRuntimeHardening): T {
   const enabled = runtimeHardening !== 'off';
   return {
     ...profile,
