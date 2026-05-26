@@ -37,6 +37,7 @@ function createRuntimeNames(config: VMBuildConfig) {
         handlers: 'handlers',
         result: 'result',
         vmFunctions: 'vmFunctions',
+        privateData: 'privateData',
       },
       ctx: {
         pc: 'pc',
@@ -85,6 +86,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       handlers: next(),
       result: next(),
       vmFunctions: next(),
+      privateData: next(),
     },
     ctx: {
       pc: 'pc',
@@ -363,6 +365,70 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `${ctxRef('running')} = false;`);
 
+  declareHandler(OpCode.PrivateGet, `
+    ${readArgs}
+    var obj = ctx.regs[args[0]];
+    var key = ctx.regs[args[1]];
+    var p = ${top.privateData}.get(obj);
+    if (!p || !(key in p)) throw new TypeError('Cannot read private member');
+    ctx.regs[args[2]] = p[key];
+  `);
+  declareHandler(OpCode.PrivateSet, `
+    ${readArgs}
+    var obj = ctx.regs[args[0]];
+    var key = ctx.regs[args[1]];
+    var p = ${top.privateData}.get(obj);
+    if (!p) { p = {}; ${top.privateData}.set(obj, p); }
+    p[key] = ctx.regs[args[2]];
+  `);
+  declareHandler(OpCode.PrivateIn, `
+    ${readArgs}
+    var obj = ctx.regs[args[0]];
+    var key = ctx.regs[args[1]];
+    var p = ${top.privateData}.get(obj);
+    ctx.regs[args[2]] = p ? (key in p) : false;
+  `);
+
+  declareHandler(OpCode.SuperPropGet, `
+    ${readArgs}
+    var superProto = Object.getPrototypeOf(Object.getPrototypeOf(ctx.thisArg));
+    ctx.regs[args[1]] = superProto[ctx.regs[args[0]]];
+  `);
+  declareHandler(OpCode.SuperPropSet, `
+    ${readArgs}
+    var superProto = Object.getPrototypeOf(Object.getPrototypeOf(ctx.thisArg));
+    superProto[ctx.regs[args[0]]] = ctx.regs[args[1]];
+  `);
+  declareHandler(OpCode.SuperCall, `
+    ${readArgs}
+    var superCtor = Object.getPrototypeOf(ctx.thisArg.constructor);
+    var aa = [];
+    for (var ci = 0; ci < args.length - 1; ci++) {
+      aa.push(ctx.regs[args[ci]]);
+    }
+    ctx.regs[args[args.length - 1]] = superCtor.apply(ctx.thisArg, aa);
+  `);
+  declareHandler(OpCode.SuperCallWithArray, `
+    ${readArgs}
+    var superCtor = Object.getPrototypeOf(ctx.thisArg.constructor);
+    ctx.regs[args[1]] = superCtor.apply(ctx.thisArg, ctx.regs[args[0]]);
+  `);
+
+  declareHandler(OpCode.Yield, `
+    ${readArgs}
+    ${ctxRef('resumeReg')} = args[1];
+    ${ctxRef('resumeMode')} = 'yield';
+    ${ctxRef('resumeValue')} = ctx.regs[args[0]];
+    ${ctxRef('running')} = false;
+  `);
+  declareHandler(OpCode.YieldStar, `
+    ${readArgs}
+    ${ctxRef('resumeReg')} = args[1];
+    ${ctxRef('resumeMode')} = 'yieldStar';
+    ${ctxRef('resumeValue')} = ctx.regs[args[0]];
+    ${ctxRef('running')} = false;
+  `);
+
   const antiDebugLogic = config.antiDebug ? `
     // Anti-Debug Heuristics
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -432,6 +498,7 @@ const ${top.vmFunctions} = (function() {
   const ${top.seed} = ${config.seed};
   const ${top.rawCP} = ${cp};
   const ${top.cpCache} = new Map();
+  const ${top.privateData} = new WeakMap();
   
   // Lazy Decryption
   function ${top.getCP}(index) {
@@ -534,6 +601,9 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
       ${ctxRef('resumeMode')} = 'normal';
       return { kind: 'await', promise: ${ctxRef('awaitPromise')} };
     }
+    if (${ctxRef('resumeMode')} === 'yield' || ${ctxRef('resumeMode')} === 'yieldStar') {
+      return { kind: ${ctxRef('resumeMode')}, value: ${ctxRef('resumeValue')} };
+    }
     return { kind: 'return', value: ${ctxRef('returnValue')} };
   }
 
@@ -557,6 +627,58 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
             ctx.${ctx.running} = true;
           }
         }
+      };
+    }
+    if (attributes && attributes.indexOf('generator') >= 0) {
+      return function execute() {
+        const ${ctx.fnArgs} = Array.prototype.slice.call(arguments);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs});
+        let delegateIterator = null;
+        return {
+          [Symbol.iterator]: function() { return this; },
+          next: function(v) {
+            if (!ctx.${ctx.running}) return { value: undefined, done: true };
+            while(true) {
+              if (delegateIterator) {
+                let step = delegateIterator.next(v);
+                if (step.done) {
+                  v = step.value;
+                  delegateIterator = null;
+                } else {
+                  return step;
+                }
+              }
+              if (ctx.${ctx.resumeMode} === 'yield' || ctx.${ctx.resumeMode} === 'yieldStar') {
+                ctx.${ctx.resumeMode} = 'normal';
+                ctx.${ctx.regs}[ctx.${ctx.resumeReg}] = v;
+                ctx.${ctx.resumeReg} = -1;
+                ctx.${ctx.running} = true;
+              }
+              const outcome = __runVm(ctx);
+              if (outcome.kind === 'return') {
+                return { value: outcome.value, done: true };
+              }
+              if (outcome.kind === 'yield') {
+                return { value: outcome.value, done: false };
+              }
+              if (outcome.kind === 'yieldStar') {
+                delegateIterator = outcome.value[Symbol.iterator]();
+                v = undefined;
+                continue;
+              }
+            }
+          },
+          return: function(v) {
+             ctx.${ctx.running} = false;
+             return { value: v, done: true };
+          },
+          throw: function(e) {
+             ctx.${ctx.resumeMode} = 'throw';
+             ctx.${ctx.resumeValue} = e;
+             ctx.${ctx.running} = true;
+             return this.next();
+          }
+        };
       };
     }
     return function execute() {

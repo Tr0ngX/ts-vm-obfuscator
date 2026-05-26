@@ -3,9 +3,7 @@ import type { FunctionCapabilityReport, FunctionExecutionTier } from '@tsvm/shar
 
 const VM_BLOCKERS = new Set<ts.SyntaxKind>([
   ts.SyntaxKind.DebuggerStatement,
-  ts.SyntaxKind.SuperKeyword,
   ts.SyntaxKind.WithStatement,
-  ts.SyntaxKind.YieldExpression,
   ts.SyntaxKind.ImportKeyword,
   ts.SyntaxKind.JsxElement,
   ts.SyntaxKind.JsxSelfClosingElement,
@@ -84,20 +82,8 @@ function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
 
 function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): string[] {
   const reasons = new Set<string>();
-  if (node.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) {
-    reasons.add('class uses extends');
-  }
 
   const visit = (current: ts.Node) => {
-    if (current.kind === ts.SyntaxKind.SuperKeyword) {
-      reasons.add('class contains super');
-    }
-    if (ts.isPrivateIdentifier(current)) {
-      reasons.add('class contains private identifier');
-    }
-    if (ts.isClassStaticBlockDeclaration(current)) {
-      reasons.add('class contains static block');
-    }
     if (ts.isConstructorDeclaration(current) && current.parameters.some((parameter) => parameter.modifiers?.length)) {
       reasons.add('class uses parameter properties');
     }

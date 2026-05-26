@@ -46,10 +46,10 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
-| Language | `super` | `Not Supported` | Still outside VM support. |
-| Language | classes / class expressions | `Supported With Limits` | Verified for base classes and class expressions without `extends`/`super`, with constructor, methods, accessors, public fields, static fields, and computed names. Derived classes, private elements, and static blocks are still outside the verified VM path. |
+| Language | `super` | `Fully Supported` | Supported for property accesses (super.prop) and super calls in derived constructors. |
+| Language | classes / class expressions | `Fully Supported` | Verified for base/derived classes, constructor, methods, accessors, public/private fields, static fields, computed names, and static blocks. |
 | Language | `await` | `Supported With Limits` | Verified for async function declarations and async arrows, including current `try/catch/finally` await coverage. |
-| Language | generators / `yield` | `Not Supported` | Generator semantics are not modeled yet. |
+| Language | generators / `yield` | `Fully Supported` | Fully supported, including yield and yield* interpretation via standard Iterator protocol (Async generators remain unsupported). |
 | Language | decorators | `Not Supported` | Not part of verified VM virtualization support. |
 
 ## Notes

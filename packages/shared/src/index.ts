@@ -311,6 +311,13 @@ export enum OpCode {
   Spread = 0x56,
   SpreadIntoArray = 0x57,
   Delete = 0x58,
+  PrivateGet = 0x59,
+  PrivateSet = 0x5A,
+  PrivateIn = 0x5B,
+  SuperPropGet = 0x5C,
+  SuperPropSet = 0x5D,
+  SuperCall = 0x5E,
+  SuperCallWithArray = 0x5F,
 
   // Special
   Phi = 0x60,
@@ -322,6 +329,8 @@ export enum OpCode {
   Yield = 0x66,
   Await = 0x67,
   Debugger = 0x68,
+  YieldStar = 0x69,
+  GeneratorNew = 0x6A,
 
   // VM-specific
   Nop = 0xF0,

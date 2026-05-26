@@ -83,7 +83,13 @@ interface NormalizedClassFieldElement {
   readonly computedBindingName?: string;
 }
 
-type NormalizedClassElement = NormalizedClassMethodElement | NormalizedClassFieldElement;
+interface NormalizedClassStaticBlockElement {
+  readonly kind: 'static_block';
+  readonly node: ts.ClassStaticBlockDeclaration;
+  readonly isStatic: true;
+}
+
+type NormalizedClassElement = NormalizedClassMethodElement | NormalizedClassFieldElement | NormalizedClassStaticBlockElement;
 
 interface NormalizedClass {
   readonly bindingName?: string;
@@ -265,6 +271,7 @@ class ASTLowering {
   private throwPassthroughFinallyDepth = 0;
   private readonly pendingParameterBindings: PendingParameterBinding[] = [];
   private readonly isAsyncFunction: boolean;
+  private readonly isGenerator: boolean;
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
@@ -281,7 +288,13 @@ class ASTLowering {
       this.fnBuilder.addAttribute(attribute);
     }
     this.isAsyncFunction = !!this.node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
+      || ('asteriskToken' in this.node && !!this.node.asteriskToken && (this.node.name as any)?.text === 'async')
       || (options.attributes ?? []).includes(FunctionAttribute.Async);
+    this.isGenerator = 'asteriskToken' in this.node && !!this.node.asteriskToken;
+
+    if (this.isAsyncFunction && this.isGenerator) {
+      this.failUnsupported(this.node, 'async generators are not supported');
+    }
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
     options.analysis.capturedFromOuter.forEach((name, index) => {
@@ -620,7 +633,12 @@ class ASTLowering {
         continue;
       }
       if (ts.isClassStaticBlockDeclaration(member)) {
-        this.failUnsupported(member, 'static blocks are not supported on the vm-safe path');
+        staticElements.push({
+          kind: 'static_block',
+          node: member,
+          isStatic: true,
+        });
+        continue;
       }
       if ('name' in member && member.name && ts.isPrivateIdentifier(member.name)) {
         this.failUnsupported(member.name, 'private class elements are not supported on the vm-safe path');
@@ -913,9 +931,9 @@ class ASTLowering {
       if (element.kind === 'field' || element.kind === 'constructor') {
         continue;
       }
-      const methodReg = this.lowerNestedFunctionLike(element.node, undefined, { availableOuterNames });
-      const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
-      this.emitClassMethodOrAccessorDescriptor(prototypeReg, key.register, key.computed, element, methodReg);
+      const methodReg = this.lowerNestedFunctionLike(element.node as any, undefined, { availableOuterNames });
+      const key = this.getPropertyKeyRegister((element as any).keyName, (element as any).computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(prototypeReg, key.register, key.computed, element as any, methodReg);
     }
 
     for (const element of normalized.staticElements) {
@@ -927,9 +945,22 @@ class ASTLowering {
         this.emitObjectPropertyWrite(ctorReg, key.register, valueReg, key.computed);
         continue;
       }
-      const methodReg = this.lowerNestedFunctionLike(element.node, undefined, { availableOuterNames });
-      const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
-      this.emitClassMethodOrAccessorDescriptor(ctorReg, key.register, key.computed, element, methodReg);
+      if (element.kind === 'static_block') {
+        const fakeFn = ts.factory.createFunctionExpression(
+          undefined, undefined, undefined, undefined, [], undefined, element.node.body
+        );
+        const fnReg = this.lowerNestedFunctionLike(fakeFn, undefined, { availableOuterNames });
+        const callPropReg = this.emitConstant(ConstantKind.String, 'call');
+        this.currentBlock.addInstruction(OpCode.CallMethod, [
+          { kind: OperandKind.Register, value: fnReg },
+          { kind: OperandKind.Register, value: callPropReg },
+          { kind: OperandKind.Register, value: ctorReg },
+        ]);
+        continue;
+      }
+      const methodReg = this.lowerNestedFunctionLike(element.node as any, undefined, { availableOuterNames });
+      const key = this.getPropertyKeyRegister((element as any).keyName, (element as any).computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(ctorReg, key.register, key.computed, element as any, methodReg);
     }
 
     if (restoreBinding) {
@@ -1058,8 +1089,25 @@ class ASTLowering {
     }
 
     if (ts.isPropertyAccessExpression(target)) {
+      if (target.expression.kind === ts.SyntaxKind.SuperKeyword) {
+        const propReg = this.emitConstant(ConstantKind.String, target.name.text);
+        this.currentBlock.addInstruction(OpCode.SuperPropSet, [
+          { kind: OperandKind.Register, value: propReg },
+          { kind: OperandKind.Register, value: valueReg },
+        ]);
+        return;
+      }
+
       const objReg = this.visitExpression(target.expression);
       const propReg = this.emitConstant(ConstantKind.String, target.name.text);
+      if (ts.isPrivateIdentifier(target.name)) {
+        this.currentBlock.addInstruction(OpCode.PrivateSet, [
+          { kind: OperandKind.Register, value: objReg },
+          { kind: OperandKind.Register, value: propReg },
+          { kind: OperandKind.Register, value: valueReg },
+        ]);
+        return;
+      }
       this.currentBlock.addInstruction(OpCode.PropSet, [
         { kind: OperandKind.Register, value: objReg },
         { kind: OperandKind.Register, value: propReg },
@@ -1953,6 +2001,29 @@ class ASTLowering {
       );
       return awaitedValueReg;
     }
+    if (ts.isYieldExpression(expr)) {
+      if (!this.isGenerator) {
+        this.failUnsupported(expr, 'yield outside generator is not supported');
+      }
+      const yieldedValueReg = expr.expression
+        ? this.visitExpression(expr.expression)
+        : this.emitConstant(ConstantKind.Undefined, null);
+      const resReg = this.fnBuilder.allocRegister();
+      if (expr.asteriskToken) {
+        this.currentBlock.addInstruction(
+          OpCode.YieldStar,
+          [{ kind: OperandKind.Register, value: yieldedValueReg }],
+          resReg,
+        );
+      } else {
+        this.currentBlock.addInstruction(
+          OpCode.Yield,
+          [{ kind: OperandKind.Register, value: yieldedValueReg }],
+          resReg,
+        );
+      }
+      return resReg;
+    }
     if (expr.kind === ts.SyntaxKind.NullKeyword) return this.emitConstant(ConstantKind.Null, null);
     if (expr.kind === ts.SyntaxKind.TrueKeyword) return this.emitConstant(ConstantKind.Boolean, true);
     if (expr.kind === ts.SyntaxKind.FalseKeyword) return this.emitConstant(ConstantKind.Boolean, false);
@@ -2014,6 +2085,14 @@ class ASTLowering {
         return valueReg;
       }
       
+      if (expr.operatorToken.kind === ts.SyntaxKind.InKeyword && ts.isPrivateIdentifier(expr.left)) {
+        const leftReg = this.emitConstant(ConstantKind.String, expr.left.text);
+        const rightReg = this.visitExpression(expr.right);
+        const resReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.PrivateIn, [{ kind: OperandKind.Register, value: rightReg }, { kind: OperandKind.Register, value: leftReg }], resReg);
+        return resReg;
+      }
+
       const leftReg = this.visitExpression(expr.left);
       const rightReg = this.visitExpression(expr.right);
       const resReg = this.fnBuilder.allocRegister();
@@ -2078,9 +2157,20 @@ class ASTLowering {
     }
     
     if (ts.isPropertyAccessExpression(expr)) {
+      if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+        const propReg = this.emitConstant(ConstantKind.String, expr.name.text);
+        const resReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(OpCode.SuperPropGet, [{ kind: OperandKind.Register, value: propReg }], resReg);
+        return resReg;
+      }
+
       const objReg = this.visitExpression(expr.expression);
       const propReg = this.emitConstant(ConstantKind.String, expr.name.text);
       const resReg = this.fnBuilder.allocRegister();
+      if (ts.isPrivateIdentifier(expr.name)) {
+        this.currentBlock.addInstruction(OpCode.PrivateGet, [{ kind: OperandKind.Register, value: objReg }, { kind: OperandKind.Register, value: propReg }], resReg);
+        return resReg;
+      }
       this.currentBlock.addInstruction(OpCode.PropGet, [{ kind: OperandKind.Register, value: objReg }, { kind: OperandKind.Register, value: propReg }], resReg);
       return resReg;
     }
@@ -2218,7 +2308,34 @@ class ASTLowering {
       const hasSpread = expr.arguments.some((arg) => ts.isSpreadElement(arg));
       if (hasSpread) {
         const argArrayReg = this.materializeArgumentArray(expr.arguments);
+        if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+          this.currentBlock.addInstruction(
+            OpCode.SuperCallWithArray,
+            [{ kind: OperandKind.Register, value: argArrayReg }],
+            resReg,
+          );
+          return resReg;
+        }
         if (ts.isPropertyAccessExpression(expr.expression)) {
+          if (expr.expression.expression.kind === ts.SyntaxKind.SuperKeyword) {
+            const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
+            const fnReg = this.fnBuilder.allocRegister();
+            this.currentBlock.addInstruction(OpCode.SuperPropGet, [{ kind: OperandKind.Register, value: propReg }], fnReg);
+            const applyReg = this.emitConstant(ConstantKind.String, 'apply');
+            const thisReg = this.fnBuilder.allocRegister();
+            this.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
+            this.currentBlock.addInstruction(
+              OpCode.CallMethod,
+              [
+                { kind: OperandKind.Register, value: fnReg },
+                { kind: OperandKind.Register, value: applyReg },
+                { kind: OperandKind.Register, value: thisReg },
+                { kind: OperandKind.Register, value: argArrayReg }
+              ],
+              resReg
+            );
+            return resReg;
+          }
           const objReg = this.visitExpression(expr.expression.expression);
           const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
           this.currentBlock.addInstruction(
@@ -2245,7 +2362,29 @@ class ASTLowering {
       }
       const args = expr.arguments.map(a => this.visitExpression(a));
       
+      if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+        const ops: Operand[] = args.map(a => ({ kind: OperandKind.Register, value: a } as Operand));
+        this.currentBlock.addInstruction(OpCode.SuperCall, ops, resReg);
+        return resReg;
+      }
+      
       if (ts.isPropertyAccessExpression(expr.expression)) {
+        if (expr.expression.expression.kind === ts.SyntaxKind.SuperKeyword) {
+          const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
+          const fnReg = this.fnBuilder.allocRegister();
+          this.currentBlock.addInstruction(OpCode.SuperPropGet, [{ kind: OperandKind.Register, value: propReg }], fnReg);
+          const callReg = this.emitConstant(ConstantKind.String, 'call');
+          const thisReg = this.fnBuilder.allocRegister();
+          this.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
+          const ops: Operand[] = [
+            { kind: OperandKind.Register, value: fnReg },
+            { kind: OperandKind.Register, value: callReg },
+            { kind: OperandKind.Register, value: thisReg },
+            ...args.map(a => ({ kind: OperandKind.Register, value: a } as Operand))
+          ];
+          this.currentBlock.addInstruction(OpCode.CallMethod, ops, resReg);
+          return resReg;
+        }
         const objReg = this.visitExpression(expr.expression.expression);
         const propReg = this.emitConstant(ConstantKind.String, expr.expression.name.text);
         const ops: Operand[] = [

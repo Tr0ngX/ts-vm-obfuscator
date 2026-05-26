@@ -260,13 +260,12 @@ describe('IR builder', () => {
     expect(module.functions.some((candidate) => candidate.capturedVariables.some((name) => name.startsWith('$$class_key_')))).toBe(true);
   });
 
-  it('keeps extends/private/static-block classes off the vm-safe path', () => {
+  it('puts extends/private/static-block classes on the vm-safe path', () => {
     const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
     const reports = analyzeFunctionCapabilities(filePath);
-
-    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('js_lowered');
-    expect(reports.find((report) => report.functionName === 'classPrivatePack')?.tier).toBe('js_lowered');
-    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'classPrivatePack')?.tier).toBe('vm_safe');
+    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('vm_safe');
   });
 
   it('lowers nested lexical this and lexical new.target arrows through closure captures', () => {
