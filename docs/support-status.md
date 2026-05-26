@@ -19,20 +19,20 @@ Use it together with [AST Support Matrix](./ast-support.md):
 
 | Area | Feature / Syntax | Status | Notes |
 | --- | --- | --- | --- |
-| Control flow | `if / else` | `Fully Supported` | Covered by IR and runtime regression. |
-| Control flow | `for`, `while`, `do / while` | `Fully Supported` | Verified in VM execution tests. |
+| Control flow | `if / else` | `Fully Supported` | Covered by IR and runtime regression. Exhaustively verified with nested multi-condition gateways and edge inputs in `verifyArtemisGatingSystem`. |
+| Control flow | `for`, `while`, `do / while` | `Fully Supported` | Verified in VM execution tests. Exhaustively verified with complex Collatz sequence loops and limit checks in `verifyArtemisCollatzAndMath`. |
 | Control flow | `break`, `continue` | `Fully Supported` | Verified through loop control-flow fixtures. |
 | Control flow | `switch` | `Fully Supported` | Routed as `vm_safe` on the verified path. |
 | Control flow | `throw` | `Fully Supported` | VM runtime executes explicit throws correctly. |
 | Control flow | `try / catch / finally` | `Supported With Limits` | Fully verified for synchronous flow; async `await` inside the current async subset, including async generators, is verified separately. |
 | Control flow | `catch` binding | `Fully Supported` | Verified for identifier, no-binding, and destructured catch bindings on the VM path. |
-| Data / objects | array literals | `Fully Supported` | Includes indexed reads and writes on verified path. |
-| Data / objects | object literals, shorthand props, object-literal methods | `Supported With Limits` | Common forms are covered; not every property form is modeled yet. |
-| Data / objects | property access / element access | `Fully Supported` | Verified in lowering and runtime fixtures. |
+| Data / objects | array literals | `Fully Supported` | Includes indexed reads and writes on verified path. Exhaustively tested with nested sequence data mutations in `verifyArtemisStateDecimation`. |
+| Data / objects | object literals, shorthand props, object-literal methods | `Supported With Limits` | Common forms are covered; not every property form is modeled yet. Verified with dynamic property additions/mutations in `verifyArtemisStateDecimation`. |
+| Data / objects | property access / element access | `Fully Supported` | Verified in lowering and runtime fixtures. Exhaustively tested with dynamic keys (e.g. `telemetry[key]`) and array indexes (e.g. `telemetry.sensorData[idx]`). |
 | Data / objects | property assignment / computed assignment | `Fully Supported` | Verified in complex structure fixtures. |
-| Data / objects | `delete` | `Fully Supported` | Runtime handler is in place and tested. |
+| Data / objects | `delete` | `Fully Supported` | Runtime handler is in place and tested. Exhaustively verified via `delete telemetry.active` in `verifyArtemisStateDecimation`. |
 | Expressions | conditional `a ? b : c` | `Fully Supported` | Lowered and exercised in syntax-pack regression. |
-| Expressions | logical `&&`, `||`, `??` | `Fully Supported` | Verified short-circuit lowering path. |
+| Expressions | logical `&&`, `||`, `??` | `Fully Supported` | Verified short-circuit lowering path. Exhaustively tested with compound statements (`(A && B) || (C > D)`) in `verifyArtemisGatingSystem`. |
 | Expressions | `new` | `Fully Supported` | VM runtime includes constructor path. |
 | Iteration | `for...of` | `Fully Supported` | Verified in runtime fixture. |
 | Iteration | `for...in` | `Fully Supported` | Verified in runtime fixture. |

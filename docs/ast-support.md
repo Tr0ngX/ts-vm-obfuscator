@@ -11,12 +11,12 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Identifiers
 - Binary arithmetic/comparison operators covered in `packages/ir/src/builder.ts`
 - Conditional expressions: `cond ? a : b`
-- Logical short-circuit: `&&`, `||`, `??`
-- Property access and element access
+- Logical short-circuit: `&&`, `||`, `??` (Exhaustively verified in compound logical conditional expressions with bitwise masks)
+- Property access and element access (Exhaustively verified for dynamic keys `obj[key]`, nested properties, and array indices `arr[idx]`)
 - Array literals
 - Iterable spread elements in array literals, call arguments, and `new` arguments
 - Sparse array holes in array literals
-- Object literals with property assignments, shorthand properties, and object-literal methods
+- Object literals with property assignments, shorthand properties, object-literal methods, and computed names
 - Calls and `new`
 - `this` and `new.target` for regular function and constructor-style lowering
 - lexical `this` and lexical `new.target` in nested arrows with an enclosing function context
@@ -24,7 +24,8 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Nested `FunctionExpression`, `ArrowFunction`, local `FunctionDeclaration`, and object-literal `MethodDeclaration`
 - `await` inside verified async function declarations and async arrows
 - Prefix unary subset: `!`, unary `-`, `~`, `typeof`
-- `delete`
+- Postfix unary expressions: `++` and `--` for identifiers (Exhaustively verified for loop index counters like `idx++`)
+- `delete` operator (Exhaustively verified on dynamically assigned keys and nested object properties)
 - Private class fields (`#field`)
 - Synchronous and async generators with `yield` and `yield*` expressions
 
