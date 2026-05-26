@@ -62,7 +62,6 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 ## Supported With Limits
 
 - Captured bindings incur targeted boxing overhead
-- Lexical `this` and lexical `new.target` are only verified for nested arrows with an enclosing function context; top-level arrows without a lexical provider stay off the VM-safe path
 - Object literals do not yet cover every property form
 - Async support is currently limited to the verified async-function and async-generator subset
 

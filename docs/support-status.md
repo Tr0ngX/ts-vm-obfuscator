@@ -41,8 +41,8 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Bindings | rest/spread on VM path | `Fully Supported` | Verified for object/array rest binding, rest parameters, and spread in literals plus call/new arguments. |
 | Functions | nested `FunctionExpression` / `ArrowFunction` / local `FunctionDeclaration` / object-literal `MethodDeclaration` | `Fully Supported` | Compiled as nested VM functions. |
 | Closures | lexical capture of outer locals | `Supported With Limits` | Correct, but captured bindings are boxed and add targeted overhead. |
-| Semantics | `this` | `Supported With Limits` | Verified for regular function paths, constructor-style VM execution, and nested arrows that capture lexical `this` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
-| Semantics | `new.target` | `Supported With Limits` | Verified for constructor-style VM execution and nested arrows that capture lexical `new.target` from an enclosing function context. Top-level arrows without a lexical provider still stay off the vm-safe path. |
+| Semantics | `this` | `Fully Supported` | Verified for regular function paths, constructor-style VM execution, and all lexical closures/arrows including top-level arrows without a separate enclosing provider context. |
+| Semantics | `new.target` | `Fully Supported` | Verified for constructor-style VM execution and all lexical closures/arrows including top-level arrows without a separate enclosing provider context. |
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
 | Runtime backend | `js` | `Fully Supported` | Default generated JavaScript VM runtime. Covered by the normal build, runtime, and pipeline verification flow. |
 | Runtime backend | `wasm_hybrid` | `Supported With Limits` | Opt-in via `--runtime wasm-hybrid`. Verified as a real WebAssembly bootstrap plus JS VM semantic fallback; not yet a full native WASM opcode dispatcher. |
