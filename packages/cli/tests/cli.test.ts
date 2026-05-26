@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRuntimeBackendToProfile,
+  applyRuntimeHardeningToProfile,
   applySeedToProfile,
   parseRuntimeBackend,
+  parseRuntimeHardening,
   parseSeed,
   resolveProfileTarget,
 } from '../src/options.js';
@@ -46,5 +48,19 @@ describe('CLI helpers', () => {
     expect(parseRuntimeBackend(undefined)).toBe('js');
     expect(profile.vm.runtimeBackend).toBe('wasm_hybrid');
     expect(() => parseRuntimeBackend('native')).toThrow('Unsupported runtime');
+  });
+
+  it('parses and applies VM hardening levels', () => {
+    const stealthProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening(undefined));
+    const paranoidProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('paranoid'));
+    const offProfile = applyRuntimeHardeningToProfile({ vm: {} }, parseRuntimeHardening('off'));
+
+    expect(stealthProfile.vm.runtimeHardening).toBe('stealth');
+    expect(stealthProfile.vm.stealthDispatch).toBe(true);
+    expect(stealthProfile.vm.tamperDetection).toBe(true);
+    expect(stealthProfile.vm.antiDebug).toBe(false);
+    expect(paranoidProfile.vm.antiDebug).toBe(true);
+    expect(offProfile.vm.stealthDispatch).toBe(false);
+    expect(() => parseRuntimeHardening('loose')).toThrow('Unsupported hardening');
   });
 });

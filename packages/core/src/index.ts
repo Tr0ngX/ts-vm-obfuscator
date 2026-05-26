@@ -242,7 +242,12 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
     traceMode: false,
     deterministicReplay: false,
     seed,
-    stealthDispatch: false,
+    runtimeHardening: 'stealth',
+    stealthDispatch: true,
+    tamperDetection: true,
+    antiDebug: false,
+    junkInsertion: true,
+    rollingKeys: false,
   };
 }
 

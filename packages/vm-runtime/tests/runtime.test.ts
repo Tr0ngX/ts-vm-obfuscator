@@ -159,7 +159,7 @@ describe('VM Runtime', () => {
     });
 
     expect(bundle.fullSource).toContain('function getExecutorById(functionId, env)');
-    expect(bundle.fullSource).toContain("throw new Error('Unknown VM function id: ' + functionId);");
+    expect(bundle.fullSource).toContain('Unknown VM function id: ');
     expect(bundle.fullSource).toContain('ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);');
     expect(bundle.fullSource).toContain('ctx.regs[args[1]] = ctx.env[args[0]];');
     expect(bundle.fullSource).toContain('ctx.regs[args[1]] = { v: ctx.regs[args[0]] };');
@@ -499,8 +499,36 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('performance.now()');
     expect(bundle.fullSource).toContain('debugger;');
     expect(bundle.fullSource).toContain('ctx.regs[1] = NaN;');
-    expect(bundle.fullSource).toContain('!_isNative(Math.sin)');
+    expect(bundle.fullSource).toContain('Function.prototype.toString');
+    expect(bundle.fullSource).toContain('!_isNative(VMNativeMathSin)');
+    expect(bundle.fullSource).toContain('!_isNative(VMWeakMapGet)');
     expect(bundle.fullSource).toContain('ctx.globalScope = {};');
+  });
+
+  it('should execute with stealth hardening and tamper checks enabled', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const config = createVMConfig(91, {
+      runtimeHardening: 'stealth',
+      stealthDispatch: true,
+      tamperDetection: true,
+      junkInsertion: true,
+    });
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    expect(bundle.fullSource).not.toContain('handlers[op]');
+    expect(bundle.fullSource).not.toContain('Unknown VM function id: ');
+    expect(bundle.fullSource).not.toContain('Cannot read private member');
+    expect(bundle.fullSource).toContain('Object.create(null)');
+    expect(bundle.fullSource).toContain('& 1) === 0');
+    expect(bundle.fullSource).toContain('Function.prototype.toString');
+    expect(bundle.fullSource).toContain('.prototype.get');
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
   });
 
   it('should execute the control-flow regression fixture and throw correctly', () => {

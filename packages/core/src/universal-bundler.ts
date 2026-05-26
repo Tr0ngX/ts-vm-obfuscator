@@ -38,6 +38,11 @@ function stripCommonJsFooter(vmSource: string): string {
   return vmSource.replace(/\nif \(typeof module !== 'undefined' && module\.exports\) \{[\s\S]*?\}\s*$/u, '').trim();
 }
 
+function extractVmFunctionObjectName(vmSource: string): string {
+  const match = /const\s+([A-Za-z_$][\w$]*)\s*=\s*\(function\s*\(/u.exec(vmSource);
+  return match?.[1] ?? 'vmFunctions';
+}
+
 function buildTopLevelReportMap(
   transpiledFile: import('typescript').SourceFile,
   reports: readonly FunctionCapabilityReport[],
@@ -73,6 +78,7 @@ function buildVmFunctionWrapper(
   transpiledSource: string,
   sourceFile: import('typescript').SourceFile,
   statement: import('typescript').FunctionDeclaration,
+  vmObjectName: string,
 ): string {
   const functionName = statement.name!.text;
   const body = statement.body;
@@ -80,19 +86,19 @@ function buildVmFunctionWrapper(
     throw new Error(`Cannot emit VM wrapper for declaration without body: ${functionName}`);
   }
   const signatureText = transpiledSource.slice(statement.getStart(sourceFile), body.getStart(sourceFile));
-  return `${signatureText}{ if (new.target) { return Reflect.construct(vmFunctions[${JSON.stringify(functionName)}], Array.prototype.slice.call(arguments), new.target); } return vmFunctions[${JSON.stringify(functionName)}].apply(this, arguments); }`;
+  return `${signatureText}{ if (new.target) { return Reflect.construct(${vmObjectName}[${JSON.stringify(functionName)}], Array.prototype.slice.call(arguments), new.target); } return ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, arguments); }`;
 }
 
-function buildVmFunctionExpressionWrapper(functionName: string, initializer: import('typescript').Expression): string {
+function buildVmFunctionExpressionWrapper(functionName: string, initializer: import('typescript').Expression, vmObjectName: string): string {
   if (ts.isArrowFunction(initializer)) {
     return initializer.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
-      ? `async (...args) => vmFunctions[${JSON.stringify(functionName)}].apply(this, args)`
-      : `(...args) => vmFunctions[${JSON.stringify(functionName)}].apply(this, args)`;
+      ? `async (...args) => ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, args)`
+      : `(...args) => ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, args)`;
   }
   if (ts.isFunctionExpression(initializer)) {
     return initializer.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
-      ? `async function (...args) { return vmFunctions[${JSON.stringify(functionName)}].apply(this, args); }`
-      : `function (...args) { if (new.target) { return Reflect.construct(vmFunctions[${JSON.stringify(functionName)}], args, new.target); } return vmFunctions[${JSON.stringify(functionName)}].apply(this, args); }`;
+      ? `async function (...args) { return ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, args); }`
+      : `function (...args) { if (new.target) { return Reflect.construct(${vmObjectName}[${JSON.stringify(functionName)}], args, new.target); } return ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, args); }`;
   }
   throw new Error(`Unsupported top-level VM wrapper initializer for ${functionName}`);
 }
@@ -101,6 +107,7 @@ function rewriteModuleStatements(
   transpiledSource: string,
   sourceFile: import('typescript').SourceFile,
   reports: readonly FunctionCapabilityReport[],
+  vmObjectName: string,
 ): { readonly rewrittenSource: string; readonly hasVmFunctions: boolean } {
   const topLevelReportMap = buildTopLevelReportMap(sourceFile, reports);
   const replacements = new Map<import('typescript').Statement, string>();
@@ -118,7 +125,7 @@ function rewriteModuleStatements(
         );
       }
       if (report.tier === 'vm_safe') {
-        replacements.set(statement, buildVmFunctionWrapper(transpiledSource, sourceFile, statement));
+        replacements.set(statement, buildVmFunctionWrapper(transpiledSource, sourceFile, statement, vmObjectName));
         hasVmFunctions = true;
       }
       continue;
@@ -151,7 +158,7 @@ function rewriteModuleStatements(
             statement,
             [
               transpiledSource.slice(statementStart, initializerStart),
-              buildVmFunctionExpressionWrapper(bindingName, declaration.initializer),
+              buildVmFunctionExpressionWrapper(bindingName, declaration.initializer, vmObjectName),
               transpiledSource.slice(initializerEnd, statementEnd),
             ].join(''),
           );
@@ -205,7 +212,8 @@ export function buildUniversalBundle(
   const sourceText = ts.sys.readFile(moduleInfo.filePath) || '';
   const transpiledSource = transpileModuleToEsm(sourceText, moduleInfo.filePath, compilerOptions);
   const transpiledFile = ts.createSourceFile(`${moduleInfo.relativePath}.mjs`, transpiledSource, ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS);
-  const { rewrittenSource, hasVmFunctions } = rewriteModuleStatements(transpiledSource, transpiledFile, functionReports);
+  const vmObjectName = vmBundle ? extractVmFunctionObjectName(vmBundle.fullSource) : 'vmFunctions';
+  const { rewrittenSource, hasVmFunctions } = rewriteModuleStatements(transpiledSource, transpiledFile, functionReports, vmObjectName);
 
   const loweredFunctions = functionReports.filter((report) => report.tier === 'js_lowered');
   const reportComment = loweredFunctions.length > 0

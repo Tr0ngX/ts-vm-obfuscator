@@ -70,3 +70,38 @@ export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: 
     },
   };
 }
+
+export function parseRuntimeHardening(hardeningOption?: string): 'off' | 'stealth' | 'paranoid' {
+  const normalized = (hardeningOption ?? 'stealth').trim().toLowerCase();
+  if (normalized === 'off' || normalized === 'stealth' || normalized === 'paranoid') {
+    return normalized;
+  }
+  throw new Error(`Unsupported hardening "${hardeningOption}". Expected one of: off, stealth, paranoid.`);
+}
+
+export function applyRuntimeHardeningToProfile<
+  T extends {
+    vm: {
+      runtimeHardening?: 'off' | 'stealth' | 'paranoid';
+      stealthDispatch?: boolean;
+      tamperDetection?: boolean;
+      antiDebug?: boolean;
+      junkInsertion?: boolean;
+      rollingKeys?: boolean;
+    };
+  },
+>(profile: T, runtimeHardening: 'off' | 'stealth' | 'paranoid'): T {
+  const enabled = runtimeHardening !== 'off';
+  return {
+    ...profile,
+    vm: {
+      ...profile.vm,
+      runtimeHardening,
+      stealthDispatch: enabled,
+      tamperDetection: enabled,
+      antiDebug: runtimeHardening === 'paranoid',
+      junkInsertion: enabled,
+      rollingKeys: profile.vm.rollingKeys ?? false,
+    },
+  };
+}

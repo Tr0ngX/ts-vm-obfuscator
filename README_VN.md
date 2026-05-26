@@ -79,6 +79,11 @@ Backend runtime:
 - `--runtime js` là mặc định và dùng JavaScript VM runtime được sinh ra.
 - `--runtime wasm-hybrid` dùng backend WebAssembly hybrid. Ở phase hiện tại, bundle sẽ nhúng và xác thực bootstrap WebAssembly thật, sau đó ủy quyền ngữ nghĩa bytecode cho JS VM executor hiện có để giữ kết quả chạy không đổi trong khi lõi WASM được mở rộng dần.
 
+Runtime hardening:
+- `--hardening stealth` là mặc định. Chế độ này bật tên helper VM ngẫu nhiên/khó nhận diện, dispatch gián tiếp, kiểm tra native intrinsic bị hook, và snapshot các intrinsic nhạy cảm như `WeakMap.prototype.get/set` trước khi truy cập private-state của VM.
+- `--hardening off` giữ runtime gần với JS VM thuần để debug dễ hơn.
+- `--hardening paranoid` bật thêm anti-debug timing probe nặng hơn. Chỉ dùng khi chấp nhận rủi ro false-positive và vấn đề tương thích.
+
 ## Kiến Trúc Hệ Thống
 
 TSXobf hoạt động như một compiler backend. Nó tiếp nhận TypeScript, biên dịch các hàm mục tiêu sang dạng Biểu Diễn Trung Gian (IR) dựa trên thanh ghi, chạy qua bộ lọc bảo mật, và đóng gói vào trình thông dịch JS nhẹ.
@@ -130,6 +135,7 @@ graph TD
 - Biên dịch VM bytecode với opcode đã được tái ánh xạ (remapped opcodes).
 - Sinh runtime JavaScript tích hợp Threaded Dispatch và bẫy báo lỗi.
 - Backend runtime `wasm_hybrid` tùy chọn với WebAssembly bootstrap đã verify và JS semantic fallback.
+- Runtime hardening lấy cảm hứng từ JS-Confuser: kiểm tra native function bị hook, che giấu tên helper, dispatch gián tiếp, che giấu string nội bộ VM, opaque predicates, dead branches, và snapshot intrinsic cho private-state storage.
 - Lowering qua constant-pool và giải mã runtime.
 - Hỗ trợ switch profile an toàn cho React và Electron.
 - Transform xóa debug (Strip-debug) trong chu trình làm rối.
@@ -269,6 +275,11 @@ Build với runtime WASM hybrid tùy chọn:
 node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --runtime wasm-hybrid
 ```
 
+Build với VM shape dễ debug hơn:
+```bash
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --hardening off
+```
+
 Đánh giá Native vs Obfuscated:
 ```bash
 node examples/st/run-obf.js
@@ -292,6 +303,7 @@ Một số giới hạn cần biết:
 - Hỗ trợ cú pháp vẫn được mở rộng theo từng syntax pack có regression coverage, không phải “mọi JavaScript đều chạy trong VM”.
 - Closure support đã đúng ngữ nghĩa cho captured outer locals, nhưng các binding bị capture sẽ phải đi qua boxing nên có overhead cục bộ.
 - `wasm_hybrid` là backend opt-in phase 1: bundle có bootstrap WebAssembly thật, nhưng opcode execution vẫn đi qua JS VM semantic executor. Không nên xem đây là lõi opcode WASM native hoàn chỉnh.
+- Runtime hardening làm VM sinh ra khó bị fingerprint hơn JS VM thuần, nhưng không phải ranh giới bảo mật kiểu mật mã. Mức `stealth` hiện gồm dispatch gián tiếp, đổi tên helper, runtime string concealment, opaque/dead branches, và native intrinsic checks. Mức `stealth` tránh đường rolling-key hiện chưa ổn định; mức `paranoid` có thể lỗi khi chạy dưới debugger hoặc môi trường chậm.
 - `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` đã được verify cho subset async hiện tại, bao gồm async generators trên verified path.
 - `this` và `new.target` đã được verify cho regular function path, constructor-style VM execution, và nested arrows có enclosing function context để capture lexical semantics. Top-level arrows không có lexical provider vẫn chưa nằm trong `vm_safe`.
 - Base `class` declarations và `class` expressions đã được verify trên VM path, gồm public fields, private instance fields, methods, accessors, static fields, và computed names. Derived classes (`extends` / `super`), private methods/accessors, static blocks, và decorators vẫn đang ở ngoài verified VM path.

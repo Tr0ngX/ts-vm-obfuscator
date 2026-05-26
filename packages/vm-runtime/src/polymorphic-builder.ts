@@ -30,9 +30,16 @@ function createRuntimeNames(config: VMBuildConfig) {
         rawCP: 'rawCP',
         cpCache: 'cpCache',
         getCP: 'getCP',
+        runtimeStrings: 'runtimeStrings',
+        runtimeStringCache: 'runtimeStringCache',
+        getRuntimeString: 'getRuntimeString',
         weakMapCtor: 'VMWeakMap',
+        weakMapGet: 'VMWeakMapGet',
+        weakMapSet: 'VMWeakMapSet',
         reflectObj: 'VMReflect',
         objectObj: 'VMObject',
+        nativeToString: 'VMNativeToString',
+        nativeMathSin: 'VMNativeMathSin',
         arraySlice: 'sliceArgs',
         promiseResolve: 'resolvePromise',
         iteratorSymbol: 'iteratorSymbol',
@@ -45,6 +52,8 @@ function createRuntimeNames(config: VMBuildConfig) {
         result: 'result',
         vmFunctions: 'vmFunctions',
         privateData: 'privateData',
+        opaquePredicate: 'opaquePredicate',
+        junkSink: 'junkSink',
       },
       ctx: {
         pc: 'pc',
@@ -86,9 +95,16 @@ function createRuntimeNames(config: VMBuildConfig) {
       rawCP: next(),
       cpCache: next(),
       getCP: next(),
+      runtimeStrings: next(),
+      runtimeStringCache: next(),
+      getRuntimeString: next(),
       weakMapCtor: next(),
+      weakMapGet: next(),
+      weakMapSet: next(),
       reflectObj: next(),
       objectObj: next(),
+      nativeToString: next(),
+      nativeMathSin: next(),
       arraySlice: next(),
       promiseResolve: next(),
       iteratorSymbol: next(),
@@ -101,6 +117,8 @@ function createRuntimeNames(config: VMBuildConfig) {
       result: next(),
       vmFunctions: next(),
       privateData: next(),
+      opaquePredicate: next(),
+      junkSink: next(),
     },
     ctx: {
       pc: 'pc',
@@ -157,6 +175,58 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   }
 
   const exportedFunctions = module.functions.filter(f => f.isEntryPoint);
+  const concealRuntimeStrings = !!config.stealthDispatch || !!config.tamperDetection || !!config.junkInsertion;
+  const runtimeStringKey = (config.seed ^ 0xa7) & 0xff;
+  const runtimeStringEntries = [
+    'VM Integrity Violation at PC ',
+    ', raw op: ',
+    'Unknown VM function id: ',
+    'Cannot read private member',
+    '@@iterator',
+  ];
+  const runtimeStringIndex = new Map(runtimeStringEntries.map((value, index) => [value, index]));
+  const encodedRuntimeStrings = runtimeStringEntries.map((value) => {
+    let encoded = '';
+    for (let i = 0; i < value.length; i++) {
+      encoded += String.fromCharCode(value.charCodeAt(i) ^ ((runtimeStringKey + i) & 0xff));
+    }
+    return encoded;
+  });
+  const runtimeStringRef = (value: string) => {
+    if (!concealRuntimeStrings) {
+      return JSON.stringify(value);
+    }
+    const index = runtimeStringIndex.get(value);
+    if (index === undefined) {
+      throw new Error(`Missing runtime string entry: ${value}`);
+    }
+    return `${top.getRuntimeString}(${index})`;
+  };
+  const runtimeStringBootstrap = concealRuntimeStrings ? `
+  const ${top.runtimeStrings} = ${JSON.stringify(encodedRuntimeStrings)};
+  const ${top.runtimeStringCache} = Object.create(null);
+  function ${top.getRuntimeString}(index) {
+    if (${top.runtimeStringCache}[index] !== undefined) return ${top.runtimeStringCache}[index];
+    var encoded = ${top.runtimeStrings}[index];
+    var decoded = '';
+    for (var i = 0; i < encoded.length; i++) {
+      decoded += String.fromCharCode(encoded.charCodeAt(i) ^ ((${runtimeStringKey} + i) & 0xFF));
+    }
+    return ${top.runtimeStringCache}[index] = decoded;
+  }
+  function ${top.opaquePredicate}(value) {
+    value = value | 0;
+    return (((value * value + value) & 1) === 0);
+  }
+  function ${top.junkSink}(value) {
+    var acc = value ^ ${config.seed};
+    for (var i = 0; i < 3; i++) acc = ((acc << 5) - acc + i) | 0;
+    return acc;
+  }
+  if (!${top.opaquePredicate}(${top.seed})) {
+    ${top.junkSink}(${top.seed});
+  }
+  ` : '';
 
   const handlerDeclarations: string[] = [];
   const handlerNames = new Map<OpCode, string>();
@@ -168,7 +238,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     handlerDeclarations.push(`function ${fnName}(ctx) {\n${body}\n}`);
   };
 
-  declareHandler(OpCode.Trap, `throw new Error('VM Integrity Violation at PC ' + (${ctxRef('pc')} - 1) + ', raw op: ' + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
+  declareHandler(OpCode.Trap, `throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1) + ${runtimeStringRef(', raw op: ')} + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
 
   const advanceArg = `
     let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
@@ -383,23 +453,23 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
-    var p = ${top.privateData}.get(obj);
-    if (!p || !(key in p)) throw new TypeError('Cannot read private member');
+    var p = ${top.weakMapGet}.call(${top.privateData}, obj);
+    if (!p || !(key in p)) throw new TypeError(${runtimeStringRef('Cannot read private member')});
     ctx.regs[args[2]] = p[key];
   `);
   declareHandler(OpCode.PrivateSet, `
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
-    var p = ${top.privateData}.get(obj);
-    if (!p) { p = {}; ${top.privateData}.set(obj, p); }
+    var p = ${top.weakMapGet}.call(${top.privateData}, obj);
+    if (!p) { p = {}; ${top.weakMapSet}.call(${top.privateData}, obj, p); }
     p[key] = ctx.regs[args[2]];
   `);
   declareHandler(OpCode.PrivateIn, `
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
-    var p = ${top.privateData}.get(obj);
+    var p = ${top.weakMapGet}.call(${top.privateData}, obj);
     ctx.regs[args[2]] = p ? (key in p) : false;
   `);
 
@@ -464,13 +534,18 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   ` : '';
 
   const tamperDetectionLogic = config.tamperDetection ? `
-    // Integrity checks for native functions and self
-    var _isNative = function(fn) { return /\\{\\s*\\[native code\\]\\s*\\}/.test('' + fn); };
-    var fnStr = execute.toString();
+    // JS-Confuser-inspired runtime tamper checks for native intrinsics and VM self shape.
+    var _isNative = function(fn) {
+      try { return /\\{\\s*\\[native code\\]\\s*\\}/.test(${top.nativeToString}.call(fn)); }
+      catch (_) { return false; }
+    };
+    var fnStr = ${top.nativeToString}.call(__runVm);
     if (
       (fnStr.indexOf('debugger') === -1 && ${config.antiDebug}) || 
       fnStr.length < 100 || 
-      !_isNative(Math.sin)
+      !_isNative(${top.nativeMathSin}) ||
+      !_isNative(${top.weakMapGet}) ||
+      !_isNative(${top.weakMapSet})
     ) {
       // Data corruption on tamper
       ${ctxRef('globalScope')} = {}; 
@@ -521,13 +596,18 @@ const ${top.vmFunctions} = (function() {
   const ${top.rawCP} = ${cp};
   const ${top.cpCache} = new Map();
   const ${top.weakMapCtor} = WeakMap;
+  const ${top.weakMapGet} = ${top.weakMapCtor}.prototype.get;
+  const ${top.weakMapSet} = ${top.weakMapCtor}.prototype.set;
   const ${top.reflectObj} = typeof Reflect !== 'undefined' ? Reflect : undefined;
   const ${top.objectObj} = Object;
+  const ${top.nativeToString} = Function.prototype.toString;
+  const ${top.nativeMathSin} = Math.sin;
   const ${top.arraySlice} = Array.prototype.slice;
   const ${top.promiseResolve} = Promise.resolve.bind(Promise);
   const ${top.iteratorSymbol} = typeof Symbol !== 'undefined' ? Symbol.iterator : '@@iterator';
   const ${top.asyncIteratorSymbol} = typeof Symbol !== 'undefined' && Symbol.asyncIterator ? Symbol.asyncIterator : null;
   const ${top.privateData} = new ${top.weakMapCtor}();
+  ${runtimeStringBootstrap}
   
   // Lazy Decryption
   function ${top.getCP}(index) {
@@ -560,7 +640,7 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
     }
     const functionMeta = ${top.functionBytecodes}[functionId];
     if (!functionMeta) {
-      throw new Error('Unknown VM function id: ' + functionId);
+      throw new Error(${runtimeStringRef('Unknown VM function id: ')} + functionId);
     }
     const executor = ${top.createExecutor}(functionMeta.bytecode, env || [], functionMeta.attributes || [], functionMeta.registerCount || 0);
     if (!env || env.length === 0) {

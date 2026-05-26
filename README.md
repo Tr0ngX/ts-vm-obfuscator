@@ -79,6 +79,11 @@ Runtime backends:
 - `--runtime js` is the default and uses the generated JavaScript VM runtime.
 - `--runtime wasm-hybrid` uses the WebAssembly hybrid backend. In the current phase, this validates and embeds a native WebAssembly bootstrap, then delegates bytecode semantics to the existing JS VM executor so behavior stays identical while the WASM core can be expanded incrementally.
 
+Runtime hardening:
+- `--hardening stealth` is the default. It enables randomized/opaque VM helper names, indirect dispatch routing, native intrinsic tamper checks, and snapshots sensitive intrinsics such as `WeakMap.prototype.get/set` before VM private-state access.
+- `--hardening off` keeps the runtime closer to the plain JS VM shape for debugging.
+- `--hardening paranoid` additionally enables the heavier anti-debug timing probe. Use it only when you accept higher false-positive and compatibility risk.
+
 ## Architecture
 
 TSXobf works as a compiler backend. It takes your TypeScript code, compiles target functions into a register-based Intermediate Representation (IR), applies security passes, and packages them into a lightweight JS interpreter.
@@ -130,6 +135,7 @@ graph TD
 - VM bytecode compilation with remapped opcodes.
 - Generated JS runtime with threaded dispatch and integrity trap handlers.
 - Optional `wasm_hybrid` runtime backend with a verified WebAssembly bootstrap and JS semantic fallback.
+- JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect dispatch routing, string-concealed VM literals, opaque predicates, dead branches, and intrinsic snapshots for private-state storage.
 - Constant-pool based lowering with runtime decoding.
 - React-safe and Electron-oriented profile switches.
 - Strip-debug transform in the obfuscation pipeline.
@@ -270,6 +276,11 @@ Build with the optional WASM hybrid runtime:
 node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --runtime wasm-hybrid
 ```
 
+Build with plain debug-friendly VM shape:
+```bash
+node packages/cli/dist/cli.js -p examples/st/tsconfig.json --out examples/st/dist --hardening off
+```
+
 Then compare native vs obfuscated execution:
 ```bash
 node examples/st/run-obf.js
@@ -293,6 +304,7 @@ Notable limits:
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
 - `wasm_hybrid` is an opt-in phase-1 backend: the generated bundle includes a real WebAssembly bootstrap, but opcode execution still uses the JS VM semantic executor. Do not treat it as a full native WASM opcode core yet.
+- Runtime hardening makes the generated VM less fingerprintable than the plain JS VM, but it is not a cryptographic boundary. Current `stealth` hardening includes indirect dispatch, helper renaming, runtime string concealment, opaque/dead branches, and native intrinsic checks. The `stealth` level avoids the known-unstable rolling-key path; `paranoid` anti-debug can break under debuggers or slow environments.
 - `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified for the current async-function subset, including async generators on the verified path.
 - `this` and `new.target` are verified for regular function paths, constructor-style VM execution, and nested arrows that capture them lexically from an enclosing function context. Top-level arrows without an enclosing lexical provider are still kept off the `vm_safe` path.
 - Base `class` declarations and `class` expressions are verified on the VM path, including public fields, private instance fields, methods, accessors, static fields, and computed names. Derived classes (`extends` / `super`), static blocks, and decorators are still outside the verified VM path.

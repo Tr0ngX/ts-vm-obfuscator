@@ -46,6 +46,9 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Profile | `universal` | `Supported With Limits` | ESM-native and stronger than before, but still mixes `vm_safe` and compatibility-lowered paths depending on syntax. |
 | Runtime backend | `js` | `Fully Supported` | Default generated JavaScript VM runtime. Covered by the normal build, runtime, and pipeline verification flow. |
 | Runtime backend | `wasm_hybrid` | `Supported With Limits` | Opt-in via `--runtime wasm-hybrid`. Verified as a real WebAssembly bootstrap plus JS VM semantic fallback; not yet a full native WASM opcode dispatcher. |
+| Runtime hardening | `stealth` | `Supported With Limits` | Default hardening level. Enables stealth dispatch, native intrinsic tamper checks, string-concealed VM literals, opaque/dead branches, and intrinsic snapshots for private-state access without the unstable rolling-key path. |
+| Runtime hardening | `paranoid` | `Supported With Limits` | Adds anti-debug timing probes. Stronger disruption behavior, but higher compatibility and false-positive risk. |
+| Runtime hardening | `off` | `Fully Supported` | Debug-friendly JS VM shape with hardening disabled. |
 | Language | spread elements in general expression lowering | `Fully Supported` | Verified for iterable spread in array literals plus call/new argument materialization on the VM path. |
 | Language | sparse array holes | `Fully Supported` | Verified for array literal lowering with preserved length and sparse index semantics. |
 | Language | `super` | `In Progress / Not Yet Stable` | Runtime handlers are being hardened, but derived-class lowering is still outside the verified VM path. |
@@ -61,6 +64,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Unsupported AST | Still expected to fail loudly during IR lowering when no safe lowering path exists. |
 | `universal` compatibility | A compatibility-lowered result is not the same thing as VM support. |
 | `wasm_hybrid` backend | The current hybrid backend validates the native WebAssembly bootstrap and preserves semantics through the JS VM executor. Promote individual opcode execution to WASM only after runtime and pipeline evidence exists. |
+| Runtime hardening | Inspired by JS-Confuser's tamper-protection/integrity ideas, but implemented directly in the generated VM runtime. Keep `rollingKeys` opt-in until jump-heavy fixtures prove stable. |
 | Promotion rule | Only move an item to `Fully Supported` after fresh IR/runtime/pipeline evidence exists. |
 
 ## Updating Rule
