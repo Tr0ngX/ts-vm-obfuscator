@@ -297,8 +297,8 @@ describe('IR builder', () => {
 
     const unsupportedFilePath = path.join(__dirname, 'fixtures', 'this-arrow-unsupported.ts');
     const unsupportedReports = analyzeFunctionCapabilities(unsupportedFilePath);
-    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalThisArrow')?.tier).toBe('js_lowered');
-    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalNewTargetArrow')?.tier).toBe('js_lowered');
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalThisArrow')?.tier).toBe('vm_safe');
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalNewTargetArrow')?.tier).toBe('vm_safe');
   });
 
   it('lowers verified async/await functions into vm-safe IR', () => {

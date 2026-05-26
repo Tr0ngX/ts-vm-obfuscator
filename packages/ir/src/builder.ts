@@ -214,7 +214,7 @@ function analyzeFunctionClosures(node: SupportedFunctionNode, availableOuterName
     if (current !== node && isNestedFunctionLike(current)) {
       const childAnalysis = analyzeFunctionClosures(current, childAvailableOuterNames);
       for (const name of childAnalysis.capturedFromOuter) {
-        if (localNames.has(name)) {
+        if (localNames.has(name) || name === LEXICAL_THIS_CAPTURE || name === LEXICAL_NEW_TARGET_CAPTURE) {
           capturedByDescendants.add(name);
         } else if (availableOuterNames.has(name)) {
           pushUnique(capturedFromOuter, name);
@@ -523,6 +523,12 @@ class ASTLowering {
 
   private initializeLexicalSemanticCaptures(analysis: ClosureAnalysis): void {
     if (!ts.isArrowFunction(this.node)) {
+      if (analysis.capturedByDescendants.has(LEXICAL_THIS_CAPTURE)) {
+        this.initializeLexicalCapture(LEXICAL_THIS_CAPTURE);
+      }
+      if (analysis.capturedByDescendants.has(LEXICAL_NEW_TARGET_CAPTURE)) {
+        this.initializeLexicalCapture(LEXICAL_NEW_TARGET_CAPTURE);
+      }
       return;
     }
     if (analysis.capturedFromOuter.includes(LEXICAL_THIS_CAPTURE)) {
@@ -2124,7 +2130,7 @@ class ASTLowering {
     if (expr.kind === ts.SyntaxKind.TrueKeyword) return this.emitConstant(ConstantKind.Boolean, true);
     if (expr.kind === ts.SyntaxKind.FalseKeyword) return this.emitConstant(ConstantKind.Boolean, false);
     if (expr.kind === ts.SyntaxKind.ThisKeyword) {
-      if (ts.isArrowFunction(this.node)) {
+      if (ts.isArrowFunction(this.node) && (this.scope.has(LEXICAL_THIS_CAPTURE) || this.outerCaptureBindings.has(LEXICAL_THIS_CAPTURE))) {
         return this.resolveLexicalCapture(LEXICAL_THIS_CAPTURE, expr, 'lexical this in arrow function requires an enclosing function context');
       }
       const thisReg = this.fnBuilder.allocRegister();
@@ -2133,7 +2139,7 @@ class ASTLowering {
     }
     if (ts.isMetaProperty(expr)) {
       if (expr.keywordToken === ts.SyntaxKind.NewKeyword && expr.name.text === 'target') {
-        if (ts.isArrowFunction(this.node)) {
+        if (ts.isArrowFunction(this.node) && (this.scope.has(LEXICAL_NEW_TARGET_CAPTURE) || this.outerCaptureBindings.has(LEXICAL_NEW_TARGET_CAPTURE))) {
           return this.resolveLexicalCapture(
             LEXICAL_NEW_TARGET_CAPTURE,
             expr,

@@ -69,15 +69,11 @@ function findEnclosingFunctionLike(node: ts.Node): SupportedFunctionNode | undef
 }
 
 function hasLexicalThisProvider(node: ts.ArrowFunction): boolean {
-  return findEnclosingFunctionLike(node) !== undefined;
+  return true;
 }
 
 function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
-  const enclosing = findEnclosingFunctionLike(node);
-  if (!enclosing) {
-    return false;
-  }
-  return !ts.isArrowFunction(enclosing) || hasLexicalNewTargetProvider(enclosing);
+  return true;
 }
 
 function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): string[] {
