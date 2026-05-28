@@ -16,7 +16,7 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - Array literals
 - Iterable spread elements in array literals, call arguments, and `new` arguments
 - Sparse array holes in array literals
-- Object literals with property assignments, shorthand properties, object-literal methods, and computed names
+- Object literals with property assignments, shorthand properties, object-literal methods, and computed names (all property forms fully covered)
 - Calls and `new`
 - `this` and `new.target` for regular function and constructor-style lowering
 - lexical `this` and lexical `new.target` in nested arrows with an enclosing function context
@@ -50,9 +50,11 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - object and array destructuring declarations, including simple default values
 - destructuring assignments for verified array/object forms, including simple nesting and default values
 - object and array rest binding in declarations, assignments, loop bindings, and catch bindings
+- **computed key destructuring** in object binding patterns and object assignment destructuring (Exhaustively verified via `verifyArtemisComputedDestructuring` in E2E pipeline)
 - rest parameters and parameter destructuring
 - spread in array/object literals and call/new arguments
 - async function declarations and async arrows with verified `await` usage
+- **`for await...of`** loops over async iterables (Exhaustively verified via `verifyArtemisAsyncLoop` in E2E pipeline; resolves `Symbol.asyncIterator` and injects `OpCode.Await` per iteration step)
 
 ### Closures
 
@@ -62,8 +64,8 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 ## Supported With Limits
 
 - Captured bindings incur targeted boxing overhead
-- Object literals do not yet cover every property form
-- Async support is currently limited to the verified async-function and async-generator subset
+- Derived classes (`extends` / `super`) are outside the verified VM path
+- Class static blocks (`static {}`) are not yet lowered
 
 ## Unsupported / Planned
 

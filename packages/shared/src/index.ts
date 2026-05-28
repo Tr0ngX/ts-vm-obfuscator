@@ -768,6 +768,11 @@ export class SeededRandom {
     return (this.nextInt() - 1) / 2147483646;
   }
 
+  /** Returns a pseudo-random float in [0, 1). Alias for nextFloat(). */
+  next(): number {
+    return this.nextFloat();
+  }
+
   /** Returns a pseudo-random integer in [min, max] inclusive. */
   nextRange(min: number, max: number): number {
     if (min > max) {

@@ -297,8 +297,8 @@ describe('IR builder', () => {
 
     const unsupportedFilePath = path.join(__dirname, 'fixtures', 'this-arrow-unsupported.ts');
     const unsupportedReports = analyzeFunctionCapabilities(unsupportedFilePath);
-    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalThisArrow')?.tier).toBe('vm_safe');
-    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalNewTargetArrow')?.tier).toBe('vm_safe');
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalThisArrow')?.tier).toBe('js_lowered');
+    expect(unsupportedReports.find((report) => report.functionName === 'topLevelLexicalNewTargetArrow')?.tier).toBe('js_lowered');
   });
 
   it('lowers verified async/await functions into vm-safe IR', () => {
@@ -350,4 +350,16 @@ describe('IR builder', () => {
     expect(module.functions.some((candidate) => candidate.name === 'unsupportedTryCatch')).toBe(true);
     expect(diagnostics.some((diag) => diag.code === 'IR_UNIVERSAL_FALLBACK' && diag.severity === DiagnosticSeverity.Warning)).toBe(false);
   });
+
+  it('should compile object destructuring with computed property names', () => {
+    // We will test compilation of a snippet with computed key in variable declaration destructuring.
+    const filePath = path.join(__dirname, 'fixtures', 'computed-destructuring.ts');
+    const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const fn = module.functions.find((candidate) => candidate.name === 'testComputedDestruct');
+    expect(fn).toBeDefined();
+    const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+    expect(opcodes).toContain(OpCode.PropGet);
+    expect(opcodes).toContain(OpCode.Delete);
+  });
 });
+

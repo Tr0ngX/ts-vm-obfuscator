@@ -5,6 +5,7 @@ import { lowerToIR } from '../../ir/src/builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -332,7 +333,13 @@ describe('VM Runtime', () => {
     const bundle = buildVMRuntime(bytecode, createVMConfig(53));
 
     const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
-    new Function('module', bundle.fullSource)(moduleShim);
+    try {
+      new Function('module', bundle.fullSource)(moduleShim);
+    } catch (e) {
+      fs.writeFileSync(path.resolve('scratch/failed-source.js'), bundle.fullSource);
+      console.error("DUMPED FAILED SOURCE TO scratch/failed-source.js due to error:", e);
+      throw e;
+    }
 
     expect(moduleShim.exports.expressionPack()).toBe('8:0|2|3|4|6|7:undefined:3,4,5,,6,7:ABC:2020-1-2');
   });
@@ -344,7 +351,13 @@ describe('VM Runtime', () => {
     const bundle = buildVMRuntime(bytecode, createVMConfig(47, { stealthDispatch: true }));
 
     const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
-    new Function('module', bundle.fullSource)(moduleShim);
+    try {
+      new Function('module', bundle.fullSource)(moduleShim);
+    } catch (e) {
+      fs.writeFileSync(path.resolve('scratch/failed-stealth.js'), bundle.fullSource);
+      console.error("DUMPED FAILED STEALTH SOURCE TO scratch/failed-stealth.js due to error:", e);
+      throw e;
+    }
 
     expect(moduleShim.exports.bindingPack({ a: 7, b: undefined, extra: 11, drop: 2 }, [3, 5, 8])).toBe('boom:detail:3:7:6:5,8:5:13:3');
     expect(moduleShim.exports.parameterPack({ a: 2 }, 4, 6, 8)).toBe(13);
@@ -392,7 +405,13 @@ describe('VM Runtime', () => {
     const bundle = buildVMRuntime(bytecode, createVMConfig(71));
 
     const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
-    new Function('module', bundle.fullSource)(moduleShim);
+    try {
+      new Function('module', bundle.fullSource)(moduleShim);
+    } catch (e) {
+      fs.writeFileSync(path.resolve('scratch/failed-classpack.js'), bundle.fullSource);
+      console.error("DUMPED FAILED CLASSPACK SOURCE TO scratch/failed-classpack.js due to error:", e);
+      throw e;
+    }
 
     expect(moduleShim.exports.classPack(4)).toBe('2:Named:7:Named:10:6:20');
   });
@@ -458,6 +477,33 @@ describe('VM Runtime', () => {
     await expect(iter.next()).resolves.toEqual({ value: 6, done: false });
     await expect(iter.next()).resolves.toEqual({ value: 7, done: false });
     await expect(iter.next()).resolves.toEqual({ value: 8, done: true });
+  });
+
+  it('should execute async for-await-of loops through the VM runtime', async () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-loop-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(95));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(95));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    // Create an async iterable
+    const asyncIterable = {
+      [Symbol.asyncIterator]() {
+        let i = 1;
+        return {
+          async next() {
+            if (i <= 3) {
+              return { value: i++, done: false };
+            }
+            return { value: undefined, done: true };
+          }
+        };
+      }
+    };
+
+    await expect(moduleShim.exports.testAsyncLoop(asyncIterable)).resolves.toBe(6);
   });
 
   it('should inject anti-debug and tamper logic when enabled', () => {

@@ -107,4 +107,37 @@ export function verifyArtemisGatingSystem(sensorA: number, sensorB: number, thre
   return criticalLevel;
 }
 
+/** @virtualize */
+export function verifyArtemisComputedDestructuring(key: string, value: number, defaultVal: number): any[] {
+  const obj: any = { [key]: value, otherKey: 99 };
+  const { [key]: extracted, otherKey, ...rest } = obj;
+  let assigned;
+  let fallback;
+  ({ [key]: assigned, missingKey: fallback = defaultVal } = obj);
+  return [extracted, otherKey, rest, assigned, fallback];
+}
+
+/** @virtualize */
+export async function verifyArtemisAsyncLoop(count: number): Promise<number> {
+  const asyncIterable: AsyncIterable<number> = {
+    [Symbol.asyncIterator](): AsyncIterator<number> {
+      let i = 1;
+      return {
+        async next(): Promise<IteratorResult<number>> {
+          if (i <= count) {
+            return { value: i++, done: false };
+          }
+          return { value: 0, done: true };
+        }
+      };
+    }
+  };
+
+  let sum = 0;
+  for await (const x of asyncIterable) {
+    sum += x;
+  }
+  return sum;
+}
+
 main();

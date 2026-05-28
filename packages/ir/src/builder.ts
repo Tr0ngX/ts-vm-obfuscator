@@ -970,12 +970,11 @@ class ASTLowering {
           : this.emitConstant(ConstantKind.Undefined, null);
         if (element.privateBindingName) {
           const privateKeyReg = this.resolveVar(element.privateBindingName);
-          const resultReg = this.fnBuilder.allocRegister();
           this.currentBlock.addInstruction(OpCode.PrivateSet, [
             { kind: OperandKind.Register, value: ctorReg },
             { kind: OperandKind.Register, value: privateKeyReg },
             { kind: OperandKind.Register, value: valueReg },
-          ], resultReg);
+          ]);
           continue;
         }
         const key = this.getPropertyKeyRegister(element.keyName, element.computedBindingName);
@@ -1065,12 +1064,11 @@ class ASTLowering {
         : this.emitConstant(ConstantKind.Undefined, null);
       if (field.privateBindingName) {
         const privateKeyReg = this.resolveVar(field.privateBindingName);
-        const resultReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(OpCode.PrivateSet, [
           { kind: OperandKind.Register, value: thisReg },
           { kind: OperandKind.Register, value: privateKeyReg },
           { kind: OperandKind.Register, value: valueReg },
-        ], resultReg);
+        ]);
         continue;
       }
       const key = this.getPropertyKeyRegister(field.keyName, field.computedBindingName);
@@ -1492,22 +1490,21 @@ class ASTLowering {
 
     if (ts.isObjectBindingPattern(bindingName)) {
       let restElement: ts.BindingElement | undefined;
-      const excludedKeys: string[] = [];
+      const excludedKeys: Register[] = [];
       for (const element of bindingName.elements) {
         if (element.dotDotDotToken) {
           restElement = element;
           continue;
         }
         const propertyName = element.propertyName ?? element.name;
-        const keyText =
-          ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName) || ts.isNumericLiteral(propertyName)
-            ? propertyName.text
-            : undefined;
-        if (!keyText) {
-          this.failUnsupported(propertyName, 'Unsupported object binding property name');
+        if (ts.isObjectBindingPattern(propertyName) || ts.isArrayBindingPattern(propertyName)) {
+          this.failUnsupported(propertyName, 'Invalid binding property name pattern');
         }
-        excludedKeys.push(keyText);
-        const keyReg = this.emitConstant(ConstantKind.String, keyText);
+        const keyReg = ts.isComputedPropertyName(propertyName)
+          ? this.visitExpression(propertyName.expression)
+          : this.emitConstant(ConstantKind.String, this.getPropertyNameText(propertyName));
+        
+        excludedKeys.push(keyReg);
         const valueReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(
           OpCode.PropGet,
@@ -1523,10 +1520,10 @@ class ASTLowering {
         const restReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(OpCode.ObjectNew, [], restReg);
         this.emitSpreadInto(restReg, sourceReg);
-        excludedKeys.forEach((key) => {
+        excludedKeys.forEach((keyReg) => {
           this.currentBlock.addInstruction(OpCode.Delete, [
             { kind: OperandKind.Register, value: restReg },
-            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, key) },
+            { kind: OperandKind.Register, value: keyReg },
           ]);
         });
         this.bindPattern(restElement.name, restReg, mode);
@@ -2623,7 +2620,7 @@ class ASTLowering {
         this.currentBlock.addInstruction(OpCode.Delete, [
           { kind: OperandKind.Register, value: objReg },
           { kind: OperandKind.Register, value: propReg }
-        ], resReg);
+        ]);
         this.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: this.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg); // delete returns true usually
         return resReg;
       } else if (ts.isElementAccessExpression(expr.expression)) {
@@ -2636,7 +2633,7 @@ class ASTLowering {
         this.currentBlock.addInstruction(OpCode.Delete, [
           { kind: OperandKind.Register, value: objReg },
           { kind: OperandKind.Register, value: propReg }
-        ], resReg);
+        ]);
         this.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: this.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg);
         return resReg;
       }
@@ -2708,7 +2705,7 @@ class ASTLowering {
   }
 
   private storeObjectPattern(target: ts.ObjectLiteralExpression, sourceReg: Register): void {
-    const excludedKeys: string[] = [];
+    const excludedKeys: Register[] = [];
     let restTarget: ts.Expression | undefined;
 
     for (const property of target.properties) {
@@ -2721,14 +2718,17 @@ class ASTLowering {
         this.failUnsupported(property, 'Unsupported object assignment target');
       }
 
-      const keyText = this.getPropertyNameText(property.name);
-      excludedKeys.push(keyText);
+      const keyReg = ts.isComputedPropertyName(property.name)
+        ? this.visitExpression(property.name.expression)
+        : this.emitConstant(ConstantKind.String, this.getPropertyNameText(property.name));
+
+      excludedKeys.push(keyReg);
       const valueReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(
         OpCode.PropGet,
         [
           { kind: OperandKind.Register, value: sourceReg },
-          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, keyText) },
+          { kind: OperandKind.Register, value: keyReg },
         ],
         valueReg,
       );
@@ -2746,10 +2746,10 @@ class ASTLowering {
       const restReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(OpCode.ObjectNew, [], restReg);
       this.emitSpreadInto(restReg, sourceReg);
-      excludedKeys.forEach((key) => {
+      excludedKeys.forEach((keyReg) => {
         this.currentBlock.addInstruction(OpCode.Delete, [
           { kind: OperandKind.Register, value: restReg },
-          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, key) },
+          { kind: OperandKind.Register, value: keyReg },
         ]);
       });
       this.storeValue(restTarget, restReg);
@@ -2882,7 +2882,7 @@ class ASTLowering {
     else if (ts.isForOfStatement(stmt)) {
       const iterableReg = this.visitExpression(stmt.expression);
       const symbolReg = this.resolveVar('Symbol');
-      const iteratorKeyReg = this.emitConstant(ConstantKind.String, 'iterator');
+      const iteratorKeyReg = this.emitConstant(ConstantKind.String, stmt.awaitModifier ? 'asyncIterator' : 'iterator');
       const iteratorSymbolReg = this.fnBuilder.allocRegister();
       this.currentBlock.addInstruction(
         OpCode.PropGet,
@@ -2928,14 +2928,31 @@ class ASTLowering {
       this.currentBlock = condBlock;
       const liveIteratorReg = this.loadFromLocal(iteratorLocal);
       const stepReg = this.fnBuilder.allocRegister();
-      this.currentBlock.addInstruction(
-        OpCode.CallMethod,
-        [
-          { kind: OperandKind.Register, value: liveIteratorReg },
-          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'next') },
-        ],
-        stepReg,
-      );
+      if (stmt.awaitModifier) {
+        const nextPromiseReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(
+          OpCode.CallMethod,
+          [
+            { kind: OperandKind.Register, value: liveIteratorReg },
+            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'next') },
+          ],
+          nextPromiseReg,
+        );
+        this.currentBlock.addInstruction(
+          OpCode.Await,
+          [{ kind: OperandKind.Register, value: nextPromiseReg }],
+          stepReg,
+        );
+      } else {
+        this.currentBlock.addInstruction(
+          OpCode.CallMethod,
+          [
+            { kind: OperandKind.Register, value: liveIteratorReg },
+            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'next') },
+          ],
+          stepReg,
+        );
+      }
       this.currentBlock.addInstruction(OpCode.StoreLocal, [
         { kind: OperandKind.Register, value: stepLocal },
         { kind: OperandKind.Register, value: stepReg },

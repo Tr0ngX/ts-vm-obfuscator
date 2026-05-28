@@ -69,11 +69,64 @@ function findEnclosingFunctionLike(node: ts.Node): SupportedFunctionNode | undef
 }
 
 function hasLexicalThisProvider(node: ts.ArrowFunction): boolean {
-  return true;
+  // Walk up AST to find an enclosing function/method/constructor that provides `this`
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    // Method, constructor, getter, setter provide their own `this`
+    if (ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)) {
+      return true;
+    }
+    // Regular function declaration/expression provides its own `this`
+    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
+      return true;
+    }
+    // Class property initializer — arrow in property position gets class `this`
+    if (ts.isPropertyDeclaration(current) &&
+        (ts.isClassDeclaration(current.parent) || ts.isClassExpression(current.parent))) {
+      return true;
+    }
+    // Reached top of file without finding a provider
+    if (ts.isSourceFile(current)) {
+      return false;
+    }
+    current = current.parent;
+  }
+  return false;
 }
 
 function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
-  return true;
+  // Walk up AST to find an enclosing constructor or function that can be `new`-called
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    // Constructor provides new.target
+    if (ts.isConstructorDeclaration(current)) {
+      return true;
+    }
+    // Regular function (can be called with new) provides new.target
+    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
+      return true;
+    }
+    // Arrow functions inherit new.target lexically — keep walking
+    if (ts.isArrowFunction(current)) {
+      current = current.parent;
+      continue;
+    }
+    // Methods, getters, setters cannot be `new`-called
+    if (ts.isMethodDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)) {
+      return false;
+    }
+    // Reached top of file
+    if (ts.isSourceFile(current)) {
+      return false;
+    }
+    current = current.parent;
+  }
+  return false;
 }
 
 function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): string[] {

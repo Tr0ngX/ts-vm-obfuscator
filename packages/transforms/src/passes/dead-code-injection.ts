@@ -1,4 +1,4 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction, BasicBlock } from '@tsvm/shared';
+import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction, BasicBlock, Register } from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
 
 export class DeadCodeInjectionPass implements TransformPass {
@@ -16,62 +16,243 @@ export class DeadCodeInjectionPass implements TransformPass {
       if (!func.isVirtualized) return func;
 
       let changed = false;
-      const newBlocks = func.blocks.map(block => {
-        const newInstructions: Instruction[] = [];
+      const newBlocks: BasicBlock[] = [];
+
+      // Find max register to allocate junk registers beyond current usage
+      let maxReg = 0;
+      for (const block of func.blocks) {
+        for (const inst of block.instructions) {
+          if (inst.result) {
+            const m = /^r(\d+)$/.exec(inst.result);
+            if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
+          }
+          for (const op of inst.operands) {
+            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
+              const m = /^r(\d+)$/.exec(op.value);
+              if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
+            }
+          }
+        }
+      }
+      for (const param of func.params) {
+        const m = /^r(\d+)$/.exec(param.register);
+        if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
+      }
+      for (const local of func.locals) {
+        const m = /^r(\d+)$/.exec(local.register);
+        if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
+      }
+
+      for (const block of func.blocks) {
+        let currentBlockId = block.id;
+        let currentLabel = block.label;
+        let currentInstructions: Instruction[] = [];
+        let currentPredecessors = [...block.predecessors];
+        let isFirstSubBlock = true;
+        
         for (const inst of block.instructions) {
           // Inject junk 20% of the time before non-terminator instructions
           if (ctx.rng.nextFloat() < 0.20 && inst.opcode !== OpCode.Phi) {
             changed = true;
             nodesTransformed++;
             
-            // Generate some junk math operations writing to high unused registers
-            const junkReg1 = `r${ctx.rng.nextRange(200, 240)}`;
-            const junkReg2 = `r${ctx.rng.nextRange(200, 240)}`;
-            const junkReg3 = `r${ctx.rng.nextRange(200, 240)}`;
+            // Allocate junk registers near live range
+            const rStart = maxReg + 5;
+            const junkReg1 = `r${ctx.rng.nextRange(rStart, rStart + 3)}` as Register;
+            const junkReg2 = `r${ctx.rng.nextRange(rStart + 4, rStart + 7)}` as Register;
+            const junkReg3 = `r${ctx.rng.nextRange(rStart + 8, rStart + 11)}` as Register;
 
             // Ensure there is at least one constant
             if (newCP.length === 0) {
               newCP.push({ index: 0, kind: ConstantKind.Number, value: 0 });
             }
             const cpMax = newCP.length - 1;
+            const randCpIdx = ctx.rng.nextRange(0, cpMax);
 
-            // e.g. LoadConst junk, Math operation, etc.
-            newInstructions.push({
-              opcode: OpCode.LoadConst,
-              operands: [
-                { kind: OperandKind.ConstantIndex, value: ctx.rng.nextRange(0, cpMax) },
-                { kind: OperandKind.Register, value: junkReg1 }
-              ]
-            });
-            newInstructions.push({
-              opcode: OpCode.LoadConst,
-              operands: [
-                { kind: OperandKind.ConstantIndex, value: ctx.rng.nextRange(0, cpMax) },
-                { kind: OperandKind.Register, value: junkReg2 }
-              ]
-            });
-            
-            // Random Math OP
-            const mathOps = [OpCode.Add, OpCode.Sub, OpCode.Mul, OpCode.BitXor, OpCode.BitAnd];
-            const randomOp = mathOps[ctx.rng.nextRange(0, mathOps.length - 1)]!;
-            
-            newInstructions.push({
-              opcode: randomOp,
-              operands: [
-                { kind: OperandKind.Register, value: junkReg1 },
-                { kind: OperandKind.Register, value: junkReg2 },
-                { kind: OperandKind.Register, value: junkReg3 }
-              ],
-              metadata: { deadCode: true }
-            });
+            // Vary patterns: A, B, C, D
+            const patternChoice = ctx.rng.nextRange(0, 3);
+            const deadCodeInsts: Instruction[] = [];
+
+            if (patternChoice === 0) {
+              // Pattern A: LoadConst + Move (2 instructions)
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: randCpIdx }],
+                result: junkReg1
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.Move,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg1 },
+                  { kind: OperandKind.Register, value: junkReg2 }
+                ]
+              });
+            } else if (patternChoice === 1) {
+              // Pattern B: LoadConst + LoadConst + MathOp (3 instructions)
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: randCpIdx }],
+                result: junkReg1
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: ctx.rng.nextRange(0, cpMax) }],
+                result: junkReg2
+              });
+              
+              const mathOps = [OpCode.Add, OpCode.Sub, OpCode.Mul, OpCode.BitXor, OpCode.BitAnd];
+              const randomOp = mathOps[ctx.rng.nextRange(0, mathOps.length - 1)]!;
+              
+              deadCodeInsts.push({
+                opcode: randomOp,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg1 },
+                  { kind: OperandKind.Register, value: junkReg2 }
+                ],
+                result: junkReg3
+              });
+            } else if (patternChoice === 2) {
+              // Pattern C: Move + TypeOf + Move (3 instructions, mimics real code)
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: randCpIdx }],
+                result: junkReg1
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.Move,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg1 },
+                  { kind: OperandKind.Register, value: junkReg2 }
+                ]
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.TypeOf,
+                operands: [{ kind: OperandKind.Register, value: junkReg2 }],
+                result: junkReg3
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.Move,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg3 },
+                  { kind: OperandKind.Register, value: junkReg1 }
+                ]
+              });
+            } else {
+              // Pattern D: LoadConst + LoadConst + comparison op (Lt/Gt/Eq) (3 instructions)
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: randCpIdx }],
+                result: junkReg1
+              });
+              deadCodeInsts.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: ctx.rng.nextRange(0, cpMax) }],
+                result: junkReg2
+              });
+              
+              const compOps = [OpCode.Lt, OpCode.Gt, OpCode.Eq, OpCode.StrictEq, OpCode.LtEq, OpCode.GtEq];
+              const compOp = compOps[ctx.rng.nextRange(0, compOps.length - 1)]!;
+              
+              deadCodeInsts.push({
+                opcode: compOp,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg1 },
+                  { kind: OperandKind.Register, value: junkReg2 }
+                ],
+                result: junkReg3
+              });
+            }
+
+            // Occasionally (10% of injections), wrap in opaque predicate
+            if (ctx.rng.nextFloat() < 0.10) {
+              let zeroIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 0);
+              if (zeroIdx === -1) {
+                zeroIdx = newCP.length;
+                newCP.push({ index: zeroIdx, kind: ConstantKind.Number, value: 0 });
+              }
+
+              const randIdx = ctx.rng.nextRange(0, cpMax);
+              const condReg = `r${maxReg + 12}` as Register;
+
+              currentInstructions.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: randIdx }],
+                result: junkReg1
+              });
+              currentInstructions.push({
+                opcode: OpCode.Mul,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg1 },
+                  { kind: OperandKind.Register, value: junkReg1 }
+                ],
+                result: junkReg2
+              });
+              currentInstructions.push({
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }],
+                result: junkReg3
+              });
+              currentInstructions.push({
+                opcode: OpCode.Lt,
+                operands: [
+                  { kind: OperandKind.Register, value: junkReg2 },
+                  { kind: OperandKind.Register, value: junkReg3 }
+                ],
+                result: condReg
+              });
+
+              const deadBlockId = `__dci_opaque_dead_${ctx.rng.identifier(6)}`;
+              const nextBlockId = `__dci_opaque_next_${ctx.rng.identifier(6)}`;
+
+              newBlocks.push({
+                id: currentBlockId,
+                label: currentLabel,
+                instructions: currentInstructions,
+                terminator: {
+                  kind: 'branch',
+                  targets: [deadBlockId, nextBlockId],
+                  condition: condReg
+                },
+                predecessors: currentPredecessors,
+                successors: [deadBlockId, nextBlockId],
+                phiNodes: isFirstSubBlock ? block.phiNodes : []
+              });
+              isFirstSubBlock = false;
+
+              newBlocks.push({
+                id: deadBlockId,
+                label: 'opaque_dead',
+                instructions: deadCodeInsts,
+                terminator: { kind: 'jump', targets: [nextBlockId] },
+                predecessors: [currentBlockId],
+                successors: [nextBlockId],
+                phiNodes: []
+              });
+
+              currentBlockId = nextBlockId;
+              currentLabel = `${currentLabel}_opaque`;
+              currentInstructions = [];
+              currentPredecessors = [currentBlockId, deadBlockId];
+            } else {
+              // Normal injection directly into currentInstructions
+              currentInstructions.push(...deadCodeInsts);
+            }
           }
-          
-          newInstructions.push(inst);
+
+          currentInstructions.push(inst);
         }
-        
-        return changed ? { ...block, instructions: newInstructions } : block;
-      });
-      
+
+        newBlocks.push({
+          id: currentBlockId,
+          label: currentLabel,
+          instructions: currentInstructions,
+          terminator: block.terminator,
+          predecessors: currentPredecessors,
+          successors: block.successors,
+          phiNodes: isFirstSubBlock ? block.phiNodes : []
+        });
+      }
+
       return changed ? { ...func, blocks: newBlocks } : func;
     });
 

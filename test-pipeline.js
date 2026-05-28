@@ -99,6 +99,37 @@ function verifyArtemisGatingSystem(sensorA, sensorB, threshold) {
   return criticalLevel;
 }
 
+function verifyArtemisComputedDestructuring(key, value, defaultVal) {
+  const obj = { [key]: value, otherKey: 99 };
+  const { [key]: extracted, otherKey, ...rest } = obj;
+  let assigned;
+  let fallback;
+  ({ [key]: assigned, missingKey: fallback = defaultVal } = obj);
+  return [extracted, otherKey, rest, assigned, fallback];
+}
+
+async function verifyArtemisAsyncLoop(count) {
+  const asyncIterable = {
+    [Symbol.asyncIterator]() {
+      let i = 1;
+      return {
+        async next() {
+          if (i <= count) {
+            return { value: i++, done: false };
+          }
+          return { value: undefined, done: true };
+        }
+      };
+    }
+  };
+
+  let sum = 0;
+  for await (const x of asyncIterable) {
+    sum += x;
+  }
+  return sum;
+}
+
 const testInput = 'hello-world';
 const expectedHash = calculateSecretHash(testInput);
 console.log('Expected hash:', expectedHash);
@@ -204,17 +235,44 @@ const gatingInputs = [
   { sensorA: 50, sensorB: 60, threshold: 50 },
 ];
 
-for (const input of gatingInputs) {
-  const expected = verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
-  const actual = mod.verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
-  const pass = expected === actual;
-  console.log(`  ${pass ? '✅' : '❌'} verifyArtemisGatingSystem(${input.sensorA}, ${input.sensorB}, ${input.threshold}) = ${actual} (expected ${expected})`);
-  if (!pass) allPass = false;
-}
+(async () => {
+  for (const input of gatingInputs) {
+    const expected = verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
+    const actual = mod.verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
+    const pass = expected === actual;
+    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisGatingSystem(${input.sensorA}, ${input.sensorB}, ${input.threshold}) = ${actual} (expected ${expected})`);
+    if (!pass) allPass = false;
+  }
 
-if (allPass) {
-  console.log('\n✅ ALL TESTS PASSED — Perfect Semantic Equivalence Verified (NASA Codex Compliant).');
-} else {
-  console.error('\n❌ SOME TESTS FAILED');
-  process.exit(1);
-}
+  // 4. Computed Destructuring
+  const computedInputs = [
+    { key: 'oxygen', value: 95, defaultVal: 10 },
+    { key: 'pressure', value: 1013, defaultVal: 20 },
+    { key: 'fuel', value: 0, defaultVal: 30 },
+  ];
+
+  for (const input of computedInputs) {
+    const expected = verifyArtemisComputedDestructuring(input.key, input.value, input.defaultVal);
+    const actual = mod.verifyArtemisComputedDestructuring(input.key, input.value, input.defaultVal);
+    const pass = JSON.stringify(expected) === JSON.stringify(actual);
+    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisComputedDestructuring('${input.key}', ${input.value}, ${input.defaultVal}) = ${JSON.stringify(actual)} (expected ${JSON.stringify(expected)})`);
+    if (!pass) allPass = false;
+  }
+
+  // 5. Async Loop
+  const loopInputs = [0, 1, 5, 10];
+  for (const count of loopInputs) {
+    const expected = await verifyArtemisAsyncLoop(count);
+    const actual = await mod.verifyArtemisAsyncLoop(count);
+    const pass = expected === actual;
+    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisAsyncLoop(${count}) = ${actual} (expected ${expected})`);
+    if (!pass) allPass = false;
+  }
+
+  if (allPass) {
+    console.log('\n✅ ALL TESTS PASSED — Perfect Semantic Equivalence Verified (NASA Codex Compliant).');
+  } else {
+    console.error('\n❌ SOME TESTS FAILED');
+    process.exit(1);
+  }
+})();

@@ -44,6 +44,7 @@ function createRuntimeNames(config: VMBuildConfig) {
         promiseResolve: 'resolvePromise',
         iteratorSymbol: 'iteratorSymbol',
         asyncIteratorSymbol: 'asyncIteratorSymbol',
+        functionArena: 'functionArena',
         functionBytecodes: 'functionBytecodes',
         executorCache: 'executorCache',
         getExecutorById: 'getExecutorById',
@@ -109,6 +110,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       promiseResolve: next(),
       iteratorSymbol: next(),
       asyncIteratorSymbol: next(),
+      functionArena: next(),
       functionBytecodes: next(),
       executorCache: next(),
       getExecutorById: next(),
@@ -228,53 +230,137 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   }
   ` : '';
 
+  function isVariableLengthOpcode(opcode: number): boolean {
+    return (
+      opcode === 0x40 || // OpCode.Call
+      opcode === 0x41 || // OpCode.CallMethod
+      opcode === 0x42 || // OpCode.New
+      opcode === 0x54 || // OpCode.ArrayNew
+      opcode === 0x55 || // OpCode.ObjectNew
+      opcode === 0x56 || // OpCode.Spread
+      opcode === 0x57 || // OpCode.SpreadIntoArray
+      opcode === 0x5E    // OpCode.SuperCall
+    );
+  }
+
   const handlerDeclarations: string[] = [];
   const handlerNames = new Map<OpCode, string>();
   const declaredOpcodes: OpCode[] = [];
-  const declareHandler = (canonical: OpCode, body: string) => {
-    const fnName = names.nextHandlerName(canonical);
-    declaredOpcodes.push(canonical);
-    handlerNames.set(canonical, fnName);
-    handlerDeclarations.push(`function ${fnName}(ctx) {\n${body}\n}`);
-  };
 
-  declareHandler(OpCode.Trap, `throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1) + ${runtimeStringRef(', raw op: ')} + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
-
-  const advanceArg = `
+  const advanceArg = config.rollingKeys ? `
     let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-    ${config.rollingKeys ? `kindNum ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + kindNum) & 0xFF;` : ''}
+    kindNum ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
     let val = 0;
     ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
       let shift = 0;
       let b;
       do {
         b = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-        ${config.rollingKeys ? `b ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b) & 0xFF;` : ''}
+        b ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
         val |= (b & 0x7F) << shift;
         shift += 7;
       } while (b & 0x80);
     ` : `
       let b0 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      ${config.rollingKeys ? `b0 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b0) & 0xFF;` : ''}
+      b0 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
       let b1 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      ${config.rollingKeys ? `b1 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b1) & 0xFF;` : ''}
+      b1 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
       let b2 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      ${config.rollingKeys ? `b2 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b2) & 0xFF;` : ''}
+      b2 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
       let b3 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      ${config.rollingKeys ? `b3 ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + b3) & 0xFF;` : ''}
+      b3 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+      val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+    `}
+  ` : `
+    let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+    let val = 0;
+    ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
+      let shift = 0;
+      let b;
+      do {
+        b = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+        val |= (b & 0x7F) << shift;
+        shift += 7;
+      } while (b & 0x80);
+    ` : `
+      let b0 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      let b1 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      let b2 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      let b3 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
       val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     `}
   `;
 
-  const readArgs = `
-    let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-    ${config.rollingKeys ? `argCount ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + argCount) & 0xFF;` : ''}
-    const args = [];
-    for (let i = 0; i < argCount; i++) {
-      ${advanceArg}
-      args.push(val);
+  const declareHandler = (canonical: OpCode, body: string) => {
+    const fnName = names.nextHandlerName(canonical);
+    declaredOpcodes.push(canonical);
+    handlerNames.set(canonical, fnName);
+
+    const numJunk = canonical % 3;
+    let junkSkip = '';
+    for (let i = 0; i < numJunk; i++) {
+      if (config.rollingKeys) {
+        junkSkip += `
+          let __junk${i} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+          __junk${i} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+        `;
+      } else {
+        junkSkip += `
+          let __junk${i} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+        `;
+      }
     }
-  `;
+
+    const isVarLength = isVariableLengthOpcode(canonical);
+    let myReadArgs = '';
+    if (isVarLength) {
+      if (config.rollingKeys) {
+        myReadArgs = `
+          let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+          argCount ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+          const args = [];
+          for (let i = 0; i < argCount; i++) {
+            ${advanceArg}
+            args.push(val);
+          }
+        `;
+      } else {
+        myReadArgs = `
+          let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+          const args = [];
+          for (let i = 0; i < argCount; i++) {
+            ${advanceArg}
+            args.push(val);
+          }
+        `;
+      }
+    } else {
+      const matches = body.match(/args\[(\d+)\]/g);
+      let operandCount = 0;
+      if (matches) {
+        for (const m of matches) {
+          const idx = parseInt(m.match(/\d+/)![0], 10);
+          if (idx + 1 > operandCount) {
+            operandCount = idx + 1;
+          }
+        }
+      }
+      myReadArgs = `
+        const args = [];
+        for (let i = 0; i < ${operandCount}; i++) {
+          ${advanceArg}
+          args.push(val);
+        }
+      `;
+    }
+
+    const finalBody = body.replace(/\${readArgs}/g, () => myReadArgs);
+    handlerDeclarations.push(`function ${fnName}(ctx) {\n${junkSkip}\n${finalBody}\n}`);
+  };
+
+  const readArgs = '${readArgs}';
+
+  declareHandler(OpCode.Trap, `throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1) + ${runtimeStringRef(', raw op: ')} + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
 
   declareHandler(OpCode.LoadConst, `
     ${readArgs}
@@ -285,12 +371,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.Move, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.LoadGlobal, `
     ${readArgs}
-    const propName = ${regRef('args[0]')};
+    var propName = ctx.regs[args[0]];
     ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
       ? ${top.result}[propName]
       : ${ctxRef('globalScope')}[propName];
   `);
-  declareHandler(OpCode.StoreGlobal, `${readArgs} ${ctxRef('globalScope')}[${regRef('args[0]')}] = ${regRef('args[1]')};`);
+  declareHandler(OpCode.StoreGlobal, `
+    ${readArgs}
+    var propName = ctx.regs[args[0]];
+    ${ctxRef('globalScope')}[propName] = ${regRef('args[1]')};
+  `);
   declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
   declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
   
@@ -318,6 +408,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   
   declareHandler(OpCode.TypeOf, `${readArgs} ctx.regs[args[1]] = typeof ctx.regs[args[0]];`);
   declareHandler(OpCode.InstanceOf, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] instanceof ctx.regs[args[1]];`);
+  declareHandler(OpCode.In, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] in ctx.regs[args[1]];`);
   declareHandler(OpCode.PropGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
   declareHandler(OpCode.PropSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
   declareHandler(OpCode.ComputedGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
@@ -423,9 +514,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       : new (Function.prototype.bind.apply(ctorArray, [null].concat(ctorArrayArgs)))();
   `);
   
-  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = args[0]; ${config.rollingKeys ? `${ctxRef('rollingState')} = args[1];` : ''}`);
-  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2]; ${config.rollingKeys ? `${ctxRef('rollingState')} = ${regRef('args[0]')} ? args[3] : args[4];` : ''}`);
-  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2]; ${config.rollingKeys ? `${ctxRef('rollingState')} = !${regRef('args[0]')} ? args[3] : args[4];` : ''}`);
+  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = args[0];`);
+  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];`);
+  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];`);
   
   declareHandler(OpCode.Return, `${readArgs} ${ctxRef('returnValue')} = args.length > 0 ? ${regRef('args[0]')} : undefined; ${ctxRef('running')} = false;`);
   declareHandler(OpCode.ReturnVoid, `${readArgs} ${ctxRef('returnValue')} = undefined; ${ctxRef('running')} = false;`);
@@ -536,35 +627,47 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const tamperDetectionLogic = config.tamperDetection ? `
     // JS-Confuser-inspired runtime tamper checks for native intrinsics and VM self shape.
     var _isNative = function(fn) {
-      try { return /\\{\\s*\\[native code\\]\\s*\\}/.test(${top.nativeToString}.call(fn)); }
+      try { 
+        var s = ${top.nativeToString}.call(fn);
+        return s.indexOf('[native code]') !== -1 && s.indexOf('function') !== -1;
+      }
       catch (_) { return false; }
     };
     var fnStr = ${top.nativeToString}.call(__runVm);
+    var hasDbg = 0;
+    for (var i = 0; i < fnStr.length - 7; i++) {
+       if (fnStr.charCodeAt(i) === 100 && fnStr.charCodeAt(i+1) === 101 && fnStr.charCodeAt(i+2) === 98 && fnStr.charCodeAt(i+3) === 117) {
+           hasDbg = 1; break;
+       }
+    }
     if (
-      (fnStr.indexOf('debugger') === -1 && ${config.antiDebug}) || 
-      fnStr.length < 100 || 
+      (!hasDbg && ${config.antiDebug}) || 
+      fnStr.length < 50 || 
       !_isNative(${top.nativeMathSin}) ||
       !_isNative(${top.weakMapGet}) ||
       !_isNative(${top.weakMapSet})
     ) {
       // Data corruption on tamper
-      ${ctxRef('globalScope')} = {}; 
-      ${regRef('0')} = null; 
+      if (${top.opaquePredicate}(hasDbg)) {
+        ${ctxRef('globalScope')} = {}; 
+        ${regRef('0')} = null; 
+      }
     }
   ` : '';
 
   const runtimeDispatch = (() => {
     if (!names.stealth) {
-      const handlerArrayItems: string[] = new Array(256).fill(handlerNames.get(OpCode.Trap)!);
+      let switchCases = '';
       for (const [canonical, mapped] of opToMapped.entries()) {
-        const fnName = handlerNames.get(canonical)!;
+        const fnName = handlerNames.get(canonical);
+        if (!fnName) continue;
         for (const vOp of mapped) {
-          handlerArrayItems[vOp] = fnName;
+          switchCases += `        case ${vOp}: ${fnName}(ctx); break;\n`;
         }
       }
       return {
-        declarations: `const ${top.handlers} = [\n    ${handlerArrayItems.join(',\n    ')}\n  ];`,
-        invoke: `${top.handlers}[${locals.opByte}](ctx);`,
+        declarations: '',
+        invoke: `switch (${locals.opByte}) {\n${switchCases}        default: ${handlerNames.get(OpCode.Trap)!}(ctx); break;\n      }`,
       };
     }
 
@@ -583,18 +686,51 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       }
     }
 
+    let switchCases = '';
+    for (let slot = 0; slot < bankOrder.length; slot++) {
+       const canonical = bankOrder[slot]!;
+       const fnName = handlerNames.get(canonical)!;
+       switchCases += `        case ${slot}: ${fnName}(ctx); break;\n`;
+    }
+
     return {
-      declarations: `const ${locals.dispatchBank} = [\n    ${bankOrder.map((canonical) => handlerNames.get(canonical)!).join(',\n    ')}\n  ];\n  const ${locals.dispatchRoute} = new Uint8Array([${route.join(',')}]);`,
-      invoke: `${locals.dispatchBank}[${locals.dispatchRoute}[${locals.opByte}]](ctx);`,
+      declarations: `const ${locals.dispatchRoute} = new Uint8Array([${route.join(',')}]);`,
+      invoke: `
+        let __slot = ${locals.dispatchRoute}[${locals.opByte}];
+        switch (__slot) {
+${switchCases}
+          default:
+            ${handlerNames.get(OpCode.Trap)!}(ctx);
+            break;
+        }`,
     };
   })();
+
+  const allBytecodes: number[] = [];
+  const functionTable: { [id: string]: { o: number; l: number; a: string[]; r: number } } = {};
+  let currentOffset = 0;
+
+  for (const fn of module.functions) {
+    functionTable[fn.id] = {
+      o: currentOffset,
+      l: fn.bytecode.length,
+      a: fn.attributes ? [...fn.attributes] : [],
+      r: fn.maxRegisters,
+    };
+    allBytecodes.push(...fn.bytecode);
+    currentOffset += fn.bytecode.length;
+  }
+
+  const arenaArray = allBytecodes.join(',');
+  const fnTableStr = Object.entries(functionTable).map(([id, info]) => {
+    return `'${id}': { o: ${info.o}, l: ${info.l}, a: ${JSON.stringify(info.a)}, r: ${info.r} }`;
+  }).join(',\n    ');
 
   const sourceCode = `
 // Polymorphic Threaded VM Engine - Build: ${module.buildId}
 const ${top.vmFunctions} = (function() {
   const ${top.seed} = ${config.seed};
   const ${top.rawCP} = ${cp};
-  const ${top.cpCache} = new Map();
   const ${top.weakMapCtor} = WeakMap;
   const ${top.weakMapGet} = ${top.weakMapCtor}.prototype.get;
   const ${top.weakMapSet} = ${top.weakMapCtor}.prototype.set;
@@ -611,26 +747,65 @@ const ${top.vmFunctions} = (function() {
   
   // Lazy Decryption
   function ${top.getCP}(index) {
-    if (${top.cpCache}.has(index)) return ${top.cpCache}.get(index);
-    let c = ${top.rawCP}[index];
-    let val = c.kind === 'undefined' ? undefined : c.value;
+    var c = ${top.rawCP}[index];
+    if (!c) return undefined;
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
-      let decoded = '';
-      for (let i = 0; i < val.length; i++) {
-        decoded += String.fromCharCode(val.charCodeAt(i) ^ (${top.seed} & 0xFF));
+      var val = c.value;
+      var decoded = '';
+      var stringSeed = (${top.seed} ^ (index * 0x9E3779B9)) | 0;
+      
+      // Deriving 16-byte key using LCG
+      var keyBytes = [];
+      var s = stringSeed;
+      for (var i = 0; i < 16; i++) {
+        s = (Math.imul(s, 1664525) + 1013904223) | 0;
+        keyBytes.push((s >>> 16) & 0xff);
       }
-      val = decoded;
+      
+      // KSA
+      var S = [];
+      for (var i = 0; i < 256; i++) S.push(i);
+      var j = 0;
+      for (var i = 0; i < 256; i++) {
+        j = (j + S[i] + keyBytes[i % 16]) & 0xff;
+        var temp = S[i];
+        S[i] = S[j];
+        S[j] = temp;
+      }
+      
+      // PRGA with drop-256
+      var ri = 0;
+      j = 0;
+      for (var skip = 0; skip < 256; skip++) {
+        ri = (ri + 1) & 0xff;
+        j = (j + S[ri]) & 0xff;
+        var temp = S[ri];
+        S[ri] = S[j];
+        S[j] = temp;
+      }
+      
+      for (var i = 0; i < val.length; i++) {
+        ri = (ri + 1) & 0xff;
+        j = (j + S[ri]) & 0xff;
+        var temp = S[ri];
+        S[ri] = S[j];
+        S[j] = temp;
+        var keystreamByte = S[(S[ri] + S[j]) & 0xff];
+        decoded += String.fromCharCode(val.charCodeAt(i) ^ keystreamByte);
+      }
+      
+      return decoded;
     }
-    ${top.cpCache}.set(index, val);
-    return val;
+    return c.kind === 'undefined' ? undefined : c.value;
   }
 
   ${handlerDeclarations.join('\n\n')}
 
   ${runtimeDispatch.declarations}
 
+  const ${top.functionArena} = new Uint8Array([${arenaArray}]);
   const ${top.functionBytecodes} = {
-${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.bytecode.join(',')}]), attributes: ${JSON.stringify(fn.attributes ?? [])}, registerCount: ${fn.maxRegisters} }`).join(',\n')}
+    ${fnTableStr}
   };
   const ${top.executorCache} = Object.create(null);
 
@@ -642,7 +817,8 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
     if (!functionMeta) {
       throw new Error(${runtimeStringRef('Unknown VM function id: ')} + functionId);
     }
-    const executor = ${top.createExecutor}(functionMeta.bytecode, env || [], functionMeta.attributes || [], functionMeta.registerCount || 0);
+    const bytecodeSegment = ${top.functionArena}.subarray(functionMeta.o, functionMeta.o + functionMeta.l);
+    const executor = ${top.createExecutor}(bytecodeSegment, env || [], functionMeta.a || [], functionMeta.r || 0);
     if (!env || env.length === 0) {
       ${top.executorCache}[functionId] = executor;
     }
@@ -694,7 +870,7 @@ ${module.functions.map(fn => `    '${fn.id}': { bytecode: new Uint8Array([${fn.b
           throw pendingError;
         }
         let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-        ${config.rollingKeys ? `${locals.opByte} ^= ${ctxRef('rollingState')}; ${ctxRef('rollingState')} = (${ctxRef('rollingState')} + ${locals.opByte}) & 0xFF;` : ''}
+        ${config.rollingKeys ? `${locals.opByte} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;` : ''}
         ${runtimeDispatch.invoke}
       } catch (error) {
         if (${ctxRef('tryFrames')}.length === 0) {

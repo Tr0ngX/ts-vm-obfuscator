@@ -107,12 +107,9 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
   const baseTransforms = [
     { name: 'SymbolIndirectionPass', enabled: true, options: {} },
     { name: 'StringPoolEncodingPass', enabled: true, options: {} },
-    { name: 'NamespaceVirtualizationPass', enabled: true, options: {} },
-    { name: 'PreserveTypeIllusionsPass', enabled: true, options: {} },
-    { name: 'GenericConfusionPass', enabled: true, options: {} },
-    { name: 'TypeLevelFakePathPass', enabled: true, options: {} },
-    { name: 'DecoratorAwareLoweringPass', enabled: true, options: {} },
     { name: 'FunctionVirtualizationPass', enabled: true, options: {} },
+    { name: 'DeadCodeInjectionPass', enabled: true, options: {} },
+    { name: 'ControlFlowFlatteningPass', enabled: true, options: {} },
     { name: 'StripDebugPass', enabled: true, options: {} },
   ] as const;
 
@@ -247,7 +244,7 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
     tamperDetection: true,
     antiDebug: false,
     junkInsertion: true,
-    rollingKeys: false,
+    rollingKeys: true,
   };
 }
 
@@ -275,7 +272,15 @@ export class ObfuscationPipeline {
   }
 
   private emitError(stage: PipelineStage, message: string, error: unknown): void {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    let errorMessage = '';
+    if (error instanceof Error) {
+      errorMessage = `${error.message}\n${error.stack}`;
+    } else if (error && typeof error === 'object') {
+      const obj = error as any;
+      errorMessage = obj.stack || obj.message || JSON.stringify(obj) || String(error);
+    } else {
+      errorMessage = String(error);
+    }
     this.diagnostics.push({
       severity: 0 as DiagnosticSeverity, // Error
       code: `PIPELINE_${stage.toUpperCase()}`,

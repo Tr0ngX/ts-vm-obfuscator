@@ -38,6 +38,44 @@ function collectMaxRegisterIndex(irFn: IRFunction): number {
   return maxRegister + 1;
 }
 
+function computeSourceHash(irModule: IRModule): string {
+  let hash = 0x811c9dc5; // FNV offset basis
+  const update = (val: number) => {
+    hash ^= val & 0xff;
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  };
+  for (const fn of irModule.functions) {
+    for (const block of fn.blocks) {
+      for (const inst of block.instructions) {
+        update(inst.opcode);
+        for (const op of inst.operands) {
+          if (typeof op.kind === 'number') update(op.kind);
+          if (typeof op.value === 'number') {
+            update(op.value & 0xff);
+            update((op.value >> 8) & 0xff);
+            update((op.value >> 16) & 0xff);
+            update((op.value >> 24) & 0xff);
+          }
+        }
+      }
+    }
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function isVariableLengthOpcode(opcode: number): boolean {
+  return (
+    opcode === 0x40 || // OpCode.Call
+    opcode === 0x41 || // OpCode.CallMethod
+    opcode === 0x42 || // OpCode.New
+    opcode === 0x54 || // OpCode.ArrayNew
+    opcode === 0x55 || // OpCode.ObjectNew
+    opcode === 0x56 || // OpCode.Spread
+    opcode === 0x57 || // OpCode.SpreadIntoArray
+    opcode === 0x5E    // OpCode.SuperCall
+  );
+}
+
 export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): BytecodeModule {
   const bcFunctions: BytecodeFunction[] = [];
   let entryPointIndex = -1;
@@ -128,8 +166,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
             flatInsts.push({
               opcode: OpCode.Jmp,
               operands: [
-                { kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! },
-                ...(config.rollingKeys ? [{ kind: OperandKind.Immediate, value: 0 }] : [])
+                { kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! }
               ]
             });
           } else if (block.terminator.kind === 'branch') {
@@ -138,8 +175,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               operands: [
                 { kind: OperandKind.Register, value: mapReg(block.terminator.condition!) },
                 { kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! },
-                { kind: OperandKind.BlockLabel, value: block.terminator.targets[1]! },
-                ...(config.rollingKeys ? [{ kind: OperandKind.Immediate, value: 0 }, { kind: OperandKind.Immediate, value: 0 }] : [])
+                { kind: OperandKind.BlockLabel, value: block.terminator.targets[1]! }
               ]
             });
           } else if (block.terminator.kind === 'return') {
@@ -164,66 +200,42 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
       // 2. Compute byte offsets using Fixed-Point Iteration (Two-Pass)
       const instByteOffset: number[] = new Array(flatInsts.length).fill(0);
-      const instRollingKey: number[] = new Array(flatInsts.length).fill(0);
       let changed = true;
-
-      // Helper to calculate LEB128 size
-      const getLeb128Size = (val: number) => {
-        let size = 0;
-        let v = val;
-        do {
-          v >>>= 7;
-          size++;
-        } while (v !== 0);
-        return size;
-      };
 
       while (changed) {
         changed = false;
         let currentOffset = 0;
-        let currentRollingKey = config.rollingKeys ? config.seed & 0xFF : 0;
 
         for (let i = 0; i < flatInsts.length; i++) {
           if (instByteOffset[i] !== currentOffset) {
             instByteOffset[i] = currentOffset;
             changed = true;
           }
-          if (instRollingKey[i] !== currentRollingKey) {
-            instRollingKey[i] = currentRollingKey;
-            changed = true;
-          }
 
           const inst = flatInsts[i]!;
           
-          // Determine mapped opcode for rolling key trace
           let mappedOp = inst.opcode;
           const forward = mapping.forward.get(inst.opcode);
           if (Array.isArray(forward)) mappedOp = forward[0]!;
           else if (forward !== undefined) mappedOp = forward as number;
 
           let size = 1; // opcode
-          if (config.rollingKeys) currentRollingKey = (currentRollingKey + mappedOp) & 0xFF;
+          const numJunk = inst.opcode % 3;
+          size += numJunk; // junk bytes
 
           const ops = [...(inst.operands || [])];
           if (inst.result) {
             ops.push({ kind: OperandKind.Register, value: inst.result } as any);
           }
 
-          size += 1; // argCount
-          if (config.rollingKeys) currentRollingKey = (currentRollingKey + ops.length) & 0xFF;
+          const isVarLength = isVariableLengthOpcode(inst.opcode);
+          if (isVarLength) {
+            size += 1; // argCount
+          }
 
           for (let opIdx = 0; opIdx < ops.length; opIdx++) {
             const op = ops[opIdx]!;
             size += 1; // kindNum
-            let kindNum = op.kind;
-            if (typeof kindNum === 'string') {
-              if (kindNum === 'register') kindNum = 0 as any;
-              else if (kindNum === 'immediate') kindNum = 1 as any;
-              else if (kindNum === 'constant_index') kindNum = 2 as any;
-              else if (kindNum === 'block_label') kindNum = 3 as any;
-              else kindNum = 0 as any;
-            }
-            if (config.rollingKeys) currentRollingKey = (currentRollingKey + (kindNum as unknown as number)) & 0xFF;
 
             let val = 0;
             if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
@@ -235,63 +247,35 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               val = op.value;
             }
 
-            // Sync rolling key for jumps
-            if (config.rollingKeys && inst.opcode === OpCode.Jmp && opIdx === 1) {
-              const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-              val = instRollingKey[targetIdx] || 0;
-            } else if (config.rollingKeys && inst.opcode === OpCode.JmpIf && opIdx === 3) {
-              const targetIdx = blockInstIndices.get(ops[1]!.value as string)!;
-              val = instRollingKey[targetIdx] || 0;
-            } else if (config.rollingKeys && inst.opcode === OpCode.JmpIf && opIdx === 4) {
-              const targetIdx = blockInstIndices.get(ops[2]!.value as string)!;
-              val = instRollingKey[targetIdx] || 0;
-            }
-
             if (config.immediateEncoding === 1) { // VariableLength
               let v = val;
               do {
-                let byte = v & 0x7F;
                 v >>>= 7;
-                if (v !== 0) byte |= 0x80;
                 size++;
-                if (config.rollingKeys) currentRollingKey = (currentRollingKey + byte) & 0xFF;
               } while (v !== 0);
             } else {
               size += 4;
-              if (config.rollingKeys) {
-                currentRollingKey = (currentRollingKey + (val & 0xFF)) & 0xFF;
-                currentRollingKey = (currentRollingKey + ((val >> 8) & 0xFF)) & 0xFF;
-                currentRollingKey = (currentRollingKey + ((val >> 16) & 0xFF)) & 0xFF;
-                currentRollingKey = (currentRollingKey + ((val >> 24) & 0xFF)) & 0xFF;
-              }
             }
           }
           currentOffset += size;
         }
       }
 
-      // 3. Patch block labels and sync keys definitively
+      // 3. Patch block labels definitively
       for (const inst of flatInsts) {
-        if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf) {
+        if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
           const ops = inst.operands!;
           if (inst.opcode === OpCode.Jmp) {
              const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
              (ops[0] as any).value = instByteOffset[targetIdx]!;
              (ops[0] as any).kind = OperandKind.Immediate;
-             if (config.rollingKeys) {
-               (ops[1] as any).value = instRollingKey[targetIdx]!;
-             }
-          } else if (inst.opcode === OpCode.JmpIf) {
-             const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
-             const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
-             (ops[1] as any).value = instByteOffset[targetTrueIdx]!;
-             (ops[1] as any).kind = OperandKind.Immediate;
-             (ops[2] as any).value = instByteOffset[targetFalseIdx]!;
-             (ops[2] as any).kind = OperandKind.Immediate;
-             if (config.rollingKeys) {
-               (ops[3] as any).value = instRollingKey[targetTrueIdx]!;
-               (ops[4] as any).value = instRollingKey[targetFalseIdx]!;
-             }
+          } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
+              const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
+              const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
+              (ops[1] as any).value = instByteOffset[targetTrueIdx]!;
+              (ops[1] as any).kind = OperandKind.Immediate;
+              (ops[2] as any).value = instByteOffset[targetFalseIdx]!;
+              (ops[2] as any).kind = OperandKind.Immediate;
           }
         } else {
           for (const op of inst.operands) {
@@ -305,7 +289,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       }
 
       // Encode instructions to bytecode
-      const bytecode = encodeBytecode(flatInsts, mapping, config);
+      const bytecode = encodeBytecode(flatInsts, mapping, config, rng);
 
       functions.push({
         id: irFn.id,
@@ -325,10 +309,12 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
   const constantPool = encodeConstantPool(shuffledCP, config.constantPoolEncoding, config.seed);
 
+  const sourceFileName = irModule.sourceFile.split(/[\\/]/).pop()?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'unknown';
+
   return {
     magic: 0x54534F42,
     version: 1,
-    buildId: `build_${config.seed}_${Date.now()}_${irModule.sourceFile.split(/[\\/]/).pop()?.replace(/[^a-zA-Z0-9]/g, '_')}`,
+    buildId: `build_${config.seed}_${sourceFileName}`,
     functions: shuffledFunctions,
     constantPool,
     opcodeMapping: mapping,
@@ -336,8 +322,8 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
     metadata: {
       buildTimestamp: Date.now(),
       buildId: `build_${config.seed}`,
-      sourceHash: 'TODO',
-      profile: 'generic',
+      sourceHash: computeSourceHash(irModule),
+      profile: (config as any).profile ?? 'generic',
       deterministicSeed: config.seed
     }
   };
