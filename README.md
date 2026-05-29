@@ -30,6 +30,27 @@ It is designed for high-value business logic such as license checks, billing rul
 - **StripDebugPass:** Automatically strips all `console.log`, `console.warn`, and `console.error` calls to remove debug literals from the production constant pool.
 - **Zero-Dependency Bundling:** Outputs a clean, standalone JavaScript file that runs anywhere (Browsers, Node.js, Electron, Workers).
 
+## Why TSXobf vs JS-Confuser / Jscrambler
+
+Traditional obfuscators modify the Abstract Syntax Tree (AST) of the target JavaScript file. While this makes the code harder to read, it leaves the execution structure completely unchanged, making it highly vulnerable to automated de-obfuscators and symbolic execution tools. 
+
+**TSXobf** changes the game by virtualizing your code, compiling your original TypeScript code into custom, randomized bytecode.
+
+| Feature | TSXobf | JS-Confuser | Jscrambler |
+| :--- | :---: | :---: | :---: |
+| **Function Virtualization** | **✅ Yes** | ❌ No | ✅ Yes |
+| **TypeScript Semantic Analysis** | **✅ Yes** | ❌ No | ❌ No |
+| **Custom Bytecode VM** | **✅ Yes (Polymorphic)** | ❌ No | ✅ Yes (Proprietary) |
+| **Randomized Opcodes & Handlers** | **✅ Yes (Per Build)** | ❌ No | ⚠️ Proprietary / Static |
+| **Selective Function Protection** | **✅ Yes (`/** @virtualize */`)** | ❌ No | ⚠️ Partial |
+| **Open Source** | **✅ Yes** | ✅ Yes | ❌ No (Commercial) |
+
+### Key Advantages
+
+1. **TypeScript-First Native Semantic Context:** Unlike others, TSXobf utilizes the TypeScript Compiler API directly. It understands types, imports, class hierarchies, and scopes, making the compiled virtualized bytecode highly reliable and bug-free.
+2. **True Polymorphism:** Every build generates a completely new set of virtual opcodes, randomized dispatch mappings, and shuffled VM handlers. A de-obfuscation script built for one bundle is entirely useless against another.
+3. **Optimized Selective Virtualization:** UI and framework code (React, Vue, etc.) run at 100% native speed, while critical business logic (billing, crypto, license keys) is securely compiled to bytecode.
+
 ## Tech Stack
 
 - **Language**: TypeScript 5+

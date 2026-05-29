@@ -30,6 +30,27 @@ Hệ thống được thiết kế dành cho logic nghiệp vụ giá trị cao 
 - **StripDebugPass:** Tự động xóa mọi lệnh gọi `console.log`, `console.warn`, và `console.error` để xóa dấu vết gỡ lỗi khỏi production.
 - **Đóng Gói Không Phụ Thuộc (Zero-Dependency):** Biên dịch ra một file JavaScript độc lập chạy ở bất kỳ đâu (Trình duyệt, Node.js, Electron, Workers).
 
+## Tại Sao Chọn TSXobf Thay Vì JS-Confuser / Jscrambler?
+
+Các công cụ obfuscator truyền thống chỉ biến đổi cây cú pháp trừu tượng (AST) của file JavaScript. Mặc dù điều này làm mã nguồn khó đọc hơn, nhưng cấu trúc thực thi thực tế vẫn không thay đổi, khiến chúng cực kỳ dễ bị dịch ngược tự động bằng các công cụ dịch ngược (de-obfuscator) hoặc thực thi biểu tượng (symbolic execution).
+
+**TSXobf** thay đổi cuộc chơi bằng cách **ảo hóa mã nguồn**, biên dịch mã TypeScript nguyên bản của bạn thành dòng mã bytecode ngẫu nhiên được tùy chỉnh riêng.
+
+| Tính Năng | TSXobf | JS-Confuser | Jscrambler |
+| :--- | :---: | :---: | :---: |
+| **Ảo hóa hàm (Function Virtualization)** | **✅ Có** | ❌ Không | ✅ Có |
+| **Phân tích ngữ nghĩa TypeScript** | **✅ Có** | ❌ Không | ❌ Không |
+| **Máy ảo Bytecode tùy chỉnh** | **✅ Có (Đa hình)** | ❌ Không | ✅ Có (Bản quyền đóng) |
+| **Opcode & Handler ngẫu nhiên** | **✅ Có (Mỗi build)** | ❌ Không | ⚠️ Đóng / Tĩnh |
+| **Bảo vệ chọn lọc từng hàm** | **✅ Có (`/** @virtualize */`)** | ❌ Không | ⚠️ Một phần |
+| **Mã nguồn mở (Open Source)** | **✅ Có** | ✅ Có | ❌ Không (Thương mại) |
+
+### Lợi Thế Vượt Trội
+
+1. **Phân tích ngữ nghĩa sâu từ TypeScript:** Không giống các công cụ khác, TSXobf tích hợp trực tiếp với TypeScript Compiler API. Nó hiểu rõ cấu trúc kiểu dữ liệu, các lệnh import/export, kế thừa lớp (class hierarchies) và tầm vực biến (scope), giúp bytecode máy ảo tạo ra chạy chính xác tuyệt đối và không có lỗi runtime.
+2. **Tính đa hình thực sự (True Polymorphism):** Mỗi lần build sẽ sinh ra một tập hợp mã opcode hoàn toàn mới, các dispatch handler được tráo đổi và ngẫu nhiên hóa. Một công cụ dịch ngược viết riêng cho bundle này hoàn toàn vô dụng với bundle khác.
+3. **Ảo hóa chọn lọc tối ưu:** Các phần mã UI hoặc framework (React, Vue...) chạy với 100% tốc độ gốc của trình duyệt, trong khi logic nghiệp vụ cốt lõi (thanh toán, mật mã, khóa bản quyền) được ảo hóa an toàn trong máy ảo bytecode.
+
 ## Nền Tảng Công Nghệ
 
 - **Ngôn ngữ**: TypeScript 5+
