@@ -168,7 +168,7 @@ graph TD
 - Optional `wasm_hybrid` runtime backend with a verified WebAssembly bootstrap and JS semantic fallback.
 - JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect dispatch routing, string-concealed VM literals, intrinsic snapshots for private-state storage, and anti-debug timing probes.
 - **PreserveTypeIllusionsPass:** Automatic injection of fake dynamic type guards and phantom branches to throw off static analysis.
-- **TypeLevelFakePathPass:** Dynamic Opaque Predicates (mathematically proven invariant checks) that steer reverse-engineering tools down complex junk branches.
+- **TypeLevelFakePathPass:** Dynamic Opaque Predicates (mathematical invariant checks) that steer reverse-engineering tools down complex junk branches.
 - **DecoratorAwareLoweringPass:** Seamless lowering of ES and TS legacy decorators to equivalent compiler-safe representations within VM IR.
 - **GenericConfusionPass:** Semantic generic wrapping and type dispatching at runtime, preventing static structure mapping.
 - **NamespaceVirtualizationPass:** Full virtualization of static namespaces via computed getters/setters, parameter destructuring data-flow analysis, and lexical scope preservation.
