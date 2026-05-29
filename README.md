@@ -314,7 +314,7 @@ If you are changing pipeline behavior:
 
 ## Current Limits & Status
 
-This repo is a serious VM compiler and is currently in a state of **SUPER UPGRADE**, fully verified against complex structural logic, but it does not claim broad support for arbitrary JavaScript syntax inside *every* virtualized function yet.
+This repository is a production-grade VM compiler, fully verified against complex structural logic, but it does not claim broad support for arbitrary JavaScript syntax inside *every* virtualized function yet.
 
 Notable limits:
 - Unsupported AST forms now fail loudly during IR lowering instead of silently producing invalid registers.
