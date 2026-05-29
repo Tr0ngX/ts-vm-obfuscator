@@ -24,5 +24,10 @@ scratch-inspect.js
 test-complex.js
 test_runner.js
 vm-fully-support-plan.md
+inspect-ir.js
+inspect-tea-pc.js
+inspect-tea.js
+inspect.js
+
 
 

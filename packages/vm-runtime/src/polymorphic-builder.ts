@@ -19,6 +19,56 @@ function createOpaqueNameFactory(seed: number): () => string {
   };
 }
 
+function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, seed: number): string {
+  const rng = new SeededRandom(seed ^ 0x93b2a5);
+  const choice = rng.nextRange(0, 3);
+
+  if (op === 'add') {
+    switch (choice) {
+      case 0:
+        return `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;
+      case 1:
+        return `(((${a}) | (${b})) + ((${a}) & (${b})))`;
+      default:
+        return `((${a}) - (-(${b})))`;
+    }
+  } else {
+    switch (choice) {
+      case 0:
+        return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;
+      case 1:
+        return `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;
+      default:
+        return `((${a}) + (-(${b})))`;
+    }
+  }
+}
+
+function generateJunkStatements(seed: number, id: number): string {
+  const rng = new SeededRandom(seed ^ id ^ 0x7c2a11);
+  const numJunk = rng.nextRange(1, 3);
+  let junk = '';
+  for (let i = 0; i < numJunk; i++) {
+    const choice = rng.nextRange(0, 3);
+    const varName = `_j${id}_${i}`;
+    switch (choice) {
+      case 0:
+        junk += `  var ${varName} = (${seed} ^ ${rng.nextRange(10, 100)}) | 0;\n`;
+        junk += `  ${varName} = (${varName} + 12) & 0xFF;\n`;
+        break;
+      case 1:
+        junk += `  var ${varName} = Math.sin(${rng.nextRange(1, 10)}) * ${rng.nextRange(2, 5)};\n`;
+        junk += `  if (${varName} > 100) { ${varName} = 0; }\n`;
+        break;
+      default:
+        junk += `  var ${varName} = (${seed} % ${rng.nextRange(3, 9)}) | 0;\n`;
+        junk += `  ${varName} = (${varName} * ${varName}) | 0;\n`;
+        break;
+    }
+  }
+  return junk;
+}
+
 function createRuntimeNames(config: VMBuildConfig) {
   const stealth = !!config.stealthDispatch;
   if (!stealth) {
@@ -217,8 +267,19 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     return ${top.runtimeStringCache}[index] = decoded;
   }
   function ${top.opaquePredicate}(value) {
-    value = value | 0;
-    return (((value * value + value) & 1) === 0);
+    value = (value ^ 0x51ed) | 0;
+    var steps = 0;
+    var n = value;
+    if (n < 0) n = -n;
+    while (n > 1 && steps < 12) {
+      if ((n & 1) === 0) {
+        n = (n >>> 1) | 0;
+      } else {
+        n = (Math.imul(n, 3) + 1) | 0;
+      }
+      steps++;
+    }
+    return (n | 0) !== -9999;
   }
   function ${top.junkSink}(value) {
     var acc = value ^ ${config.seed};
@@ -354,8 +415,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       `;
     }
 
+    const junkLogic = config.stealthDispatch ? generateJunkStatements(config.seed, canonical) : '';
     const finalBody = body.replace(/\${readArgs}/g, () => myReadArgs);
-    handlerDeclarations.push(`function ${fnName}(ctx) {\n${junkSkip}\n${finalBody}\n}`);
+    handlerDeclarations.push(`function ${fnName}(ctx) {\n${junkSkip}\n${junkLogic}\n${finalBody}\n}`);
   };
 
   const readArgs = '${readArgs}';
@@ -384,8 +446,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
   declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
   
-  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] + ctx.regs[args[1]];`);
-  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] - ctx.regs[args[1]];`);
+  const addExpr = `(typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : ${mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', config.seed)}`;
+  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ${addExpr};`);
+  const subExpr = `(typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? ${mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', config.seed)} : (ctx.regs[args[0]] - ctx.regs[args[1]])`;
+  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ${subExpr};`);
   declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
   declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
   declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
@@ -656,53 +720,23 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   ` : '';
 
   const runtimeDispatch = (() => {
-    if (!names.stealth) {
-      let switchCases = '';
-      for (const [canonical, mapped] of opToMapped.entries()) {
-        const fnName = handlerNames.get(canonical);
-        if (!fnName) continue;
-        for (const vOp of mapped) {
-          switchCases += `        case ${vOp}: ${fnName}(ctx); break;\n`;
+    const vOpToHandlerName = new Array(256);
+    const trapFnName = handlerNames.get(OpCode.Trap)!;
+    vOpToHandlerName.fill(trapFnName);
+
+    for (const [canonical, mapped] of opToMapped.entries()) {
+      const fnName = handlerNames.get(canonical);
+      if (!fnName) continue;
+      for (const vOp of mapped) {
+        if (vOp >= 0 && vOp < 256) {
+          vOpToHandlerName[vOp] = fnName;
         }
       }
-      return {
-        declarations: '',
-        invoke: `switch (${locals.opByte}) {\n${switchCases}        default: ${handlerNames.get(OpCode.Trap)!}(ctx); break;\n      }`,
-      };
-    }
-
-    const rng = new SeededRandom(config.seed ^ 0x2e57f0);
-    const bankOrder = rng.shuffle([...declaredOpcodes]);
-    const slotByCanonical = new Map(bankOrder.map((canonical, index) => [canonical, index]));
-    const trapSlot = slotByCanonical.get(OpCode.Trap) ?? 0;
-    const route = new Array(256).fill(trapSlot);
-    for (const [canonical, mapped] of opToMapped.entries()) {
-      const slot = slotByCanonical.get(canonical);
-      if (slot === undefined) {
-        continue;
-      }
-      for (const vOp of mapped) {
-        route[vOp] = slot;
-      }
-    }
-
-    let switchCases = '';
-    for (let slot = 0; slot < bankOrder.length; slot++) {
-       const canonical = bankOrder[slot]!;
-       const fnName = handlerNames.get(canonical)!;
-       switchCases += `        case ${slot}: ${fnName}(ctx); break;\n`;
     }
 
     return {
-      declarations: `const ${locals.dispatchRoute} = new Uint8Array([${route.join(',')}]);`,
-      invoke: `
-        let __slot = ${locals.dispatchRoute}[${locals.opByte}];
-        switch (__slot) {
-${switchCases}
-          default:
-            ${handlerNames.get(OpCode.Trap)!}(ctx);
-            break;
-        }`,
+      declarations: `const ${locals.dispatchBank} = [\n    ${vOpToHandlerName.join(',\n    ')}\n  ];`,
+      invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
     };
   })();
 

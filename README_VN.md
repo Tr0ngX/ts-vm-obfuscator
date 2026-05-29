@@ -7,7 +7,7 @@
 > **Hệ thống ảo hóa mã nguồn thế hệ mới** giúp bảo vệ tuyệt đối các logic nghiệp vụ quan trọng trong hệ sinh thái TypeScript và JavaScript.
 
 ---
-**Ngôn ngữ:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
+**Ngôn ngữ:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md) | **[Báo Cáo Benchmark Hiệu Năng & Bảo Mật](BENCHMARK.md)**
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)

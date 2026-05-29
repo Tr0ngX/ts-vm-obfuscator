@@ -7,7 +7,7 @@
 > **Next-Generation Code Virtualization Pipeline** for securing high-value business logic in TypeScript and JavaScript ecosystems.
 
 ---
-**Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md)
+**Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md) | **[Ultimate Benchmark Suite Report](BENCHMARK.md)**
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
