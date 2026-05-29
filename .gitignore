@@ -10,3 +10,17 @@ coverage/
 dist-obf/
 output.txt
 output2.txt
+
+# Third-party and agent scratch folders
+js-confuser-master/
+scratch/
+
+# Temporary test/debug files
+packages/core/tests/debug-universal.test.ts
+packages/vm-runtime/tests/diag-syntax.mjs
+run_custom_test.js
+scratch-files.js
+scratch-inspect.js
+test-complex.js
+test_runner.js
+
