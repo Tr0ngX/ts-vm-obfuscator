@@ -123,6 +123,7 @@ function createRuntimeNames(config: VMBuildConfig) {
         returnValue: 'returnValue',
         tryFrames: 'tryStack',
         rollingState: 'rollingKey',
+        xorLog: 'xorLog',
       },
       frame: {
         catchPc: 'catchPc',
@@ -189,6 +190,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       returnValue: 'returnValue',
       tryFrames: next(),
       rollingState: next(),
+      xorLog: next(),
     },
     frame: {
       catchPc: next(),
@@ -416,13 +418,46 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
 
     const junkLogic = config.stealthDispatch ? generateJunkStatements(config.seed, canonical) : '';
+    
+    // True Indirect Threaded VM dispatch
+    let nextOpLogic = '';
+    if (canonical !== OpCode.Halt && canonical !== OpCode.Return && canonical !== OpCode.ReturnVoid && canonical !== OpCode.Throw && canonical !== OpCode.Trap && canonical !== OpCode.Await && canonical !== OpCode.Yield && canonical !== OpCode.YieldStar) {
+      nextOpLogic = `
+        if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
+        var _fetchPos = ${ctxRef('pc')};
+        let nextOp = ${ctxRef('bytecode')}[${ctxRef('pc')}];
+        ${config.rollingKeys ? `
+          // Shadow XOR Mask Buffer: undo previous corruption before reading
+          nextOp ^= ${ctxRef('xorLog')}[_fetchPos];
+        ` : ''}
+        ${ctxRef('pc')}++;
+        ${config.rollingKeys ? `
+          nextOp ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+          // Self-Modifying Bytecode: LCG Rolling State physical RAM corruption
+          ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
+          var _corruptMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
+          ${ctxRef('bytecode')}[_fetchPos] ^= _corruptMask;
+          ${ctxRef('xorLog')}[_fetchPos] ^= _corruptMask;
+        ` : ''}
+        return ${locals.dispatchBank}[nextOp];
+      `;
+    } else {
+      nextOpLogic = `return null;`;
+    }
+
     const finalBody = body.replace(/\${readArgs}/g, () => myReadArgs);
-    handlerDeclarations.push(`function ${fnName}(ctx) {\n${junkSkip}\n${junkLogic}\n${finalBody}\n}`);
+    handlerDeclarations.push(`function ${fnName}(ctx) {\n${junkSkip}\n${junkLogic}\n${finalBody}\n${nextOpLogic}\n}`);
   };
 
   const readArgs = '${readArgs}';
 
-  declareHandler(OpCode.Trap, `throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1) + ${runtimeStringRef(', raw op: ')} + ${ctxRef('bytecode')}[${ctxRef('pc')} - 1]);`);
+  declareHandler(OpCode.Trap, `
+    ctx.regs = [];
+    ctx.pc = 999999;
+    ctx.running = false;
+    debugger;
+    throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1));
+  `);
 
   declareHandler(OpCode.LoadConst, `
     ${readArgs}
@@ -677,23 +712,36 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   `);
 
   const antiDebugLogic = config.antiDebug ? `
-    // Anti-Debug Heuristics
+    // Anti-Debug DevTools & Trace Protection (Self-Destruct Trap)
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugger;
     var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (_dbg_end - _dbg_start > 100) { 
-       // Corrupt state silently
-       ${regRef('1')} = NaN; 
-       ${ctxRef('pc')} = Math.max(0, ${ctxRef('pc')} - 2); 
+       // Silently self destruct VM registers and PC
+       ctx.regs = [];
+       ctx.pc = 999999;
+       ctx.running = false;
+       throw new Error('VM Integrity Violation');
     }
+    // Opaque getter trap to detect automated inspect / DevTools formatting
+    var _rTrap = /./;
+    Object.defineProperty(_rTrap, 'source', {
+      get: function() {
+        ctx.regs = [];
+        ctx.pc = 999999;
+        ctx.running = false;
+        return 'trap';
+      }
+    });
   ` : '';
 
   const tamperDetectionLogic = config.tamperDetection ? `
-    // JS-Confuser-inspired runtime tamper checks for native intrinsics and VM self shape.
+    // Premium JS-Confuser-inspired native intrinsics verification
     var _isNative = function(fn) {
       try { 
         var s = ${top.nativeToString}.call(fn);
-        return s.indexOf('[native code]') !== -1 && s.indexOf('function') !== -1;
+        return /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/.test(s) || 
+               (s.indexOf('[native code]') !== -1 && s.indexOf('function') !== -1);
       }
       catch (_) { return false; }
     };
@@ -709,13 +757,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       fnStr.length < 50 || 
       !_isNative(${top.nativeMathSin}) ||
       !_isNative(${top.weakMapGet}) ||
-      !_isNative(${top.weakMapSet})
+      !_isNative(${top.weakMapSet}) ||
+      !_isNative(${top.nativeToString})
     ) {
-      // Data corruption on tamper
-      if (${top.opaquePredicate}(hasDbg)) {
-        ${ctxRef('globalScope')} = {}; 
-        ${regRef('0')} = null; 
-      }
+      // Data corruption and immediate self destruct
+      ctx.regs = [];
+      ctx.pc = 999999;
+      ctx.running = false;
+      ctx.globalScope = {};
     }
   ` : '';
 
@@ -862,7 +911,7 @@ const ${top.vmFunctions} = (function() {
   function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr, registerCount) {
     const ctx = {
       ${ctx.pc}: 0,
-      ${ctx.bytecode}: bytecodeArr,
+      ${ctx.bytecode}: ${config.rollingKeys ? 'Uint8Array.from(bytecodeArr)' : 'bytecodeArr'},
       ${ctx.regs}: new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined),
       ${ctx.fnArgs}: argsArr,
       ${ctx.env}: envArr || [],
@@ -876,7 +925,8 @@ const ${top.vmFunctions} = (function() {
       ${ctx.running}: true,
       ${ctx.returnValue}: undefined,
       ${ctx.tryFrames}: [],
-      ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'}
+      ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'},
+      ${ctx.xorLog}: ${config.rollingKeys ? `new Uint8Array(bytecodeArr.length)` : 'null'}
     };
     for (let i = 0; i < argsArr.length; i++) {
       ${regRef('i')} = argsArr[i];
@@ -887,7 +937,25 @@ const ${top.vmFunctions} = (function() {
   function __runVm(ctx) {
     ${antiDebugLogic}
     ${tamperDetectionLogic}
-    while(${ctxRef('running')} && ${ctxRef('pc')} < ${ctxRef('bytecode')}.length) {
+    if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
+    var _initPos = ${ctxRef('pc')};
+    let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}];
+    ${config.rollingKeys ? `
+      // Shadow XOR Mask Buffer: undo previous corruption on initial fetch
+      ${locals.opByte} ^= ${ctxRef('xorLog')}[_initPos];
+    ` : ''}
+    ${ctxRef('pc')}++;
+    ${config.rollingKeys ? `
+      ${locals.opByte} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+      // Self-Modifying Bytecode: LCG Rolling State physical RAM corruption
+      ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
+      var _initMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
+      ${ctxRef('bytecode')}[_initPos] ^= _initMask;
+      ${ctxRef('xorLog')}[_initPos] ^= _initMask;
+    ` : ''}
+    let handler = ${locals.dispatchBank}[${locals.opByte}];
+    
+    while(handler && ${ctxRef('running')}) {
       while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
         ${ctxRef('tryFrames')}.pop();
       }
@@ -903,17 +971,36 @@ const ${top.vmFunctions} = (function() {
           ${ctxRef('resumeValue')} = undefined;
           throw pendingError;
         }
-        let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-        ${config.rollingKeys ? `${locals.opByte} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;` : ''}
-        ${runtimeDispatch.invoke}
+        
+        handler = handler(ctx);
       } catch (error) {
         if (${ctxRef('tryFrames')}.length === 0) {
           throw error;
         }
-        const handler = ${ctxRef('tryFrames')}.pop();
-        ${regRef(frameRef('handler', 'exceptionReg'))} = error;
+        const handlerFrame = ${ctxRef('tryFrames')}.pop();
+        ${regRef(frameRef('handlerFrame', 'exceptionReg'))} = error;
         ${ctxRef('running')} = true;
-        ${ctxRef('pc')} = ${frameRef('handler', 'catchPc')};
+        ${ctxRef('pc')} = ${frameRef('handlerFrame', 'catchPc')};
+        
+        if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) {
+          handler = null;
+        } else {
+          var _catchPos = ${ctxRef('pc')};
+          let nextOp = ${ctxRef('bytecode')}[${ctxRef('pc')}];
+          ${config.rollingKeys ? `
+            // Shadow XOR Mask Buffer: undo previous corruption on catch resume
+            nextOp ^= ${ctxRef('xorLog')}[_catchPos];
+          ` : ''}
+          ${ctxRef('pc')}++;
+          ${config.rollingKeys ? `
+            nextOp ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+            ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
+            var _catchMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
+            ${ctxRef('bytecode')}[_catchPos] ^= _catchMask;
+            ${ctxRef('xorLog')}[_catchPos] ^= _catchMask;
+          ` : ''}
+          handler = ${locals.dispatchBank}[nextOp];
+        }
       }
     }
     if (${ctxRef('resumeMode')} === 'await') {

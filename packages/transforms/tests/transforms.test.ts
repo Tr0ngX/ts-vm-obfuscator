@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { ControlFlowFlatteningPass } from '../src/passes/control-flow-flattening.js';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
-import { IRModule, IRType, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
+import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
+import { ConstantKind, IRModule, IRType, OperandKind, OpCode, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
 import { createTransformRegistry } from '../src/registry.js';
 
 const mockProfile: ObfuscationProfile = {
@@ -154,5 +155,114 @@ const mockProfile: ObfuscationProfile = {
     
     expect(hasCFF).toBe(true);
     expect(hasDeadCode).toBe(true);
+  });
+
+  it('TypeLevelFakePathPass should keep the congruence invariant on the real path', () => {
+    const pass = new TypeLevelFakePathPass();
+    const dummyModule: IRModule = {
+      id: 'fake-path-test',
+      sourceFile: 'fake-path-test.ts',
+      functions: [
+        {
+          id: 'func1',
+          name: 'func1',
+          params: [{ name: 'value', register: 'r0', type: IRType.Number }],
+          returnType: IRType.Number,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'entry',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: ['real'],
+              instructions: [],
+              terminator: { kind: 'jump', targets: ['real'] }
+            },
+            {
+              id: 'real',
+              label: 'real',
+              phiNodes: [],
+              predecessors: ['entry'],
+              successors: [],
+              instructions: [],
+              terminator: { kind: 'return', targets: [], returnValue: 'r0' }
+            },
+            {
+              id: 'tail',
+              label: 'tail',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              instructions: [],
+              terminator: { kind: 'return', targets: [] }
+            }
+          ]
+        }
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
+      metadata: { sourceFile: 'fake-path-test.ts', buildTimestamp: 0, blockCount: 3, functionCount: 1, instructionCount: 0, originalByteSize: 100 }
+    };
+
+    const ctx: TransformContext = {
+      module: dummyModule,
+      profile: mockProfile,
+      semanticGraph: {} as any,
+      symbolAliases: new Map(),
+      diagnostics: [],
+      rng: new SeededRandom(1),
+      phase: 0
+    };
+
+    const result = pass.execute(ctx);
+    const func = result.module.functions[0]!;
+    const rewrittenEntry = func.blocks.find(block => block.id === 'entry')!;
+    const fakeBlock = func.blocks.find(block => block.id.startsWith('__fake_path_'))!;
+
+    expect(result.nodesTransformed).toBe(1);
+    expect(rewrittenEntry.terminator.kind).toBe('branch');
+    expect(rewrittenEntry.terminator.targets).toEqual(['real', fakeBlock.id]);
+    expect(rewrittenEntry.successors).toEqual(['real', fakeBlock.id]);
+    expect(rewrittenEntry.instructions.map(inst => inst.opcode)).toEqual([
+      OpCode.LoadConst,
+      OpCode.LoadGlobal,
+      OpCode.LoadConst,
+      OpCode.CallMethod,
+      OpCode.LoadConst,
+      OpCode.BitOr,
+      OpCode.LoadConst,
+      OpCode.BitAnd,
+      OpCode.Mul,
+      OpCode.Mul,
+      OpCode.LoadConst,
+      OpCode.Mul,
+      OpCode.Add,
+      OpCode.LoadConst,
+      OpCode.Add,
+      OpCode.LoadConst,
+      OpCode.Mod,
+      OpCode.StrictEq,
+      OpCode.Not
+    ]);
+    expect(fakeBlock.instructions[0]?.opcode).toBe(OpCode.Trap);
+    expect(result.module.constantPool).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: ConstantKind.String, value: 'Date' }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'now' }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 3 }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 5 }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 7 }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 4 })
+    ]));
+    expect(rewrittenEntry.instructions.at(-1)?.operands[0]).toEqual({
+      kind: OperandKind.Register,
+      value: expect.stringMatching(/^r\d+$/)
+    });
   });
 });

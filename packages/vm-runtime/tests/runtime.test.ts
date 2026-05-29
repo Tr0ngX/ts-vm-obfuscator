@@ -364,6 +364,27 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.callSpreadPack(3, [4, 5])).toBe(19);
   });
 
+  it('should execute repeated calls with self-modifying rolling bytecode enabled', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const config = createVMConfig(101, { rollingKeys: true });
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    expect(bundle.fullSource).toContain('Uint8Array.from(bytecodeArr)');
+    expect(bundle.fullSource).toContain('xorLog');
+    expect(bundle.fullSource).toContain('Math.imul(ctx.rollingKey, 1664525)');
+    expect(bundle.fullSource).toContain('return handlers[nextOp];');
+    expect(bundle.fullSource).toContain('handler = handler(ctx);');
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+    expect(moduleShim.exports.syntaxPack(false, null)).toBe('no:ANON:empty:1');
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+  });
+
   it('should preserve this and new.target through VM execution', () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'this-pack.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
@@ -544,7 +565,7 @@ describe('VM Runtime', () => {
 
     expect(bundle.fullSource).toContain('performance.now()');
     expect(bundle.fullSource).toContain('debugger;');
-    expect(bundle.fullSource).toContain('ctx.regs[1] = NaN;');
+    expect(bundle.fullSource).toContain('ctx.regs = [];');
     expect(bundle.fullSource).toContain('Function.prototype.toString');
     expect(bundle.fullSource).toContain('!_isNative(VMNativeMathSin)');
     expect(bundle.fullSource).toContain('!_isNative(VMWeakMapGet)');
