@@ -28,6 +28,7 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 - `delete` operator (Exhaustively verified on dynamically assigned keys and nested object properties)
 - Private class fields (`#field`)
 - Synchronous and async generators with `yield` and `yield*` expressions
+- ES and legacy TS decorators (dynamically lowered by DecoratorAwareLoweringPass)
 
 ### Statements
 
@@ -73,7 +74,6 @@ This document tracks IR lowering coverage for virtualized regions in TSXobf.
 
 ### Language Features
 
-- Decorators
 - Derived classes (`extends` / `super`)
 - Private class methods and accessors
 - Class static blocks (`static {}`)

@@ -96,11 +96,16 @@ graph TD
     subgraph T["Transforms Pipeline"]
         direction TB
         T1["StripDebugPass"]
-        T2["StringPoolEncodingPass"]
-        T3["SymbolIndirectionPass"]
-        T4["DeadCodeInjectionPass"]
-        T5["ControlFlowFlatteningPass"]
-        T6["GenericConfusionPass"]
+        T2["SymbolIndirectionPass"]
+        T3["StringPoolEncodingPass"]
+        T4["FunctionVirtualizationPass"]
+        T5["DeadCodeInjectionPass"]
+        T6["ControlFlowFlatteningPass"]
+        T7["PreserveTypeIllusionsPass"]
+        T8["TypeLevelFakePathPass"]
+        T9["DecoratorAwareLoweringPass"]
+        T10["GenericConfusionPass"]
+        T11["NamespaceVirtualizationPass"]
     end
     
     C --> T1
@@ -109,8 +114,13 @@ graph TD
     T3 --> T4
     T4 --> T5
     T5 --> T6
+    T6 --> T7
+    T7 --> T8
+    T8 --> T9
+    T9 --> T10
+    T10 --> T11
 
-    T6 -->|"Assembler"| G["Binary Bytecode Stream"]
+    T11 -->|"Assembler"| G["Binary Bytecode Stream"]
     G -->|"Polymorphic Packaging"| H["Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
@@ -135,8 +145,15 @@ graph TD
 - VM bytecode compilation with remapped opcodes.
 - Generated JS runtime with threaded dispatch and integrity trap handlers.
 - Optional `wasm_hybrid` runtime backend with a verified WebAssembly bootstrap and JS semantic fallback.
-- JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect dispatch routing, string-concealed VM literals, opaque predicates, dead branches, and intrinsic snapshots for private-state storage.
-- Constant-pool based lowering with runtime decoding.
+- JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect dispatch routing, string-concealed VM literals, intrinsic snapshots for private-state storage, and anti-debug timing probes.
+- **PreserveTypeIllusionsPass:** Automatic injection of fake dynamic type guards and phantom branches to throw off static analysis.
+- **TypeLevelFakePathPass:** Dynamic Opaque Predicates (mathematically proven invariant checks) that steer reverse-engineering tools down complex junk branches.
+- **DecoratorAwareLoweringPass:** Seamless lowering of ES and TS legacy decorators to equivalent compiler-safe representations within VM IR.
+- **GenericConfusionPass:** Semantic generic wrapping and type dispatching at runtime, preventing static structure mapping.
+- **NamespaceVirtualizationPass:** Full virtualization of static namespaces via computed getters/setters, parameter destructuring data-flow analysis, and lexical scope preservation.
+- **StringPoolEncodingPass:** Encrypted dynamic unrolled XOR decoding at runtime using a key derivation schedule, eliminating all compile-time string literal traces.
+- **SymbolIndirectionPass:** Automatic symbol renaming for all virtualized targets, with dynamic export binding at runtime via Constant Pool lookups.
+- **Dynamic Register Allocator:** Global dynamic register allocator (`getMaxRegister`) eliminating all hardcoded register collisions.
 - React-safe and Electron-oriented profile switches.
 - Strip-debug transform in the obfuscation pipeline.
 

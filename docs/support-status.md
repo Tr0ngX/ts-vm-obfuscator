@@ -55,7 +55,7 @@ Use it together with [AST Support Matrix](./ast-support.md):
 | Language | classes / class expressions | `Supported With Limits` | Verified for base classes, constructor, methods, accessors, public/private instance fields, static fields, and computed names. Derived classes and static blocks stay outside the verified VM path. |
 | Language | `await` | `Supported With Limits` | Verified for async function declarations and async arrows, including current `try/catch/finally` await coverage. |
 | Language | generators / `yield` | `Fully Supported` | Fully supported for synchronous and async generator functions, including `yield` and `yield*` interpretation via iterator protocols. |
-| Language | decorators | `Not Supported` | Not part of verified VM virtualization support. |
+| Language | decorators | `Fully Supported` | Lowered dynamically to VM-compatible representations by DecoratorAwareLoweringPass. |
 
 ## Notes
 

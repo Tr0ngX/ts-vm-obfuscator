@@ -96,11 +96,16 @@ graph TD
     subgraph T["Transforms Pipeline"]
         direction TB
         T1["StripDebugPass"]
-        T2["StringPoolEncodingPass"]
-        T3["SymbolIndirectionPass"]
-        T4["DeadCodeInjectionPass"]
-        T5["ControlFlowFlatteningPass"]
-        T6["GenericConfusionPass"]
+        T2["SymbolIndirectionPass"]
+        T3["StringPoolEncodingPass"]
+        T4["FunctionVirtualizationPass"]
+        T5["DeadCodeInjectionPass"]
+        T6["ControlFlowFlatteningPass"]
+        T7["PreserveTypeIllusionsPass"]
+        T8["TypeLevelFakePathPass"]
+        T9["DecoratorAwareLoweringPass"]
+        T10["GenericConfusionPass"]
+        T11["NamespaceVirtualizationPass"]
     end
     
     C --> T1
@@ -109,8 +114,13 @@ graph TD
     T3 --> T4
     T4 --> T5
     T5 --> T6
+    T6 --> T7
+    T7 --> T8
+    T8 --> T9
+    T9 --> T10
+    T10 --> T11
 
-    T6 -->|"Assembler"| G["Bytecode Nhị Phân"]
+    T11 -->|"Assembler"| G["Bytecode Nhị Phân"]
     G -->|"Polymorphic Packaging"| H["Production JS Bundle"]
 
     subgraph R["VM Execution Runtime"]
@@ -124,7 +134,7 @@ graph TD
     
     R1 --> K["Giá Trị Runtime"]
     R2 --> K
-
+    
     K -->|"Semantic Output"| L["Kết Quả Đồng Nhất Ngữ Nghĩa"]
 ```
 
@@ -135,8 +145,15 @@ graph TD
 - Biên dịch VM bytecode với opcode đã được tái ánh xạ (remapped opcodes).
 - Sinh runtime JavaScript tích hợp Threaded Dispatch và bẫy báo lỗi.
 - Backend runtime `wasm_hybrid` tùy chọn với WebAssembly bootstrap đã verify và JS semantic fallback.
-- Runtime hardening lấy cảm hứng từ JS-Confuser: kiểm tra native function bị hook, che giấu tên helper, dispatch gián tiếp, che giấu string nội bộ VM, opaque predicates, dead branches, và snapshot intrinsic cho private-state storage.
-- Lowering qua constant-pool và giải mã runtime.
+- Runtime hardening lấy cảm hứng từ JS-Confuser: kiểm tra native function bị hook, che giấu tên helper, dispatch gián tiếp, che giấu string nội bộ VM, snapshot intrinsic cho private-state storage, và anti-debug timing probes.
+- **PreserveTypeIllusionsPass:** Tự động tiêm các bẫy kiểm tra kiểu động giả (fake type guards) và các rẽ nhánh ma (phantom branches) để đánh lừa phân tích tĩnh.
+- **TypeLevelFakePathPass:** Opaque Predicates động (các biểu thức toán học bất biến luôn đúng/sai) dẫn dắt các công cụ dịch ngược vào các nhánh rẽ giả phức tạp chứa junk blocks.
+- **DecoratorAwareLoweringPass:** Hạ cấp mượt mà ES Decorators và TS Legacy Decorators thành các biểu diễn tương đương an toàn cho VM compiler trong IR.
+- **GenericConfusionPass:** Bọc các hàm generic ngữ nghĩa và dispatch động kiểu dữ liệu tại runtime, chống lại việc map cấu trúc tĩnh.
+- **NamespaceVirtualizationPass:** Ảo hóa hoàn toàn các namespace tĩnh thông qua computed getters/setters, phân tích dòng dữ liệu tham số destructuring, và bảo vệ lexical scope.
+- **StringPoolEncodingPass:** Mã hóa XOR dòng động không tuần tự tại runtime sử dụng lược đồ key derivation, xóa sạch mọi dấu vết chuỗi text thô.
+- **SymbolIndirectionPass:** Đổi tên ngẫu nhiên toàn bộ các hàm ảo hóa và gán export động tại runtime thông qua Constant Pool lookups.
+- **Dynamic Register Allocator:** Global dynamic register allocator (`getMaxRegister`) loại bỏ hoàn toàn nguy cơ va chạm thanh ghi.
 - Hỗ trợ switch profile an toàn cho React và Electron.
 - Transform xóa debug (Strip-debug) trong chu trình làm rối.
 
