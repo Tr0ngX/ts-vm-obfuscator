@@ -23,4 +23,6 @@ scratch-files.js
 scratch-inspect.js
 test-complex.js
 test_runner.js
+vm-fully-support-plan.md
+
 
