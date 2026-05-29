@@ -1,5 +1,5 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, ConstantPoolEntry, IRFunction, Instruction, BasicBlock } from '@tsvm/shared';
-import { OpCode, ConstantKind, OperandKind } from '@tsvm/shared';
+import type { TransformPass, TransformContext, TransformResult, IRModule, ConstantPoolEntry, IRFunction, Instruction, BasicBlock, IRLocal, Register } from '@tsvm/shared';
+import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
 
 export class StringPoolEncodingPass implements TransformPass {
   readonly name = 'StringPoolEncodingPass';
@@ -37,6 +37,21 @@ export class StringPoolEncodingPass implements TransformPass {
       return newIdx;
     };
 
+    // Helper to find or add a number constant
+    const getOrAddNumberConstant = (val: number): number => {
+      const existing = newConstantPool.find(c => c.kind === ConstantKind.Number && c.value === val);
+      if (existing) {
+        return existing.index;
+      }
+      const newIdx = nextConstantIndex++;
+      newConstantPool.push({
+        index: newIdx,
+        kind: ConstantKind.Number,
+        value: val
+      });
+      return newIdx;
+    };
+
     let nodesTransformed = 0;
 
     const newFunctions = ctx.module.functions.map(fn => {
@@ -69,6 +84,7 @@ export class StringPoolEncodingPass implements TransformPass {
       });
 
       let nextTempRegId = maxRegId + 1;
+      const addedLocals: IRLocal[] = [];
 
       const newBlocks = fn.blocks.map(block => {
         const newInstructions: Instruction[] = [];
@@ -82,43 +98,129 @@ export class StringPoolEncodingPass implements TransformPass {
 
               if (constant && constant.kind === ConstantKind.String && typeof constant.value === 'string' && constant.value.length >= minLength) {
                 const fullStr = constant.value;
-                const mid = Math.floor(fullStr.length / 2);
-                const part1 = fullStr.substring(0, mid);
-                const part2 = fullStr.substring(mid);
+                const key = ctx.rng.nextRange(1, 255);
 
-                const part1Idx = getOrAddStringConstant(part1);
-                const part2Idx = getOrAddStringConstant(part2);
+                const r_arr = `r${nextTempRegId++}` as Register;
+                const r_val = `r${nextTempRegId++}` as Register;
+                const r_key = `r${nextTempRegId++}` as Register;
+                const r_dec = `r${nextTempRegId++}` as Register;
+                const r_idx = `r${nextTempRegId++}` as Register;
+                const r_string_str = `r${nextTempRegId++}` as Register;
+                const r_string = `r${nextTempRegId++}` as Register;
+                const r_from_char_code_str = `r${nextTempRegId++}` as Register;
+                const r_from_char_code = `r${nextTempRegId++}` as Register;
 
-                const tempReg1 = `r${nextTempRegId++}` as any;
-                const tempReg2 = `r${nextTempRegId++}` as any;
+                // Track and register dynamic locals
+                addedLocals.push(
+                  { name: `str_pool_temp_${r_arr}`, register: r_arr, type: IRType.Any, isCaptured: false },
+                  { name: `str_pool_temp_${r_val}`, register: r_val, type: IRType.Number, isCaptured: false },
+                  { name: `str_pool_temp_${r_key}`, register: r_key, type: IRType.Number, isCaptured: false },
+                  { name: `str_pool_temp_${r_dec}`, register: r_dec, type: IRType.Number, isCaptured: false },
+                  { name: `str_pool_temp_${r_idx}`, register: r_idx, type: IRType.Number, isCaptured: false },
+                  { name: `str_pool_temp_${r_string_str}`, register: r_string_str, type: IRType.String, isCaptured: false },
+                  { name: `str_pool_temp_${r_string}`, register: r_string, type: IRType.Any, isCaptured: false },
+                  { name: `str_pool_temp_${r_from_char_code_str}`, register: r_from_char_code_str, type: IRType.String, isCaptured: false },
+                  { name: `str_pool_temp_${r_from_char_code}`, register: r_from_char_code, type: IRType.Any, isCaptured: false }
+                );
 
-                // 1. LoadConst part1 into tempReg1
-                newInstructions.push({
-                  opcode: OpCode.LoadConst,
-                  operands: [{ kind: OperandKind.ConstantIndex, value: part1Idx }],
-                  result: tempReg1,
-                  sourceLocation: inst.sourceLocation
-                });
+                const stringNameIdx = getOrAddStringConstant('String');
+                const fromCharCodeIdx = getOrAddStringConstant('fromCharCode');
 
-                // 2. LoadConst part2 into tempReg2
-                newInstructions.push({
-                  opcode: OpCode.LoadConst,
-                  operands: [{ kind: OperandKind.ConstantIndex, value: part2Idx }],
-                  result: tempReg2,
-                  sourceLocation: inst.sourceLocation
-                });
+                const stringPoolInsts: Instruction[] = [
+                  {
+                    opcode: OpCode.ArrayNew,
+                    operands: [],
+                    result: r_arr,
+                    sourceLocation: inst.sourceLocation
+                  }
+                ];
 
-                // 3. Add tempReg1 + tempReg2 -> original result register
-                newInstructions.push({
-                  opcode: OpCode.Add,
-                  operands: [
-                    { kind: OperandKind.Register, value: tempReg1 },
-                    { kind: OperandKind.Register, value: tempReg2 }
-                  ],
-                  result: inst.result,
-                  sourceLocation: inst.sourceLocation
-                });
+                for (let i = 0; i < fullStr.length; i++) {
+                  const tempVal = fullStr.charCodeAt(i) ^ key;
+                  const valIdx = getOrAddNumberConstant(tempVal);
+                  const keyIdx = getOrAddNumberConstant(key);
+                  const idxIdx = getOrAddNumberConstant(i);
 
+                  stringPoolInsts.push(
+                    {
+                      opcode: OpCode.LoadConst,
+                      operands: [{ kind: OperandKind.ConstantIndex, value: valIdx }],
+                      result: r_val,
+                      sourceLocation: inst.sourceLocation
+                    },
+                    {
+                      opcode: OpCode.LoadConst,
+                      operands: [{ kind: OperandKind.ConstantIndex, value: keyIdx }],
+                      result: r_key,
+                      sourceLocation: inst.sourceLocation
+                    },
+                    {
+                      opcode: OpCode.BitXor,
+                      operands: [
+                        { kind: OperandKind.Register, value: r_val },
+                        { kind: OperandKind.Register, value: r_key }
+                      ],
+                      result: r_dec,
+                      sourceLocation: inst.sourceLocation
+                    },
+                    {
+                      opcode: OpCode.LoadConst,
+                      operands: [{ kind: OperandKind.ConstantIndex, value: idxIdx }],
+                      result: r_idx,
+                      sourceLocation: inst.sourceLocation
+                    },
+                    {
+                      opcode: OpCode.ComputedSet,
+                      operands: [
+                        { kind: OperandKind.Register, value: r_arr },
+                        { kind: OperandKind.Register, value: r_idx },
+                        { kind: OperandKind.Register, value: r_dec }
+                      ],
+                      sourceLocation: inst.sourceLocation
+                    }
+                  );
+                }
+
+                stringPoolInsts.push(
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: stringNameIdx }],
+                    result: r_string_str,
+                    sourceLocation: inst.sourceLocation
+                  },
+                  {
+                    opcode: OpCode.LoadGlobal,
+                    operands: [{ kind: OperandKind.Register, value: r_string_str }],
+                    result: r_string,
+                    sourceLocation: inst.sourceLocation
+                  },
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: fromCharCodeIdx }],
+                    result: r_from_char_code_str,
+                    sourceLocation: inst.sourceLocation
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: r_string },
+                      { kind: OperandKind.Register, value: r_from_char_code_str }
+                    ],
+                    result: r_from_char_code,
+                    sourceLocation: inst.sourceLocation
+                  },
+                  {
+                    opcode: OpCode.CallWithArray,
+                    operands: [
+                      { kind: OperandKind.Register, value: r_from_char_code },
+                      { kind: OperandKind.Register, value: r_arr }
+                    ],
+                    result: inst.result,
+                    sourceLocation: inst.sourceLocation
+                  }
+                );
+
+                newInstructions.push(...stringPoolInsts);
                 nodesTransformed++;
                 return;
               }
@@ -136,6 +238,7 @@ export class StringPoolEncodingPass implements TransformPass {
 
       return {
         ...fn,
+        locals: [...fn.locals, ...addedLocals],
         blocks: newBlocks
       };
     });

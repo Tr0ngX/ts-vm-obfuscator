@@ -1,5 +1,5 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, BasicBlock, Register } from '@tsvm/shared';
-import { OpCode, ConstantKind, OperandKind } from '@tsvm/shared';
+import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
 
 /**
  * 1) Invariant đầu vào: Các hàm thực thi logic bình thường.
@@ -168,8 +168,42 @@ export class TypeLevelFakePathPass implements TransformPass {
         return [block];
       });
 
+      const addedLocals = [
+        {
+          name: `fake_path_temp_${tempA}`,
+          register: tempA,
+          type: IRType.Number,
+          isCaptured: false
+        },
+        {
+          name: `fake_path_temp_${tempB}`,
+          register: tempB,
+          type: IRType.Number,
+          isCaptured: false
+        },
+        {
+          name: `fake_path_temp_${tempC}`,
+          register: tempC,
+          type: IRType.Boolean,
+          isCaptured: false
+        },
+        {
+          name: `fake_path_temp_${junkTemp1}`,
+          register: junkTemp1,
+          type: IRType.Number,
+          isCaptured: false
+        },
+        {
+          name: `fake_path_temp_${junkTemp2}`,
+          register: junkTemp2,
+          type: IRType.Number,
+          isCaptured: false
+        }
+      ];
+
       return {
         ...func,
+        locals: [...func.locals, ...addedLocals],
         blocks: newBlocks
       };
     });

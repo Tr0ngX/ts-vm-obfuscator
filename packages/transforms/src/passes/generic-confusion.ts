@@ -1,4 +1,4 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction } from '@tsvm/shared';
+import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, Register } from '@tsvm/shared';
 import { OpCode, OperandKind, IRType } from '@tsvm/shared';
 
 /**
@@ -18,27 +18,66 @@ export class GenericConfusionPass implements TransformPass {
 
   execute(ctx: TransformContext): TransformResult {
     let nodesTransformed = 0;
+
+    function getMaxRegister(func: IRFunction): number {
+      let maxReg = 0;
+      const consider = (value: string | undefined) => {
+        if (!value) return;
+        const m = /^r(\d+)$/.exec(value);
+        if (m) {
+          maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
+        }
+      };
+
+      for (const param of func.params) {
+        consider(param.register);
+      }
+      for (const local of func.locals) {
+        consider(local.register);
+      }
+      for (const block of func.blocks) {
+        for (const inst of block.instructions) {
+          consider(inst.result);
+          for (const op of inst.operands) {
+            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
+              consider(op.value);
+            }
+          }
+        }
+        consider(block.terminator.condition);
+        consider(block.terminator.returnValue);
+      }
+      return maxReg;
+    }
     
     const newFunctions = ctx.module.functions.map(func => {
       let changed = false;
+      const maxReg = getMaxRegister(func);
+      let tempIndex = 1;
+      const addedLocals: any[] = [];
+
       const newBlocks = func.blocks.map(block => {
         const newInstructions: Instruction[] = [];
         for (const inst of block.instructions) {
           if (inst.opcode === OpCode.Call || inst.opcode === OpCode.CallMethod) {
             // Find if this is a call to a generic function
             // In a full implementation, we'd look up the function in semanticGraph
-            // For now, we simulate confusion by injecting a Nop with metadata
             
             // Randomly apply generic confusion 10% of the time for demonstration
             if (ctx.rng.nextFloat() < 0.1) {
               changed = true;
               nodesTransformed++;
               
-              // Inject a confusion preamble before the call
-              // We use high registers to avoid colliding with locals/args temporarily
-              const tempReg1 = `r250`;
-              const tempReg2 = `r251`;
-              const tempReg3 = `r252`;
+              // Inject a confusion preamble before the call using dynamic registers
+              const tempReg1 = `r${maxReg + tempIndex++}` as Register;
+              const tempReg2 = `r${maxReg + tempIndex++}` as Register;
+              const tempReg3 = `r${maxReg + tempIndex++}` as Register;
+
+              addedLocals.push(
+                { name: `generic_conf_temp_${tempReg1}`, register: tempReg1, type: IRType.Any, isCaptured: false },
+                { name: `generic_conf_temp_${tempReg2}`, register: tempReg2, type: IRType.String, isCaptured: false },
+                { name: `generic_conf_temp_${tempReg3}`, register: tempReg3, type: IRType.Boolean, isCaptured: false }
+              );
               
               // 1. Copy the function reference (inst.operands[0]) to tempReg1
               newInstructions.push({
@@ -64,9 +103,9 @@ export class GenericConfusionPass implements TransformPass {
                 opcode: OpCode.Eq,
                 operands: [
                   { kind: OperandKind.Register, value: tempReg1 },
-                  { kind: OperandKind.Register, value: tempReg2 },
-                  { kind: OperandKind.Register, value: tempReg3 }
-                ]
+                  { kind: OperandKind.Register, value: tempReg2 }
+                ],
+                result: tempReg3
               });
               
               // We just push the original call
@@ -82,7 +121,11 @@ export class GenericConfusionPass implements TransformPass {
         return changed ? { ...block, instructions: newInstructions } : block;
       });
       
-      return changed ? { ...func, blocks: newBlocks } : func;
+      return changed ? {
+        ...func,
+        locals: [...func.locals, ...addedLocals],
+        blocks: newBlocks
+      } : func;
     });
 
     const newModule: IRModule = {

@@ -1,5 +1,5 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, BasicBlock, Instruction, Register } from '@tsvm/shared';
-import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
+import { OpCode, OperandKind, ConstantKind, IRType } from '@tsvm/shared';
 
 export class DecoratorAwareLoweringPass implements TransformPass {
   readonly name = 'DecoratorAwareLoweringPass';
@@ -44,6 +44,7 @@ export class DecoratorAwareLoweringPass implements TransformPass {
 
       const maxReg = getMaxRegister(func);
       let tempIndex = 1;
+      const addedLocals: any[] = [];
 
       const newBlocks = func.blocks.map(block => {
         const newInsts = block.instructions.flatMap(inst => {
@@ -53,6 +54,13 @@ export class DecoratorAwareLoweringPass implements TransformPass {
               const tempReg = `r${maxReg + tempIndex}` as Register;
               tempIndex++;
               nodesTransformed++;
+
+              addedLocals.push({
+                name: `decorator_temp_${tempReg}`,
+                register: tempReg,
+                type: IRType.Any,
+                isCaptured: false
+              });
 
               const moveInst: Instruction = {
                 opcode: OpCode.Move,
@@ -84,6 +92,7 @@ export class DecoratorAwareLoweringPass implements TransformPass {
 
       return {
         ...func,
+        locals: [...func.locals, ...addedLocals],
         blocks: newBlocks
       };
     });

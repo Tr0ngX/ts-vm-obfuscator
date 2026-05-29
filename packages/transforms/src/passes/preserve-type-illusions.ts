@@ -103,8 +103,30 @@ export class PreserveTypeIllusionsPass implements TransformPass {
         return block;
       });
 
+      const addedLocals = [
+        {
+          name: `type_illusion_temp_${tempReg1}`,
+          register: tempReg1,
+          type: IRType.String,
+          isCaptured: false
+        },
+        {
+          name: `type_illusion_temp_${tempReg2}`,
+          register: tempReg2,
+          type: IRType.String,
+          isCaptured: false
+        },
+        {
+          name: `type_illusion_temp_${tempReg3}`,
+          register: tempReg3,
+          type: IRType.Boolean,
+          isCaptured: false
+        }
+      ];
+
       return {
         ...func,
+        locals: [...func.locals, ...addedLocals],
         blocks: newBlocks
       };
     });

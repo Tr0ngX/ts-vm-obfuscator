@@ -110,6 +110,11 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
     { name: 'FunctionVirtualizationPass', enabled: true, options: {} },
     { name: 'DeadCodeInjectionPass', enabled: true, options: {} },
     { name: 'ControlFlowFlatteningPass', enabled: true, options: {} },
+    { name: 'PreserveTypeIllusionsPass', enabled: true, options: {} },
+    { name: 'TypeLevelFakePathPass', enabled: true, options: {} },
+    { name: 'DecoratorAwareLoweringPass', enabled: true, options: {} },
+    { name: 'GenericConfusionPass', enabled: true, options: {} },
+    { name: 'NamespaceVirtualizationPass', enabled: true, options: {} },
     { name: 'StripDebugPass', enabled: true, options: {} },
   ] as const;
 

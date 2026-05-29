@@ -24,7 +24,7 @@ export class SymbolIndirectionPass implements TransformPass {
       // Always preserve exported function names — the VM runtime needs
       // the original name for module.exports binding.
       // Internal implementation is still fully obfuscated via bytecode.
-      if (func.isExported || func.isVirtualized) {
+      if (func.isExported) {
         return func;
       }
 
