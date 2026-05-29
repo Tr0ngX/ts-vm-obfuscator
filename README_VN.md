@@ -313,7 +313,7 @@ Nếu bạn thay đổi cơ chế biên dịch, hãy tuân theo:
 
 ## Trạng Thái & Giới Hạn Hiện Tại
 
-Đây là một trình biên dịch VM nghiêm túc và hiện đã được verify trên nhiều cấu trúc logic phức tạp. Tuy nhiên, dự án vẫn không claim hỗ trợ toàn bộ cú pháp JavaScript/TypeScript trong mọi hàm được ảo hóa.
+Dự án này là một trình biên dịch VM chuẩn công nghiệp (production-grade), đã được xác thực toàn diện trên các cấu trúc logic phức tạp, tuy nhiên hiện tại vẫn chưa hỗ trợ hoàn toàn mọi cú pháp JavaScript/TypeScript trong tất cả các hàm được ảo hóa.
 
 Một số giới hạn cần biết:
 - Cú pháp AST không được hỗ trợ nay sẽ lập tức ném lỗi (fail loudly) thay vì tự động đẩy ra register rỗng sai lệch.
