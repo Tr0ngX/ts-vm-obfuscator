@@ -460,12 +460,26 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         nextOpLogic = `return null;`;
       }
 
-      // Replace args with our variant-specific args variable in the body
+      // Replace args and evaluate semantic cloning markers
       let variantBody = body.replace(/\${readArgs}/g, () => myReadArgs);
+      variantBody = variantBody.replace(/__ADD_EXPR__/g, () => {
+        return mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
+      });
+      variantBody = variantBody.replace(/__SUB_EXPR__/g, () => {
+        return mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
+      });
+
       if (isParanoid) {
         variantBody = variantBody.replace(/\bargs\b/g, argsVar);
-        // also replace array accesses if any remain
         variantBody = variantBody.replace(/args\[/g, `${argsVar}[`);
+      }
+
+      // Register Alias Layer
+      const regAlias = isParanoid ? `_r${myRng.nextRange(1000, 9999)}` : `ctx.${ctx.regs}`;
+      const regSetup = isParanoid ? `  var ${regAlias} = ctx.${ctx.regs};\n` : '';
+      if (isParanoid) {
+        variantBody = variantBody.replace(/\bctx\.regs\[/g, `${regAlias}[`);
+        variantBody = variantBody.replace(/\bctx\.regs\b/g, regAlias);
       }
 
       // track current opcode in paranoid
@@ -474,7 +488,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         currentOpcodeTracker = `ctx.currentOpcode = ${canonical};\n`;
       }
 
-      handlerDeclarations.push(`function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${junkLogic}\n${variantBody}\n${nextOpLogic}\n}`);
+      handlerDeclarations.push(`function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${regSetup}${junkLogic}\n${variantBody}\n${nextOpLogic}\n}`);
     }
 
     declaredOpcodes.push(canonical);
@@ -514,10 +528,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
   declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
   
-  const addExpr = `(typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : ${mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', config.seed)}`;
-  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = ${addExpr};`);
-  const subExpr = `(typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? ${mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', config.seed)} : (ctx.regs[args[0]] - ctx.regs[args[1]])`;
-  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = ${subExpr};`);
+  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : __ADD_EXPR__;`);
+  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? __SUB_EXPR__ : (ctx.regs[args[0]] - ctx.regs[args[1]]);`);
   declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
   declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
   declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
@@ -903,6 +915,23 @@ ${casesStr}
     return `[${canonical}]: [${names.join(', ')}]`;
   }).join(',\n    ');
   const handlerVariantsStr = `const handlerVariants = {\n    ${handlerVariantsEntries}\n  };`;
+
+  if (config.runtimeHardening === 'paranoid') {
+    handlerDeclarations.push(`function _fakeHandler_A(ctx) {
+    var _r192 = ctx.regs;
+    var a = _r192[0] ^ 0x3d2;
+    var b = (a * 9172) | 0;
+    _r192[1] = b ^ 0xdead;
+    return (ctx.rollingKey ^ 0xab) & 0xffff;
+  }
+  function _fakeHandler_B(ctx) {
+    var _r928 = ctx.regs;
+    var a = _r928[1] & 0xff;
+    var b = Math.sin(a) * 4;
+    _r928[2] = b | 0;
+    return (ctx.rollingKey ^ 0x3e) & 0xffff;
+  }`);
+  }
 
   const sourceCode = `
 // Polymorphic Threaded VM Engine - Build: ${module.buildId}
