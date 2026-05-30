@@ -207,7 +207,7 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).not.toMatch(/function h_\d+/);
     expect(bundle.fullSource).not.toContain('handlers[op]');
     expect(bundle.fullSource).not.toContain('rollingKey');
-    expect(bundle.fullSource).not.toContain('tryStack');
+    expect(bundle.fullSource).not.toContain('tryFrames');
     expect(bundle.fullSource).not.toContain('callArgs');
     expect(bundle.fullSource).not.toContain('getExecutorById');
   });
@@ -698,6 +698,59 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.tryFinallyPack(2)).toBe(3);
     expect(moduleShim.exports.tryCatchFinallyPack(false)).toBe('clean');
     expect(moduleShim.exports.tryCatchFinallyPack(true)).toBe('boom');
+    expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
+  });
+
+  it('should emit paranoid route tokens, handler variants, and path-mixed bytecode mutation', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const config = createVMConfig(131, {
+      runtimeHardening: 'paranoid',
+      stealthDispatch: true,
+      tamperDetection: true,
+      rollingKeys: true,
+      junkInsertion: true,
+    });
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    expect(bundle.fullSource).toContain('executionNonce');
+    expect(bundle.fullSource).toContain('function mixRollingState(ctx, pos, decoded)');
+    expect(bundle.fullSource).toContain('function corruptByteNear(ctx, at, mask)');
+    expect(bundle.fullSource).toContain('corruptByteNear(ctx, pos - 1');
+    expect(bundle.fullSource).toContain('corruptByteNear(ctx, pos + 1');
+    expect(bundle.fullSource).toContain('function makeRouteToken(ctx, nextOp)');
+    expect(bundle.fullSource).toContain('function resolveRoute(ctx, token)');
+    expect(bundle.fullSource).toContain('handler = resolveRoute(ctx, handler(ctx));');
+    expect(bundle.fullSource).toMatch(/const handlerVariants = \{/);
+    expect(bundle.fullSource).toMatch(/\[\d+\]: \[[^\]]*,[^\]]*\]/);
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+    expect(moduleShim.exports.syntaxPack(false, null)).toBe('no:ANON:empty:1');
+    expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+  });
+
+  it('should execute loop and catch resume paths under paranoid rolling mutation', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'exception-pack.ts');
+    const config = createVMConfig(137, {
+      runtimeHardening: 'paranoid',
+      stealthDispatch: true,
+      tamperDetection: true,
+      rollingKeys: true,
+      junkInsertion: true,
+    });
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    expect(moduleShim.exports.tryCatchPack(false)).toBe('ok');
+    expect(moduleShim.exports.tryCatchPack(true)).toBe('boom');
     expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
   });
 });

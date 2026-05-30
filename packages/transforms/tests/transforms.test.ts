@@ -251,7 +251,7 @@ const mockProfile: ObfuscationProfile = {
       OpCode.StrictEq,
       OpCode.Not
     ]);
-    expect(fakeBlock.instructions[0]?.opcode).toBe(OpCode.Trap);
+    expect(fakeBlock.instructions[fakeBlock.instructions.length - 1]?.opcode).toBe(OpCode.Trap);
     expect(result.module.constantPool).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: ConstantKind.String, value: 'Date' }),
       expect.objectContaining({ kind: ConstantKind.String, value: 'now' }),
@@ -264,5 +264,82 @@ const mockProfile: ObfuscationProfile = {
       kind: OperandKind.Register,
       value: expect.stringMatching(/^r\d+$/)
     });
+  });
+
+  it('TypeLevelFakePathPass should add paranoid fake paths with bounded invariant templates and trap tails', () => {
+    const pass = new TypeLevelFakePathPass();
+    const dummyModule: IRModule = {
+      id: 'paranoid-fake-path-test',
+      sourceFile: 'paranoid-fake-path-test.ts',
+      functions: [
+        {
+          id: 'func1',
+          name: 'func1',
+          params: [{ name: 'value', register: 'r0', type: IRType.Number }],
+          returnType: IRType.Number,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            { id: 'entry', label: 'entry', phiNodes: [], predecessors: [], successors: ['a'], instructions: [], terminator: { kind: 'jump', targets: ['a'] } },
+            { id: 'a', label: 'a', phiNodes: [], predecessors: ['entry'], successors: ['b'], instructions: [], terminator: { kind: 'jump', targets: ['b'] } },
+            { id: 'b', label: 'b', phiNodes: [], predecessors: ['a'], successors: ['real'], instructions: [], terminator: { kind: 'jump', targets: ['real'] } },
+            { id: 'real', label: 'real', phiNodes: [], predecessors: ['b'], successors: [], instructions: [], terminator: { kind: 'return', targets: [], returnValue: 'r0' } }
+          ]
+        }
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
+      metadata: { sourceFile: 'paranoid-fake-path-test.ts', buildTimestamp: 0, blockCount: 4, functionCount: 1, instructionCount: 0, originalByteSize: 100 }
+    };
+
+    const ctx: TransformContext = {
+      module: dummyModule,
+      profile: {
+        ...mockProfile,
+        vm: {
+          opcodeRemapping: true,
+          immediateEncoding: 1,
+          superInstructions: false,
+          handlerLayoutRandom: false,
+          constantPoolEncoding: 0,
+          traceMode: false,
+          deterministicReplay: false,
+          seed: 1,
+          runtimeHardening: 'paranoid'
+        }
+      } as ObfuscationProfile,
+      semanticGraph: {} as any,
+      symbolAliases: new Map(),
+      diagnostics: [],
+      rng: new SeededRandom(1),
+      phase: 0
+    };
+
+    const result = pass.execute(ctx);
+    const func = result.module.functions[0]!;
+    const fakeBlocks = func.blocks.filter(block => block.id.startsWith('__fake_path_'));
+    const branchBlocks = func.blocks.filter(block => block.terminator.kind === 'branch');
+    const boundedConstants = result.module.constantPool.filter(cp => cp.kind === ConstantKind.Number).map(cp => cp.value);
+
+    expect(result.nodesTransformed).toBeGreaterThanOrEqual(1);
+    expect(fakeBlocks.length).toBeGreaterThanOrEqual(1);
+    expect(fakeBlocks.length).toBeLessThanOrEqual(3);
+    expect(branchBlocks.length).toBe(fakeBlocks.length);
+    for (const block of branchBlocks) {
+      expect(block.terminator.targets[0]).not.toMatch(/^__fake_path_/);
+      expect(block.terminator.targets[1]).toMatch(/^__fake_path_/);
+      expect(block.successors).toEqual(block.terminator.targets);
+    }
+    for (const fakeBlock of fakeBlocks) {
+      expect(fakeBlock.instructions.length).toBeGreaterThan(1);
+      expect(fakeBlock.instructions.at(-1)?.opcode).toBe(OpCode.Trap);
+    }
+    expect(boundedConstants).toEqual(expect.arrayContaining([3, 4]));
+    expect(boundedConstants.some(value => value === 0x9E3779B9 || value === 0x7FFFFFFF)).toBe(false);
   });
 });
