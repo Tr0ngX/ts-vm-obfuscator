@@ -21,10 +21,12 @@ It is designed for high-value business logic such as license checks, billing rul
 ## Key Features
 
 - **Semantic-Aware Compilation:** Uses the official TypeScript Compiler API to seamlessly resolve module exports, scope rules, typed variables, and dependency calls.
-- **Polymorphic Virtual Machine Runtime:** Generates a Threaded Dispatch execution engine with randomized handlers and integrity traps.
+- **Indirect Threaded VM Runtime:** Generates handlers that return the next handler reference (`return handlers[nextOp]`) and executes through a handler trampoline instead of a raw opcode switch loop.
+- **Self-Modifying Rolling Bytecode:** When rolling keys are enabled, each VM execution clones its bytecode segment, uses a Shadow XOR Mask Buffer to undo prior corruption before fetch, then reapplies a new LCG-derived mask to the fetched opcode byte.
 - **Optional WASM Hybrid Runtime:** `--runtime wasm-hybrid` emits a WebAssembly bootstrap with the existing JS VM semantic executor as the correctness-preserving bridge.
 - **1-to-N Opcode Aliasing & Shuffling:** Defeats statistical pattern-matching by mapping one instruction type to multiple virtual opcodes, randomized per build.
 - **Rolling XOR Key Encryption:** Instruction opcodes and immediate values are encrypted within the bytecode stream and dynamically decrypted.
+- **Anti-Symbolic Fake Paths:** `TypeLevelFakePathPass` injects VM-level non-linear congruence predicates and trap-backed unreachable fake blocks.
 - **JIT Constant Pool Decryption:** Strings, numerical constants, and property lookups are extracted into an encrypted constant pool and decrypted lazily.
 - **Targeted Protection via JSDoc:** Protect only critical functions by placing a `/** @virtualize */` annotation above them, maintaining 100% native speed for UI/framework code.
 - **StripDebugPass:** Automatically strips all `console.log`, `console.warn`, and `console.error` calls to remove debug literals from the production constant pool.
@@ -105,6 +107,19 @@ Runtime hardening:
 - `--hardening off` keeps the runtime closer to the plain JS VM shape for debugging.
 - `--hardening paranoid` additionally enables the heavier anti-debug timing probe. Use it only when you accept higher false-positive and compatibility risk.
 
+## Latest Verified Hardening Upgrade
+
+The current VM hardening implementation has moved beyond the original marketing plan and is backed by runtime tests plus the full pipeline regression:
+
+- **True indirect threaded dispatch:** normal opcode handlers return the next handler function. `__runVm` fetches the first handler, then advances with `handler = handler(ctx)` until the VM halts, suspends, throws, or returns.
+- **Self-modifying bytecode without loop breakage:** rolling-key mode no longer mutates the shared function arena. Each execution gets a private bytecode clone and a Shadow XOR Mask Buffer (`xorLog`) so loops, switches, catch resumes, and repeated function calls can re-read previously corrupted bytes correctly.
+- **Execution-history-dependent corruption:** after each opcode fetch, the VM advances an LCG state and XOR-corrupts the fetched byte with a new non-zero mask. A memory dump during execution sees mutated bytecode, while the VM can still recover the logical opcode through `xorLog`.
+- **Anti-symbolic congruence predicates:** `TypeLevelFakePathPass` now lowers a dynamic invariant based on `(3 * x^2 + 5 * x + 7) % 4 !== 0`, with `x` reduced to `(Date.now() | 0) & 3` before arithmetic so JavaScript number precision cannot break the invariant.
+- **Trap-backed fake paths:** fake branches now begin with `Trap`, while the true congruence path continues to the real block. This keeps semantic output intact and makes the bogus path visibly hostile to dynamic exploration.
+- **Anti-debug and intrinsic tamper checks:** hardening snapshots core intrinsics (`Function.prototype.toString`, `Math.sin`, `WeakMap.prototype.get/set`, and related VM helpers), adds self-destruct register/PC clearing, and keeps the heavier debugger timing probe behind `paranoid`.
+
+Verified in commit `9048aac` with `pnpm test`: 10 Vitest files / 62 tests passed, 13 workspace build tasks succeeded, and `node test-pipeline.js` passed all baseline and Artemis complex semantic-equivalence cases.
+
 ## Architecture
 
 TSXobf works as a compiler backend. It takes your TypeScript code, compiles target functions into a register-based Intermediate Representation (IR), applies security passes, and packages them into a lightweight JS interpreter.
@@ -164,11 +179,11 @@ graph TD
 - TypeScript project analysis through the TypeScript Compiler API.
 - Register-based IR lowering for selected functions.
 - VM bytecode compilation with remapped opcodes.
-- Generated JS runtime with threaded dispatch and integrity trap handlers.
+- Generated JS runtime with indirect threaded dispatch, per-execution bytecode cloning, Shadow XOR Mask Buffer recovery, LCG self-modifying bytecode masks, and integrity trap handlers.
 - Optional `wasm_hybrid` runtime backend with a verified WebAssembly bootstrap and JS semantic fallback.
-- JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect dispatch routing, string-concealed VM literals, intrinsic snapshots for private-state storage, and anti-debug timing probes.
+- JS-Confuser-inspired runtime hardening: native function tamper checks, helper-name concealment, indirect threaded dispatch routing, string-concealed VM literals, intrinsic snapshots for private-state storage, register/PC self-destruct traps, and anti-debug timing probes.
 - **PreserveTypeIllusionsPass:** Automatic injection of fake dynamic type guards and phantom branches to throw off static analysis.
-- **TypeLevelFakePathPass:** Dynamic Opaque Predicates (mathematical invariant checks) that steer reverse-engineering tools down complex junk branches.
+- **TypeLevelFakePathPass:** Dynamic opaque predicates lowered into explicit VM instructions (`LoadConst`, `CallMethod`, `BitOr`, `BitAnd`, `Mul`, `Add`, `Mod`, `StrictEq`, `Not`) using a congruence invariant and trap-backed fake branches.
 - **DecoratorAwareLoweringPass:** Seamless lowering of ES and TS legacy decorators to equivalent compiler-safe representations within VM IR.
 - **GenericConfusionPass:** Semantic generic wrapping and type dispatching at runtime, preventing static structure mapping.
 - **NamespaceVirtualizationPass:** Full virtualization of static namespaces via computed getters/setters, parameter destructuring data-flow analysis, and lexical scope preservation.
@@ -267,7 +282,8 @@ export function calculateSecretHash(input: string): number {
 ```javascript
 const vmFunctions = (function() {
   const seed = 1779526130061;
-  // Encrypted Constant Pool, 1-to-N Handlers, and Threaded Dispatch Loop...
+  // Encrypted Constant Pool, 1-to-N handlers, indirect threaded dispatch,
+  // and optional self-modifying rolling bytecode...
   
   function createExecutor(bytecodeArr) {
     return function execute(...fnArgs) {
@@ -342,7 +358,7 @@ Notable limits:
 - Broad arbitrary JavaScript syntax is still not guaranteed inside every virtualized function; support is expanding through targeted lowering and regression coverage.
 - Closure support now works for captured outer locals, but only the variables that are actually captured are boxed, which adds targeted runtime overhead on those bindings.
 - `wasm_hybrid` is currently an opt-in simulation/bootstrap backend. The generated bundle embeds a minimal 49-byte WebAssembly binary containing a `tsvm_wasm_backend` function returning `1` to validate that WebAssembly is supported in the target environment. All register-based bytecode execution, dispatch loops, and VM state machine processing are still handled entirely by the JavaScript VM runtime. It does not compile or run actual VM opcodes natively in WebAssembly yet.
-- Runtime hardening makes the generated VM less fingerprintable than the plain JS VM, but it is not a cryptographic boundary. Current `stealth` hardening includes indirect dispatch, helper renaming, runtime string concealment, opaque/dead branches, and native intrinsic checks. The `stealth` level avoids the known-unstable rolling-key path; `paranoid` anti-debug can break under debuggers or slow environments.
+- Runtime hardening makes the generated VM less fingerprintable than the plain JS VM, but it is not a cryptographic boundary. Current default hardening includes indirect threaded dispatch, helper renaming, runtime string concealment, opaque/dead branches, native intrinsic checks, and rolling self-modifying bytecode backed by per-execution bytecode cloning plus `xorLog` recovery. `paranoid` anti-debug can break under debuggers or slow environments.
 - `try / catch / finally` is fully verified for synchronous flow. Async `await` inside `try / catch / finally` is verified for the current async-function subset, including async generators on the verified path.
 - `this` and `new.target` are verified for regular function paths, constructor-style VM execution, and nested arrows that capture them lexically from an enclosing function context. Top-level arrows without an enclosing lexical provider are still kept off the `vm_safe` path.
 - Base `class` declarations and `class` expressions are verified on the VM path, including public fields, private instance fields, methods, accessors, static fields, and computed names. Derived classes (`extends` / `super`), static blocks, and decorators are still outside the verified VM path.

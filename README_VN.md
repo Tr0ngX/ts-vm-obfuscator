@@ -21,10 +21,12 @@ Hệ thống được thiết kế dành cho logic nghiệp vụ giá trị cao 
 ## Tính Năng Nổi Bật
 
 - **Nhận Biết Ngữ Nghĩa (Semantic-Aware):** Phân tích mã thông qua TypeScript Compiler API chính thức để giải quyết chính xác các liên kết export/import, tầm vực biến, kiểu dữ liệu và lệnh gọi.
-- **Máy Ảo Đa Hình Luồng (Polymorphic VM Runtime):** Tạo cơ chế thực thi Threaded Dispatch với các hàm xử lý mã máy được ngẫu nhiên hóa kèm bẫy bảo mật tự vệ.
+- **Indirect Threaded VM Runtime:** Sinh các handler trả về trực tiếp handler tiếp theo (`return handlers[nextOp]`) và chạy qua trampoline `handler = handler(ctx)` thay vì vòng lặp switch opcode thô.
+- **Bytecode Tự Biến Đổi Theo Rolling State:** Khi bật rolling keys, mỗi lần gọi VM clone riêng bytecode segment, dùng Shadow XOR Mask Buffer để undo corruption trước khi fetch, rồi apply mask mới sinh từ LCG lên byte opcode vừa đọc.
 - **Runtime WASM Hybrid Tùy Chọn:** `--runtime wasm-hybrid` sinh bootstrap WebAssembly và dùng JS VM hiện tại làm cầu thực thi đúng ngữ nghĩa.
 - **Ánh Xạ Biệt Danh Opcode 1-to-N & Xáo Trộn:** Đánh lừa phân tích thống kê bằng cách ánh xạ một chỉ thị máy ảo sang nhiều mã opcode ảo khác nhau, sắp xếp ngẫu nhiên mỗi lần build.
 - **Mã Hóa Bytecode Với Khóa Xoay Vòng (Rolling XOR Key):** Các opcode và hằng số được mã hóa trực tiếp trong bytecode và giải mã động khi chạy.
+- **Fake Path Chống Symbolic Execution:** `TypeLevelFakePathPass` tiêm predicate đồng dư phi tuyến ở cấp VM và fake block có `Trap`.
 - **Giải Mã JIT Constant Pool:** Chuỗi, hằng số và thuộc tính truy cập được trích xuất vào constant pool mã hóa và giải mã lazy (lười).
 - **Bảo Vệ Chọn Lọc Qua JSDoc:** Giữ nguyên hiệu năng nguyên bản 100% cho UI/framework, chỉ ảo hóa logic cốt lõi bằng chú thích `/** @virtualize */`.
 - **StripDebugPass:** Tự động xóa mọi lệnh gọi `console.log`, `console.warn`, và `console.error` để xóa dấu vết gỡ lỗi khỏi production.
@@ -105,6 +107,19 @@ Runtime hardening:
 - `--hardening off` giữ runtime gần với JS VM thuần để debug dễ hơn.
 - `--hardening paranoid` bật thêm anti-debug timing probe nặng hơn. Chỉ dùng khi chấp nhận rủi ro false-positive và vấn đề tương thích.
 
+## Nâng Cấp Hardening Đã Verify Mới Nhất
+
+Phần hardening hiện tại đã được triển khai thành code thật và đã có test bảo vệ, không còn chỉ là mô tả định hướng:
+
+- **True indirect threaded dispatch:** các opcode handler bình thường trả về function handler tiếp theo. `__runVm` chỉ lấy handler đầu tiên, sau đó chạy bằng `handler = handler(ctx)` cho tới khi VM halt, suspend, throw hoặc return.
+- **Self-modifying bytecode không phá loop/switch:** rolling-key mode không mutate shared function arena nữa. Mỗi execution có bytecode clone riêng và Shadow XOR Mask Buffer (`xorLog`) để loop, switch, catch resume, và repeated calls đọc lại đúng byte đã bị corrupt.
+- **Corruption phụ thuộc execution history:** sau mỗi opcode fetch, VM advance LCG state và XOR-corrupt byte vừa fetch bằng mask mới luôn khác 0. Memory dump trong lúc chạy sẽ thấy bytecode đã bị mutate, còn VM vẫn recover được opcode logic qua `xorLog`.
+- **Predicate đồng dư chống symbolic:** `TypeLevelFakePathPass` hạ invariant động dựa trên `(3 * x^2 + 5 * x + 7) % 4 !== 0`, với `x` được rút về `(Date.now() | 0) & 3` trước khi tính toán để tránh lỗi precision của JavaScript Number.
+- **Fake path có trap:** nhánh giả bắt đầu bằng `Trap`, còn nhánh predicate đúng tiếp tục vào block thật. Cách này giữ output ngữ nghĩa đúng và làm đường giả nguy hiểm hơn khi bị explore động.
+- **Anti-debug và intrinsic tamper checks:** hardening snapshot các intrinsic lõi (`Function.prototype.toString`, `Math.sin`, `WeakMap.prototype.get/set`, và helper VM liên quan), thêm cơ chế tự xóa register/PC, và giữ debugger timing probe nặng ở mức `paranoid`.
+
+Đã verify trong commit `9048aac` bằng `pnpm test`: 10 Vitest files / 62 tests passed, 13 workspace build tasks thành công, và `node test-pipeline.js` pass toàn bộ baseline cùng Artemis complex semantic-equivalence cases.
+
 ## Kiến Trúc Hệ Thống
 
 TSXobf hoạt động như một compiler backend. Nó tiếp nhận TypeScript, biên dịch các hàm mục tiêu sang dạng Biểu Diễn Trung Gian (IR) dựa trên thanh ghi, chạy qua bộ lọc bảo mật, và đóng gói vào trình thông dịch JS nhẹ.
@@ -164,11 +179,11 @@ graph TD
 - Phân tích TypeScript thông qua TypeScript Compiler API.
 - IR dựa trên thanh ghi (Register-based IR) cho các hàm được chọn.
 - Biên dịch VM bytecode với opcode đã được tái ánh xạ (remapped opcodes).
-- Sinh runtime JavaScript tích hợp Threaded Dispatch và bẫy báo lỗi.
+- Sinh runtime JavaScript tích hợp indirect threaded dispatch, per-execution bytecode cloning, Shadow XOR Mask Buffer recovery, LCG self-modifying bytecode masks, và integrity trap handlers.
 - Backend runtime `wasm_hybrid` tùy chọn với WebAssembly bootstrap đã verify và JS semantic fallback.
-- Runtime hardening lấy cảm hứng từ JS-Confuser: kiểm tra native function bị hook, che giấu tên helper, dispatch gián tiếp, che giấu string nội bộ VM, snapshot intrinsic cho private-state storage, và anti-debug timing probes.
+- Runtime hardening lấy cảm hứng từ JS-Confuser: kiểm tra native function bị hook, che giấu tên helper, indirect threaded dispatch, che giấu string nội bộ VM, snapshot intrinsic cho private-state storage, tự xóa register/PC khi trap, và anti-debug timing probes.
 - **PreserveTypeIllusionsPass:** Tự động tiêm các bẫy kiểm tra kiểu động giả (fake type guards) và các rẽ nhánh ma (phantom branches) để đánh lừa phân tích tĩnh.
-- **TypeLevelFakePathPass:** Opaque Predicates động (các biểu thức toán học bất biến luôn đúng/sai) dẫn dắt các công cụ dịch ngược vào các nhánh rẽ giả phức tạp chứa junk blocks.
+- **TypeLevelFakePathPass:** Opaque predicates động được hạ thành VM instructions rõ ràng (`LoadConst`, `CallMethod`, `BitOr`, `BitAnd`, `Mul`, `Add`, `Mod`, `StrictEq`, `Not`) dùng invariant đồng dư và fake branch có `Trap`.
 - **DecoratorAwareLoweringPass:** Hạ cấp mượt mà ES Decorators và TS Legacy Decorators thành các biểu diễn tương đương an toàn cho VM compiler trong IR.
 - **GenericConfusionPass:** Bọc các hàm generic ngữ nghĩa và dispatch động kiểu dữ liệu tại runtime, chống lại việc map cấu trúc tĩnh.
 - **NamespaceVirtualizationPass:** Ảo hóa hoàn toàn các namespace tĩnh thông qua computed getters/setters, phân tích dòng dữ liệu tham số destructuring, và bảo vệ lexical scope.
@@ -266,7 +281,8 @@ export function calculateSecretHash(input: string): number {
 ```javascript
 const vmFunctions = (function() {
   const seed = 1779526130061;
-  // Constant Pool đã mã hóa, các hàm xử lý 1-to-N, và Vòng lặp Threaded Dispatch...
+  // Constant Pool đã mã hóa, handlers 1-to-N, indirect threaded dispatch,
+  // và rolling bytecode tự biến đổi tùy cấu hình...
   
   function createExecutor(bytecodeArr) {
     return function execute(...fnArgs) {
@@ -341,7 +357,7 @@ Một số giới hạn cần biết:
 - Hỗ trợ cú pháp vẫn được mở rộng theo từng syntax pack có regression coverage, không phải “mọi JavaScript đều chạy trong VM”.
 - Closure support đã đúng ngữ nghĩa cho captured outer locals, nhưng các binding bị capture sẽ phải đi qua boxing nên có overhead cục bộ.
 - `wasm_hybrid` hiện tại chỉ là một backend giả lập/bootstrap hình thức để kiểm tra môi trường. Bundle bảo mật sẽ nhúng một file WebAssembly tối giản 49-byte chứa hàm `tsvm_wasm_backend` luôn trả về `1` để xác thực khả năng hỗ trợ WebAssembly của môi trường chạy. Toàn bộ quá trình thông dịch bytecode, quản lý thanh ghi và dispatch loop của máy ảo vẫn được xử lý 100% bằng JavaScript của JS VM. Hệ thống chưa biên dịch hay thực thi trực tiếp các opcode của VM trong môi trường WebAssembly nhị phân.
-- Runtime hardening làm VM sinh ra khó bị fingerprint hơn JS VM thuần, nhưng không phải ranh giới bảo mật kiểu mật mã. Mức `stealth` hiện gồm dispatch gián tiếp, đổi tên helper, runtime string concealment, opaque/dead branches, và native intrinsic checks. Mức `stealth` tránh đường rolling-key hiện chưa ổn định; mức `paranoid` có thể lỗi khi chạy dưới debugger hoặc môi trường chậm.
+- Runtime hardening làm VM sinh ra khó bị fingerprint hơn JS VM thuần, nhưng không phải ranh giới bảo mật kiểu mật mã. Mặc định hiện gồm indirect threaded dispatch, đổi tên helper, runtime string concealment, opaque/dead branches, native intrinsic checks, và rolling self-modifying bytecode dùng bytecode clone riêng cho từng execution kèm `xorLog` recovery. Mức `paranoid` có thể lỗi khi chạy dưới debugger hoặc môi trường chậm.
 - `try / catch / finally` đã được verify đầy đủ cho luồng đồng bộ. `await` bên trong `try / catch / finally` đã được verify cho subset async hiện tại, bao gồm async generators trên verified path.
 - `this` và `new.target` đã được verify cho regular function path, constructor-style VM execution, và nested arrows có enclosing function context để capture lexical semantics. Top-level arrows không có lexical provider vẫn chưa nằm trong `vm_safe`.
 - Base `class` declarations và `class` expressions đã được verify trên VM path, gồm public fields, private instance fields, methods, accessors, static fields, và computed names. Derived classes (`extends` / `super`), private methods/accessors, static blocks, và decorators vẫn đang ở ngoài verified VM path.
