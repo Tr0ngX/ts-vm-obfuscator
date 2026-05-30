@@ -19,9 +19,9 @@ function createOpaqueNameFactory(seed: number): () => string {
   };
 }
 
-function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, seed: number): string {
+function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a: string, b: string, seed: number): string {
   const rng = new SeededRandom(seed ^ 0x93b2a5);
-  const choice = rng.nextRange(0, 6);
+  const choice = rng.nextRange(0, 4);
 
   if (op === 'add') {
     switch (choice) {
@@ -33,14 +33,10 @@ function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, see
         return `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;
       case 3:
         return `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;
-      case 4:
-        return `(((${a}) & (${b})) + ((${a}) | (${b})))`;
-      case 5:
-        return `((((${a}) ^ (${b})) & 0xFFFFFFFF) + 2 * ((${a}) & (${b})))`;
       default:
         return `((${a}) - (-(${b})))`;
     }
-  } else {
+  } else if (op === 'sub') {
     switch (choice) {
       case 0:
         return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;
@@ -50,12 +46,41 @@ function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, see
         return `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;
       case 3:
         return `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;
-      case 4:
-        return `(2 * ((${a}) & ~(${b})) - ((${a}) ^ (${b})))`;
-      case 5:
-        return `((((${a}) ^ ~(${b})) & 0xFFFFFFFF) + 2 * ((${a}) & ~(${b})) + 1)`;
       default:
         return `((${a}) + (-(${b})))`;
+    }
+  } else if (op === 'and') {
+    switch (choice) {
+      case 0:
+        return `(((${a}) | (${b})) - ((${a}) ^ (${b})))`;
+      case 1:
+        return `((((${a}) + (${b})) - ((${a}) ^ (${b}))) | 0) >> 1`;
+      case 2:
+        return `(~(~(${a}) | ~(${b})))`;
+      default:
+        return `((${a}) & (${b}))`;
+    }
+  } else if (op === 'or') {
+    switch (choice) {
+      case 0:
+        return `(((${a}) & (${b})) + ((${a}) ^ (${b})))`;
+      case 1:
+        return `(((${a}) ^ (${b})) | ((${a}) & (${b})))`;
+      case 2:
+        return `(~(~(${a}) & ~(${b})))`;
+      default:
+        return `((${a}) | (${b}))`;
+    }
+  } else {
+    switch (choice) {
+      case 0:
+        return `(((${a}) | (${b})) - ((${a}) & (${b})))`;
+      case 1:
+        return `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`;
+      case 2:
+        return `(((${a}) | ~(${b})) & (~(${a}) | (${b})))`;
+      default:
+        return `((${a}) ^ (${b}))`;
     }
   }
 }
@@ -468,6 +493,15 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       variantBody = variantBody.replace(/__SUB_EXPR__/g, () => {
         return mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
       });
+      variantBody = variantBody.replace(/__AND_EXPR__/g, () => {
+        return mutateArithmeticExpression('and', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
+      });
+      variantBody = variantBody.replace(/__OR_EXPR__/g, () => {
+        return mutateArithmeticExpression('or', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
+      });
+      variantBody = variantBody.replace(/__XOR_EXPR__/g, () => {
+        return mutateArithmeticExpression('xor', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
+      });
 
       if (isParanoid) {
         variantBody = variantBody.replace(/\bargs\b/g, argsVar);
@@ -535,9 +569,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
   declareHandler(OpCode.Neg, `${readArgs} ctx.regs[args[1]] = -ctx.regs[args[0]];`);
   
-  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] & ctx.regs[args[1]];`);
-  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] | ctx.regs[args[1]];`);
-  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] ^ ctx.regs[args[1]];`);
+  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = __AND_EXPR__;`);
+  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = __OR_EXPR__;`);
+  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = __XOR_EXPR__;`);
   declareHandler(OpCode.Shl, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] << ctx.regs[args[1]];`);
   declareHandler(OpCode.Shr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >> ctx.regs[args[1]];`);
   declareHandler(OpCode.UShr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >>> ctx.regs[args[1]];`);
