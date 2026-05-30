@@ -19,6 +19,20 @@ function createOpaqueNameFactory(seed: number): () => string {
   };
 }
 
+function materializeConstant(value: number, seed: number): string {
+  const rng = new SeededRandom(seed ^ value ^ 0x1f8e9a);
+  const offset = rng.nextRange(1000, 99999);
+  const choice = rng.nextRange(0, 3);
+  switch (choice) {
+    case 0:
+      return `(((${value - offset}) + ${offset}) | 0)`;
+    case 1:
+      return `(((${value ^ offset}) ^ ${offset}) | 0)`;
+    default:
+      return `(((${value + offset}) - ${offset}) | 0)`;
+  }
+}
+
 function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a: string, b: string, seed: number): string {
   const rng = new SeededRandom(seed ^ 0x93b2a5);
   const choice = rng.nextRange(0, 4);
@@ -85,7 +99,7 @@ function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a:
   }
 }
 
-function generateJunkStatements(seed: number, id: number, names: any): string {
+function generateJunkStatements(seed: number, id: number, names: any, mulConst: string = '1664525', addConst: string = '1013904223'): string {
   const rng = new SeededRandom(seed ^ id ^ 0x7c2a11);
   const numJunk = rng.nextRange(1, 3);
   let junk = '';
@@ -96,7 +110,7 @@ function generateJunkStatements(seed: number, id: number, names: any): string {
     switch (choice) {
       case 0:
         junk += `  var ${varName} = (${seed} ^ ${rng.nextRange(10, 100)}) | 0;\n`;
-        junk += `  ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ ${varName}, 1664525) + 1013904223) | 0;\n`;
+        junk += `  ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ ${varName}, ${mulConst}) + ${addConst}) | 0;\n`;
         break;
       case 1:
         junk += `  var ${varName} = Math.sin(${rng.nextRange(1, 10)}) * ${rng.nextRange(2, 5)};\n`;
@@ -260,6 +274,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const top = names.top;
   const frame = names.frame;
   const locals = names.locals;
+  const mulConst = materializeConstant(1664525, config.seed);
+  const addConst = materializeConstant(1013904223, config.seed ^ 0x18ab3e);
+  const seedConst = materializeConstant(config.seed, config.seed ^ 0x3e17ac);
   const regRef = (idx: string) => `ctx.${ctx.regs}[${idx}]`;
   const ctxRef = (key: keyof typeof ctx) => `ctx.${ctx[key]}`;
   const frameRef = (target: string, key: keyof typeof frame) => `${target}.${frame[key]}`;
@@ -463,7 +480,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         `;
       }
 
-      const junkLogic = config.stealthDispatch ? generateJunkStatements(mySeed, canonical, names) : '';
+      const junkLogic = config.stealthDispatch ? generateJunkStatements(mySeed, canonical, names, mulConst, addConst) : '';
       
       // Threaded VM dispatch
       let nextOpLogic = '';
@@ -1029,7 +1046,7 @@ const ${top.vmFunctions} = (function() {
       var keyBytes = [];
       var s = stringSeed;
       for (var i = 0; i < 16; i++) {
-        s = (Math.imul(s, 1664525) + 1013904223) | 0;
+        s = (Math.imul(s, ${mulConst}) + ${addConst}) | 0;
         keyBytes.push((s >>> 16) & 0xff);
       }
       
@@ -1075,7 +1092,7 @@ const ${top.vmFunctions} = (function() {
     var nonce = ctx.executionNonce || 0;
     var op = ctx.currentOpcode || 0;
     var mixed = (pos ^ decoded ^ op ^ salt ^ nonce) & 0xFF;
-    ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ mixed, 1664525) + 1013904223) | 0;
+    ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ mixed, ${mulConst}) + ${addConst}) | 0;
   }
 
   function corruptByteNear(ctx, at, mask) {
@@ -1097,11 +1114,12 @@ const ${top.vmFunctions} = (function() {
     var byte = ${ctxRef('bytecode')}[pos];
     ${config.rollingKeys ? `
       byte ^= ${ctxRef('xorLog')}[pos];
-      var decoded = byte ^ ((${top.seed} ^ pos) & 0xFF);
+      var rawDecoded = byte ^ ((${top.seed} ^ pos) & 0xFF);
+      var decoded = (rawDecoded - pos) & 0xFF;
       if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
         mixRollingState(ctx, pos, decoded);
       } else {
-        ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState}, 1664525) + 1013904223) | 0;
+        ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState}, ${mulConst}) + ${addConst}) | 0;
       }
       var mask = ((ctx.${ctx.rollingState} >>> 16) & 0xFF) | 1;
       if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {

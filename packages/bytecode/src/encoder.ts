@@ -83,8 +83,11 @@ export function encodeBytecode(instructions: Instruction[], mapping: any, config
   const resultBytes = new Uint8Array(bytes);
   if (config.rollingKeys) {
     for (let pc = 0; pc < resultBytes.length; pc++) {
+      // Apply position-dependent dynamic offset: offset real value by PC
+      const rawVal = resultBytes[pc] || 0;
+      const offsetVal = (rawVal + pc) & 0xFF;
       const rollingKey = (config.seed ^ pc) & 0xFF;
-      resultBytes[pc] = (resultBytes[pc] || 0) ^ rollingKey;
+      resultBytes[pc] = offsetVal ^ rollingKey;
     }
   }
   return resultBytes;
