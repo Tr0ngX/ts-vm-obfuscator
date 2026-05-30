@@ -105,6 +105,7 @@ function createRuntimeNames(config: VMBuildConfig) {
         privateData: 'privateData',
         opaquePredicate: 'opaquePredicate',
         junkSink: 'junkSink',
+        readByte: 'readByte',
       },
       ctx: {
         pc: 'pc',
@@ -172,6 +173,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       privateData: next(),
       opaquePredicate: next(),
       junkSink: next(),
+      readByte: next(),
     },
     ctx: {
       pc: 'pc',
@@ -311,45 +313,39 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const declaredOpcodes: OpCode[] = [];
 
   const advanceArg = config.rollingKeys ? `
-    let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-    kindNum ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+    let kindNum = ${top.readByte}(ctx);
     let val = 0;
     ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
       let shift = 0;
       let b;
       do {
-        b = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-        b ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+        b = ${top.readByte}(ctx);
         val |= (b & 0x7F) << shift;
         shift += 7;
       } while (b & 0x80);
     ` : `
-      let b0 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      b0 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-      let b1 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      b1 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-      let b2 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      b2 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-      let b3 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      b3 ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+      let b0 = ${top.readByte}(ctx);
+      let b1 = ${top.readByte}(ctx);
+      let b2 = ${top.readByte}(ctx);
+      let b3 = ${top.readByte}(ctx);
       val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     `}
   ` : `
-    let kindNum = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+    let kindNum = ${top.readByte}(ctx);
     let val = 0;
     ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
       let shift = 0;
       let b;
       do {
-        b = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+        b = ${top.readByte}(ctx);
         val |= (b & 0x7F) << shift;
         shift += 7;
       } while (b & 0x80);
     ` : `
-      let b0 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      let b1 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      let b2 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-      let b3 = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+      let b0 = ${top.readByte}(ctx);
+      let b1 = ${top.readByte}(ctx);
+      let b2 = ${top.readByte}(ctx);
+      let b3 = ${top.readByte}(ctx);
       val = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     `}
   `;
@@ -364,12 +360,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     for (let i = 0; i < numJunk; i++) {
       if (config.rollingKeys) {
         junkSkip += `
-          let __junk${i} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-          __junk${i} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+          let __junk${i} = ${top.readByte}(ctx);
         `;
       } else {
         junkSkip += `
-          let __junk${i} = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+          let __junk${i} = ${top.readByte}(ctx);
         `;
       }
     }
@@ -379,8 +374,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     if (isVarLength) {
       if (config.rollingKeys) {
         myReadArgs = `
-          let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
-          argCount ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
+          let argCount = ${top.readByte}(ctx);
           const args = [];
           for (let i = 0; i < argCount; i++) {
             ${advanceArg}
@@ -389,7 +383,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         `;
       } else {
         myReadArgs = `
-          let argCount = ${ctxRef('bytecode')}[${ctxRef('pc')}++];
+          let argCount = ${top.readByte}(ctx);
           const args = [];
           for (let i = 0; i < argCount; i++) {
             ${advanceArg}
@@ -424,21 +418,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     if (canonical !== OpCode.Halt && canonical !== OpCode.Return && canonical !== OpCode.ReturnVoid && canonical !== OpCode.Throw && canonical !== OpCode.Trap && canonical !== OpCode.Await && canonical !== OpCode.Yield && canonical !== OpCode.YieldStar) {
       nextOpLogic = `
         if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
-        var _fetchPos = ${ctxRef('pc')};
-        let nextOp = ${ctxRef('bytecode')}[${ctxRef('pc')}];
-        ${config.rollingKeys ? `
-          // Shadow XOR Mask Buffer: undo previous corruption before reading
-          nextOp ^= ${ctxRef('xorLog')}[_fetchPos];
-        ` : ''}
-        ${ctxRef('pc')}++;
-        ${config.rollingKeys ? `
-          nextOp ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-          // Self-Modifying Bytecode: LCG Rolling State physical RAM corruption
-          ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
-          var _corruptMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
-          ${ctxRef('bytecode')}[_fetchPos] ^= _corruptMask;
-          ${ctxRef('xorLog')}[_fetchPos] ^= _corruptMask;
-        ` : ''}
+        let nextOp = ${top.readByte}(ctx);
         return ${locals.dispatchBank}[nextOp];
       `;
     } else {
@@ -882,6 +862,22 @@ const ${top.vmFunctions} = (function() {
     return c.kind === 'undefined' ? undefined : c.value;
   }
 
+  function ${top.readByte}(ctx) {
+    var pos = ${ctxRef('pc')}++;
+    var byte = ${ctxRef('bytecode')}[pos];
+    ${config.rollingKeys ? `
+      byte ^= ${ctxRef('xorLog')}[pos];
+      var decoded = byte ^ ((${top.seed} ^ pos) & 0xFF);
+      ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
+      var mask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
+      ${ctxRef('bytecode')}[pos] ^= mask;
+      ${ctxRef('xorLog')}[pos] ^= mask;
+      return decoded;
+    ` : `
+      return byte;
+    `}
+  }
+
   ${handlerDeclarations.join('\n\n')}
 
   ${runtimeDispatch.declarations}
@@ -938,21 +934,7 @@ const ${top.vmFunctions} = (function() {
     ${antiDebugLogic}
     ${tamperDetectionLogic}
     if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
-    var _initPos = ${ctxRef('pc')};
-    let ${locals.opByte} = ${ctxRef('bytecode')}[${ctxRef('pc')}];
-    ${config.rollingKeys ? `
-      // Shadow XOR Mask Buffer: undo previous corruption on initial fetch
-      ${locals.opByte} ^= ${ctxRef('xorLog')}[_initPos];
-    ` : ''}
-    ${ctxRef('pc')}++;
-    ${config.rollingKeys ? `
-      ${locals.opByte} ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-      // Self-Modifying Bytecode: LCG Rolling State physical RAM corruption
-      ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
-      var _initMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
-      ${ctxRef('bytecode')}[_initPos] ^= _initMask;
-      ${ctxRef('xorLog')}[_initPos] ^= _initMask;
-    ` : ''}
+    let ${locals.opByte} = ${top.readByte}(ctx);
     let handler = ${locals.dispatchBank}[${locals.opByte}];
     
     while(handler && ${ctxRef('running')}) {
@@ -985,20 +967,7 @@ const ${top.vmFunctions} = (function() {
         if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) {
           handler = null;
         } else {
-          var _catchPos = ${ctxRef('pc')};
-          let nextOp = ${ctxRef('bytecode')}[${ctxRef('pc')}];
-          ${config.rollingKeys ? `
-            // Shadow XOR Mask Buffer: undo previous corruption on catch resume
-            nextOp ^= ${ctxRef('xorLog')}[_catchPos];
-          ` : ''}
-          ${ctxRef('pc')}++;
-          ${config.rollingKeys ? `
-            nextOp ^= (${top.seed} ^ (${ctxRef('pc')} - 1)) & 0xFF;
-            ${ctxRef('rollingState')} = (Math.imul(${ctxRef('rollingState')}, 1664525) + 1013904223) | 0;
-            var _catchMask = ((${ctxRef('rollingState')} >>> 16) & 0xFF) | 1;
-            ${ctxRef('bytecode')}[_catchPos] ^= _catchMask;
-            ${ctxRef('xorLog')}[_catchPos] ^= _catchMask;
-          ` : ''}
+          let nextOp = ${top.readByte}(ctx);
           handler = ${locals.dispatchBank}[nextOp];
         }
       }

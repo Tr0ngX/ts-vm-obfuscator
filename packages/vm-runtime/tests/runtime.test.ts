@@ -373,6 +373,11 @@ describe('VM Runtime', () => {
 
     expect(bundle.fullSource).toContain('Uint8Array.from(bytecodeArr)');
     expect(bundle.fullSource).toContain('xorLog');
+    expect(bundle.fullSource).toContain('function readByte(ctx)');
+    expect(bundle.fullSource).toContain('let kindNum = readByte(ctx);');
+    expect(bundle.fullSource).toContain('let argCount = readByte(ctx);');
+    expect(bundle.fullSource).toContain('ctx.bytecode[pos] ^= mask;');
+    expect(bundle.fullSource).toContain('ctx.xorLog[pos] ^= mask;');
     expect(bundle.fullSource).toContain('Math.imul(ctx.rollingKey, 1664525)');
     expect(bundle.fullSource).toContain('return handlers[nextOp];');
     expect(bundle.fullSource).toContain('handler = handler(ctx);');
