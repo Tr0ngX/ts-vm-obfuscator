@@ -834,8 +834,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const runtimeDispatch = (() => {
     const vOpToHandlerName = new Array(256);
+    const vOpToVariants = new Array(256);
     const trapFnName = handlerNames.get(OpCode.Trap)!;
     vOpToHandlerName.fill(trapFnName);
+    vOpToVariants.fill(`[${trapFnName}]`);
 
     for (const [canonical, mapped] of opToMapped.entries()) {
       const fnNames = allHandlerVariants.get(canonical);
@@ -844,6 +846,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         if (vOp >= 0 && vOp < 256) {
           const varIdx = (vOp ^ config.seed) % fnNames.length;
           vOpToHandlerName[vOp] = fnNames[varIdx];
+          vOpToVariants[vOp] = `[${fnNames.join(', ')}]`;
         }
       }
     }
@@ -854,8 +857,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         let subCases = '';
         for (let offset = 0; offset < 16; offset++) {
           const vOp = (b << 4) | offset;
-          const handlerName = vOpToHandlerName[vOp];
-          subCases += `        case ${offset}: return ${handlerName};\n`;
+          const variants = vOpToVariants[vOp];
+          subCases += `        case ${offset}: var va = ${variants}; return va[(Math.random() * va.length) | 0];\n`;
         }
         casesStr += `      case ${b}:\n        switch (nextOp & 0xF) {\n${subCases}        }\n        break;\n`;
       }
@@ -953,6 +956,10 @@ const ${top.vmFunctions} = (function() {
   let executionCounter = 0;
 
   function selfDestruct(ctx) {
+    if (ctx) {
+      ctx.poisoned = true;
+      return;
+    }
     ctx.${ctx.regs} = [];
     ctx.${ctx.pc} = 999999;
     ctx.${ctx.running} = false;
@@ -1128,7 +1135,8 @@ const ${top.vmFunctions} = (function() {
       ${ctx.xorLog}: ${config.rollingKeys ? `new Uint8Array(bytecodeArr.length)` : 'null'},
       ${ctx.executionNonce}: ${config.rollingKeys ? `(++executionCounter)` : '0'},
       salt: ${config.rollingKeys ? 'salt' : '0'},
-      currentOpcode: 0
+      currentOpcode: 0,
+      poisoned: false
     };
     for (let i = 0; i < argsArr.length; i++) {
       ${regRef('i')} = argsArr[i];
