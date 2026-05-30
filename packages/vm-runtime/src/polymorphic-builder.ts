@@ -21,7 +21,7 @@ function createOpaqueNameFactory(seed: number): () => string {
 
 function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, seed: number): string {
   const rng = new SeededRandom(seed ^ 0x93b2a5);
-  const choice = rng.nextRange(0, 3);
+  const choice = rng.nextRange(0, 6);
 
   if (op === 'add') {
     switch (choice) {
@@ -29,6 +29,14 @@ function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, see
         return `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;
       case 1:
         return `(((${a}) | (${b})) + ((${a}) & (${b})))`;
+      case 2:
+        return `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;
+      case 3:
+        return `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;
+      case 4:
+        return `(((${a}) & (${b})) + ((${a}) | (${b})))`;
+      case 5:
+        return `((((${a}) ^ (${b})) & 0xFFFFFFFF) + 2 * ((${a}) & (${b})))`;
       default:
         return `((${a}) - (-(${b})))`;
     }
@@ -38,31 +46,40 @@ function mutateArithmeticExpression(op: 'add' | 'sub', a: string, b: string, see
         return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;
       case 1:
         return `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;
+      case 2:
+        return `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;
+      case 3:
+        return `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;
+      case 4:
+        return `(2 * ((${a}) & ~(${b})) - ((${a}) ^ (${b})))`;
+      case 5:
+        return `((((${a}) ^ ~(${b})) & 0xFFFFFFFF) + 2 * ((${a}) & ~(${b})) + 1)`;
       default:
         return `((${a}) + (-(${b})))`;
     }
   }
 }
 
-function generateJunkStatements(seed: number, id: number): string {
+function generateJunkStatements(seed: number, id: number, names: any): string {
   const rng = new SeededRandom(seed ^ id ^ 0x7c2a11);
   const numJunk = rng.nextRange(1, 3);
   let junk = '';
+  const ctx = names.ctx;
   for (let i = 0; i < numJunk; i++) {
     const choice = rng.nextRange(0, 3);
     const varName = `_j${id}_${i}`;
     switch (choice) {
       case 0:
         junk += `  var ${varName} = (${seed} ^ ${rng.nextRange(10, 100)}) | 0;\n`;
-        junk += `  ${varName} = (${varName} + 12) & 0xFF;\n`;
+        junk += `  ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ ${varName}, 1664525) + 1013904223) | 0;\n`;
         break;
       case 1:
         junk += `  var ${varName} = Math.sin(${rng.nextRange(1, 10)}) * ${rng.nextRange(2, 5)};\n`;
-        junk += `  if (${varName} > 100) { ${varName} = 0; }\n`;
+        junk += `  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} + (${varName} | 0)) & 0xFFFFFFFF;\n`;
         break;
       default:
         junk += `  var ${varName} = (${seed} % ${rng.nextRange(3, 9)}) | 0;\n`;
-        junk += `  ${varName} = (${varName} * ${varName}) | 0;\n`;
+        junk += `  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ (${varName} * ${varName})) | 0;\n`;
         break;
     }
   }
@@ -237,7 +254,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const exportedFunctions = module.functions.filter(f => f.isEntryPoint);
   const concealRuntimeStrings = !!config.stealthDispatch || !!config.tamperDetection || !!config.junkInsertion;
-  const runtimeStringKey = (config.seed ^ 0xa7) & 0xff;
+  const stringRng = new SeededRandom(config.seed ^ 0x3d7f19);
+  const keyBytes: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    keyBytes.push(stringRng.nextRange(1, 255));
+  }
   const runtimeStringEntries = [
     'VM Integrity Violation at PC ',
     ', raw op: ',
@@ -249,7 +270,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const encodedRuntimeStrings = runtimeStringEntries.map((value) => {
     let encoded = '';
     for (let i = 0; i < value.length; i++) {
-      encoded += String.fromCharCode(value.charCodeAt(i) ^ ((runtimeStringKey + i) & 0xff));
+      const keyByte = keyBytes[i % 16]!;
+      const nextKeyByte = keyBytes[(i + 1) % 16]!;
+      encoded += String.fromCharCode(value.charCodeAt(i) ^ keyByte ^ nextKeyByte);
     }
     return encoded;
   });
@@ -266,12 +289,15 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const runtimeStringBootstrap = concealRuntimeStrings ? `
   const ${top.runtimeStrings} = ${JSON.stringify(encodedRuntimeStrings)};
   const ${top.runtimeStringCache} = Object.create(null);
+  const _strKey = ${JSON.stringify(keyBytes)};
   function ${top.getRuntimeString}(index) {
     if (${top.runtimeStringCache}[index] !== undefined) return ${top.runtimeStringCache}[index];
     var encoded = ${top.runtimeStrings}[index];
     var decoded = '';
     for (var i = 0; i < encoded.length; i++) {
-      decoded += String.fromCharCode(encoded.charCodeAt(i) ^ ((${runtimeStringKey} + i) & 0xFF));
+      var keyByte = _strKey[i % 16];
+      var nextKeyByte = _strKey[(i + 1) % 16];
+      decoded += String.fromCharCode(encoded.charCodeAt(i) ^ keyByte ^ nextKeyByte);
     }
     return ${top.runtimeStringCache}[index] = decoded;
   }
@@ -412,7 +438,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         `;
       }
 
-      const junkLogic = config.stealthDispatch ? generateJunkStatements(mySeed, canonical) : '';
+      const junkLogic = config.stealthDispatch ? generateJunkStatements(mySeed, canonical, names) : '';
       
       // Threaded VM dispatch
       let nextOpLogic = '';
@@ -810,10 +836,45 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       }
     }
 
-    return {
-      declarations: `const ${locals.dispatchBank} = [\n    ${vOpToHandlerName.join(',\n    ')}\n  ];`,
-      invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
-    };
+    if (config.runtimeHardening === 'paranoid') {
+      let casesStr = '';
+      for (let b = 0; b < 16; b++) {
+        let subCases = '';
+        for (let offset = 0; offset < 16; offset++) {
+          const vOp = (b << 4) | offset;
+          const handlerName = vOpToHandlerName[vOp];
+          subCases += `        case ${offset}: return ${handlerName};\n`;
+        }
+        casesStr += `      case ${b}:\n        switch (nextOp & 0xF) {\n${subCases}        }\n        break;\n`;
+      }
+
+      return {
+        declarations: `
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    var bucket = (nextOp >> 4) & 0xF;
+    switch (bucket) {
+${casesStr}
+    }
+    return ${trapFnName};
+  }
+        `,
+        invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+      };
+    } else {
+      return {
+        declarations: `
+  const ${locals.dispatchBank} = [\n    ${vOpToHandlerName.join(',\n    ')}\n  ];
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    return ${locals.dispatchBank}[nextOp];
+  }
+        `,
+        invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
+      };
+    }
   })();
 
   const allBytecodes: number[] = [];
@@ -958,11 +1019,7 @@ const ${top.vmFunctions} = (function() {
     return (nextOp ^ ctx.${ctx.rollingState}) & 0xFFFF;
   }
 
-  function resolveRoute(ctx, token) {
-    if (token === null) return null;
-    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
-    return ${locals.dispatchBank}[nextOp];
-  }
+
 
   function ${top.readByte}(ctx) {
     var pos = ${ctxRef('pc')}++;
@@ -1055,7 +1112,7 @@ const ${top.vmFunctions} = (function() {
     ${tamperDetectionLogic}
     if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
     let ${locals.opByte} = ${top.readByte}(ctx);
-    let handler = ${locals.dispatchBank}[${locals.opByte}];
+    let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
     while(handler && ${ctxRef('running')}) {
       while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
