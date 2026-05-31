@@ -52,14 +52,14 @@ export function encodeBytecode(instructions: Instruction[], mapping: any, config
     for (const op of ops) {
       const kindNum = operandKindToNum(op.kind);
       bytes.push(kindNum);
-      
+
       let val = 0;
       if (typeof op.value === 'string' && op.value.startsWith('r')) {
         val = parseInt(op.value.substring(1), 10);
       } else if (typeof op.value === 'number') {
         val = op.value;
       }
-      
+
       if (config.immediateEncoding === ImmediateEncodingScheme.VariableLength) {
         // LEB128 Encoding
         let v = val;

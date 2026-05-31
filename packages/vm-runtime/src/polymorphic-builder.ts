@@ -35,68 +35,182 @@ function materializeConstant(value: number, seed: number): string {
 
 function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a: string, b: string, seed: number): string {
   const rng = new SeededRandom(seed ^ 0x93b2a5);
-  const choice = rng.nextRange(0, 4);
+  const choice = rng.nextRange(0, 9);
 
   if (op === 'add') {
+    // All verified: a+b identity variants
     switch (choice) {
-      case 0:
-        return `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;
-      case 1:
-        return `(((${a}) | (${b})) + ((${a}) & (${b})))`;
-      case 2:
-        return `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;
-      case 3:
-        return `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;
-      default:
-        return `((${a}) - (-(${b})))`;
+      case 0: return `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;          // a+b = (a^b) + 2*(a&b)
+      case 1: return `(((${a}) | (${b})) + ((${a}) & (${b})))`;              // a+b = (a|b) + (a&b)
+      case 2: return `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;          // a+b = 2*(a|b) - (a^b)
+      case 3: return `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;    // a+b = (a^~b) + 2*(a|b) + 1
+      case 4: return `(((${a}) - (-(${b}))))`;                                // a+b = a - (-b)
+      case 5: return `(((${a}) - ~(${b})) - 1)`;                             // a+b = a - ~b - 1, since ~b = -(b+1)
+      case 6: return `(~(~(${a}) - (${b})))`;                                // a+b = ~(~a - b), since ~(~a-b) = a+b
+      case 7: return `((((${a}) + (${b})) | 0))`;                            // a+b with int coercion
+      case 8: return `((${a}) * 2 - (${a}) + (${b}))`;                       // 2a - a + b = a + b
+      default: return `((${a}) + (${b}))`;
     }
   } else if (op === 'sub') {
+    // All verified: a-b identity variants
     switch (choice) {
-      case 0:
-        return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;
-      case 1:
-        return `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;
-      case 2:
-        return `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;
-      case 3:
-        return `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;
-      default:
-        return `((${a}) + (-(${b})))`;
+      case 0: return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;   // a-b via complement add
+      case 1: return `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;            // a-b = (a&~b) - (~a&b)
+      case 2: return `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;            // a-b via complement or
+      case 3: return `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;         // a-b = (a^b) - 2*(~a&b)
+      case 4: return `((${a}) + (-(${b})))`;                                  // a-b = a + (-b)
+      case 5: return `(~((${b}) - (${a}) - 1))`;                             // a-b = ~(b-a-1), since ~x = -(x+1)
+      case 6: return `((${a}) + (~(${b})) + 1)`;                             // a-b = a + ~b + 1 (two's complement)
+      case 7: return `(((${a}) | 0) - ((${b}) | 0))`;                        // a-b with int coercion
+      case 8: return `(~(~(${a}) + (${b})))`;                                // a-b = ~(~a+b), since ~(~a+b) = -(~a+b+1) = a-b
+      default: return `((${a}) - (${b}))`;
     }
   } else if (op === 'and') {
+    // All verified: a&b identity variants
     switch (choice) {
-      case 0:
-        return `(((${a}) | (${b})) - ((${a}) ^ (${b})))`;
-      case 1:
-        return `((((${a}) + (${b})) - ((${a}) ^ (${b}))) | 0) >> 1`;
-      case 2:
-        return `(~(~(${a}) | ~(${b})))`;
-      default:
-        return `((${a}) & (${b}))`;
+      case 0: return `(((${a}) | (${b})) - ((${a}) ^ (${b})))`;              // a&b = (a|b) - (a^b)
+      case 1: return `((((${a}) + (${b})) - ((${a}) ^ (${b}))) >> 1)`;       // a&b = ((a+b) - (a^b)) / 2
+      case 2: return `(~(~(${a}) | ~(${b})))`;                               // De Morgan: a&b = ~(~a|~b)
+      case 3: return `((${a}) & (${b}))`;                                     // identity
+      case 4: return `(((${a}) | (${b})) & ~((${a}) ^ (${b})))`;             // a&b = (a|b) & ~(a^b)
+      case 5: return `(((${a}) + (${b}) - ((${a}) | (${b}))))`;              // a&b = a+b - (a|b)
+      case 6: return `((${a}) - ((${a}) & ~(${b})))`;                        // a&b = a - (a&~b)
+      case 7: return `((${b}) - (~(${a}) & (${b})))`;                        // a&b = b - (~a&b)
+      case 8: return `((${a}) ^ ((${a}) ^ ((${a}) & (${b}))))`;              // a ^ a ^ (a&b) = a&b
+      default: return `((${a}) & (${b}))`;
     }
   } else if (op === 'or') {
+    // All verified: a|b identity variants
     switch (choice) {
-      case 0:
-        return `(((${a}) & (${b})) + ((${a}) ^ (${b})))`;
-      case 1:
-        return `(((${a}) ^ (${b})) | ((${a}) & (${b})))`;
-      case 2:
-        return `(~(~(${a}) & ~(${b})))`;
-      default:
-        return `((${a}) | (${b}))`;
+      case 0: return `(((${a}) & (${b})) + ((${a}) ^ (${b})))`;              // a|b = (a&b) + (a^b)
+      case 1: return `(((${a}) ^ (${b})) | ((${a}) & (${b})))`;              // a|b = (a^b) | (a&b) (disjoint)
+      case 2: return `(~(~(${a}) & ~(${b})))`;                               // De Morgan: a|b = ~(~a&~b)
+      case 3: return `((${a}) | (${b}))`;                                     // identity
+      case 4: return `(((${a}) + (${b})) - ((${a}) & (${b})))`;              // a|b = a+b - (a&b)
+      case 5: return `(((${a}) ^ (${b})) + ((${a}) & (${b})))`;              // a|b = (a^b) + (a&b) (same as case 0)
+      case 6: return `((${a}) + ((${b}) & ~(${a})))`;                        // a|b = a + (b&~a)
+      case 7: return `((${b}) + ((${a}) & ~(${b})))`;                        // a|b = b + (a&~b)
+      case 8: return `((${a}) ^ ((${a}) ^ ((${a}) | (${b}))))`;              // a ^ a ^ (a|b) = a|b
+      default: return `((${a}) | (${b}))`;
     }
   } else {
+    // XOR: All verified via bit-level truth tables
     switch (choice) {
-      case 0:
-        return `(((${a}) | (${b})) - ((${a}) & (${b})))`;
-      case 1:
-        return `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`;
-      case 2:
-        return `(((${a}) | ~(${b})) & (~(${a}) | (${b})))`;
-      default:
-        return `((${a}) ^ (${b}))`;
+      case 0: return `(((${a}) | (${b})) - ((${a}) & (${b})))`;              // a^b = (a|b) - (a&b)
+      case 1: return `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`;          // a^b = a+b - 2*(a&b)
+      case 2: return `(~(((${a}) | ~(${b})) & (~(${a}) | (${b}))))`;         // FIX: ~XNOR = XOR
+      case 3: return `((${a}) ^ (${b}))`;                                     // identity
+      case 4: return `(~(${a}) ^ ~(${b}))`;                                   // ~a ^ ~b = a ^ b
+      case 5: return `(2 * ((${a}) | (${b})) - (${a}) - (${b}))`;            // 2*(a|b) - a - b = a^b
+      case 6: return `(((${a}) | (${b})) ^ ((${a}) & (${b})))`;              // (a|b) ^ (a&b) = a^b
+      case 7: return `((~(${a}) & (${b})) | ((${a}) & ~(${b})))`;            // textbook XOR definition
+      case 8: return `((${a}) - (${b}) + 2 * (~(${a}) & (${b})))`;           // a^b = (a-b) + 2*(~a&b)
+      default: return `((${a}) ^ (${b}))`;
     }
   }
+}
+
+/**
+ * Generates opaque predicates — expressions that always evaluate to a known
+ * boolean value but are hard for symbolic execution to prove statically.
+ * Uses number-theoretic invariants that hold for all integers.
+ */
+function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; alwaysTrue: boolean } {
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xDEAD);
+  const choice = rng.nextRange(0, 7);
+  // Local variable name to avoid collisions
+  const pVar = `_op${rng.nextRange(100, 999)}`;
+  // Use a runtime value that's always available (pc is always a non-negative integer)
+  const runtimeVal = `ctx.pc`;
+
+  switch (choice) {
+    case 0:
+      // (x*x + x) is always even → (x*x+x) % 2 === 0 is always true
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar} + ${pVar}) % 2 === 0; })()`, alwaysTrue: true };
+    case 1:
+      // x*x % 4 is always 0 or 1, never 2 → (x*x % 4) !== 2 is always true
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) % 4 !== 2; })()`, alwaysTrue: true };
+    case 2:
+      // (x | (x-1)) >= (x-1) is always true for non-negative x
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | (${pVar} - 1)) >= (${pVar} - 1); })()`, alwaysTrue: true };
+    case 3:
+      // x*x >= 0 is always true for real numbers (JS: always true for finite values)
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) >= 0; })()`, alwaysTrue: true };
+    case 4:
+      // (x & 1) + ((x >> 1) & 1) < 3 is always true (max value is 2)
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`, alwaysTrue: true };
+    case 5:
+      // (3*x*x + 2*x + 7) % 6 will never be 0 for all int x → always true
+      // Proof: 3x²+2x+7 mod 6: for x=0→1, x=1→0... actually this can be 0.
+      // Use safer: (x^2 + x) is always even → always true
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} ^ (${pVar} >> 1)) | 0) === (${pVar} ^ (${pVar} >> 1)); })()`, alwaysTrue: true };
+    case 6:
+      // ~(~x) === x is always true (involution)
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return ~(~${pVar}) === ${pVar}; })()`, alwaysTrue: true };
+    default:
+      // (x | 0) === (x | 0) is always true (reflexivity + int coercion)
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | 0) === ${pVar}; })()`, alwaysTrue: true };
+  }
+}
+
+/**
+ * Generates fake handler body code that mimics real register operations
+ * but is guarded by an opaque predicate that ensures it never executes.
+ * This forces symbolic execution engines to explore dead branches.
+ */
+function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, ctx: any): string {
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xCAFE);
+  const numBlocks = rng.nextRange(1, 2);
+  let code = '';
+
+  for (let i = 0; i < numBlocks; i++) {
+    const pred = generateOpaquePredicate(seed ^ i, varIdx);
+    const fakeReg1 = rng.nextRange(0, 15);
+    const fakeReg2 = rng.nextRange(0, 15);
+    const fakeConst = rng.nextRange(1, 255);
+    const trapVar = `_dt${rng.nextRange(100, 999)}`;
+
+    // The predicate is always true, so we negate it for the dead block
+    // Dead code mimics real handler logic to confuse pattern analysis
+    code += `  if (!${pred.expr}) {\n`;
+    code += `    var ${trapVar} = ${regAlias}[${fakeReg1}];\n`;
+    code += `    ${regAlias}[${fakeReg2}] = ${trapVar} ^ ${fakeConst};\n`;
+    code += `    ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ ${trapVar}) | 0;\n`;
+    code += `  }\n`;
+  }
+
+  return code;
+}
+
+/**
+ * Generates handler signature pollution — unique dead variable declarations
+ * and fake computations that make each handler variant structurally unique.
+ * This defeats signature-based handler matching across builds.
+ */
+function generateSignaturePollution(seed: number, varIdx: number): string {
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xB0B0);
+  const numDecls = rng.nextRange(2, 4);
+  let code = '';
+
+  for (let i = 0; i < numDecls; i++) {
+    const varName = `_sp${rng.nextRange(100, 999)}_${i}`;
+    const choice = rng.nextRange(0, 3);
+    switch (choice) {
+      case 0:
+        code += `  var ${varName} = (${rng.nextRange(1, 0xFFFF)} ^ ctx.pc) | 0;\n`;
+        break;
+      case 1:
+        code += `  var ${varName} = (ctx.pc * ${rng.nextRange(2, 7)} + ${rng.nextRange(1, 100)}) & 0xFF;\n`;
+        break;
+      case 2:
+        code += `  var ${varName} = ~(ctx.pc ^ ${rng.nextRange(1, 0xFFFF)}) >>> 0;\n`;
+        break;
+      default:
+        code += `  var ${varName} = ((ctx.pc >> ${rng.nextRange(1, 4)}) + ${rng.nextRange(1, 50)}) | 0;\n`;
+        break;
+    }
+  }
+  return code;
 }
 
 function generateJunkStatements(seed: number, id: number, names: any, mulConst: string = '1664525', addConst: string = '1013904223'): string {
@@ -388,7 +502,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const declareHandler = (canonical: OpCode, body: string) => {
     const isParanoid = config.runtimeHardening === 'paranoid' && canonical !== OpCode.Trap;
-    const numVariants = isParanoid ? 2 : 1;
+    // Semantic DNA: 4 variants in paranoid, 1 otherwise
+    const numVariants = isParanoid ? 4 : 1;
     const fnNames: string[] = [];
 
     for (let vIdx = 0; vIdx < numVariants; vIdx++) {
@@ -539,7 +654,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         currentOpcodeTracker = `ctx.currentOpcode = ${canonical};\n`;
       }
 
-      handlerDeclarations.push(`function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${regSetup}${junkLogic}\n${variantBody}\n${nextOpLogic}\n}`);
+      // Anti-analysis hardening layers (paranoid only)
+      let opaqueDeadCode = '';
+      let sigPollution = '';
+      if (isParanoid) {
+        // Opaque predicate network: dead branches with realistic register ops
+        opaqueDeadCode = generateOpaqueDeadCode(mySeed, vIdx, regAlias, ctx);
+        // Signature pollution: unique dead variable declarations per variant
+        sigPollution = generateSignaturePollution(mySeed, vIdx);
+      }
+
+      handlerDeclarations.push(`function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${regSetup}${sigPollution}${junkLogic}\n${opaqueDeadCode}${variantBody}\n${nextOpLogic}\n}`);
     }
 
     declaredOpcodes.push(canonical);
@@ -903,19 +1028,23 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
 
     if (config.runtimeHardening === 'paranoid') {
-      let casesStr = '';
-      for (let b = 0; b < 16; b++) {
-        let subCases = '';
-        for (let offset = 0; offset < 16; offset++) {
-          const vOp = (b << 4) | offset;
-          const variants = vOpToVariants[vOp];
-          subCases += `        case ${offset}: var va = ${variants}; return va[(Math.random() * va.length) | 0];\n`;
-        }
-        casesStr += `      case ${b}:\n        switch (nextOp & 0xF) {\n${subCases}        }\n        break;\n`;
-      }
+      // Semantic DNA: Select dispatch architecture based on seed DNA (5 architectures)
+      const dispatchArch = config.seed % 5;
 
-      return {
-        declarations: `
+      if (dispatchArch === 0) {
+        // Architecture 0: Nested Switch-in-Switch (16x16 buckets)
+        let casesStr = '';
+        for (let b = 0; b < 16; b++) {
+          let subCases = '';
+          for (let offset = 0; offset < 16; offset++) {
+            const vOp = (b << 4) | offset;
+            const variants = vOpToVariants[vOp];
+            subCases += `        case ${offset}: var va = ${variants}; return va[(Math.random() * va.length) | 0];\n`;
+          }
+          casesStr += `      case ${b}:\n        switch (nextOp & 0xF) {\n${subCases}        }\n        break;\n`;
+        }
+        return {
+          declarations: `
   function resolveRoute(ctx, token) {
     if (token === null) return null;
     var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
@@ -925,9 +1054,122 @@ ${casesStr}
     }
     return ${trapFnName};
   }
-        `,
-        invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
-      };
+          `,
+          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+        };
+      } else if (dispatchArch === 1) {
+        // Architecture 1: Bijective Nibble-Swap Permutation Table
+        const saltByte = (config.seed ^ 0xA5F3) & 0xFF;
+        const saltByte2 = ((config.seed >>> 8) ^ 0xC2B1) & 0xFF;
+        const permTable = new Array(256).fill(`[${trapFnName}]`);
+        for (let vOp = 0; vOp < 256; vOp++) {
+          const nibSwap = ((vOp >> 4) | ((vOp & 0xF) << 4)) & 0xFF;
+          const permuted = (nibSwap ^ saltByte ^ saltByte2) & 0xFF;
+          permTable[permuted] = vOpToVariants[vOp];
+        }
+        return {
+          declarations: `
+  var _hcVT = [
+    ${permTable.join(',\n    ')}
+  ];
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    var nibSwap = ((nextOp >> 4) | ((nextOp & 0xF) << 4)) & 0xFF;
+    var h = (nibSwap ^ ${saltByte} ^ ${saltByte2}) & 0xFF;
+    var variants = _hcVT[h];
+    if (!variants || !variants.length) return ${trapFnName};
+    return variants[(Math.random() * variants.length) | 0];
+  }
+          `,
+          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+        };
+      } else if (dispatchArch === 2) {
+        // Architecture 2: XOR-Scrambled Index Table (bijective XOR permutation)
+        const xorScramble = (config.seed ^ 0x7E3D9F2C) & 0xFF;
+        const scrambledTable = new Array(256).fill(`[${trapFnName}]`);
+        for (let vOp = 0; vOp < 256; vOp++) {
+          const idx = (vOp ^ xorScramble) & 0xFF;
+          scrambledTable[idx] = vOpToVariants[vOp];
+        }
+        return {
+          declarations: `
+  var _tfVT = [
+    ${scrambledTable.join(',\n    ')}
+  ];
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    var scrambled = (nextOp ^ ${xorScramble}) & 0xFF;
+    var variants = _tfVT[scrambled];
+    if (!variants || !variants.length) return ${trapFnName};
+    return variants[(Math.random() * variants.length) | 0];
+  }
+          `,
+          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+        };
+      } else if (dispatchArch === 3) {
+        // Architecture 3: Bit-Reversal Permutation Table
+        // reverse8(x) reverses the 8 bits of x — bijective on [0,255]
+        const bitRevSalt = (config.seed ^ 0x4B7D) & 0xFF;
+        const bitRevTable = new Array(256).fill(`[${trapFnName}]`);
+        for (let vOp = 0; vOp < 256; vOp++) {
+          let rev = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            if (vOp & (1 << bit)) rev |= (1 << (7 - bit));
+          }
+          const idx = (rev ^ bitRevSalt) & 0xFF;
+          bitRevTable[idx] = vOpToVariants[vOp];
+        }
+        return {
+          declarations: `
+  var _brVT = [
+    ${bitRevTable.join(',\n    ')}
+  ];
+  function _rev8(x) {
+    x = ((x & 0xF0) >> 4) | ((x & 0x0F) << 4);
+    x = ((x & 0xCC) >> 2) | ((x & 0x33) << 2);
+    x = ((x & 0xAA) >> 1) | ((x & 0x55) << 1);
+    return x & 0xFF;
+  }
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    var h = (_rev8(nextOp) ^ ${bitRevSalt}) & 0xFF;
+    var variants = _brVT[h];
+    if (!variants || !variants.length) return ${trapFnName};
+    return variants[(Math.random() * variants.length) | 0];
+  }
+          `,
+          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+        };
+      } else {
+        // Architecture 4: Affine Transform (multiply by odd constant + add, mod 256)
+        // f(x) = (x * oddMul + addConst) & 0xFF — bijective since oddMul is coprime to 256
+        const oddMul = ((config.seed & 0x7F) | 1) | 2;  // ensure odd and >= 3
+        const addConst4 = (config.seed >>> 16) & 0xFF;
+        const affineTable = new Array(256).fill(`[${trapFnName}]`);
+        for (let vOp = 0; vOp < 256; vOp++) {
+          const idx = ((vOp * oddMul) + addConst4) & 0xFF;
+          affineTable[idx] = vOpToVariants[vOp];
+        }
+        return {
+          declarations: `
+  var _afVT = [
+    ${affineTable.join(',\n    ')}
+  ];
+  function resolveRoute(ctx, token) {
+    if (token === null) return null;
+    var nextOp = (token ^ ctx.${ctx.rollingState}) & 0xFF;
+    var h = ((nextOp * ${oddMul}) + ${addConst4}) & 0xFF;
+    var variants = _afVT[h];
+    if (!variants || !variants.length) return ${trapFnName};
+    return variants[(Math.random() * variants.length) | 0];
+  }
+          `,
+          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+        };
+      }
     } else {
       return {
         declarations: `

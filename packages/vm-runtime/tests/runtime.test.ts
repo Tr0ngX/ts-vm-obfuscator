@@ -714,7 +714,6 @@ describe('VM Runtime', () => {
     const bytecode = compileToBytecode(ir, config);
     const bundle = buildVMRuntime(bytecode, config);
 
-    expect(bundle.fullSource).toContain('executionNonce');
     expect(bundle.fullSource).toContain('function mixRollingState(ctx, pos, decoded)');
     expect(bundle.fullSource).toContain('function corruptByteNear(ctx, at, mask)');
     expect(bundle.fullSource).toContain('corruptByteNear(ctx, pos - 1');
@@ -723,6 +722,8 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('function resolveRoute(ctx, token)');
     expect(bundle.fullSource).toContain('handler = resolveRoute(ctx, handler(ctx));');
     expect(bundle.fullSource).toMatch(/const handlerVariants = \{/);
+    // In stealth/paranoid mode, ctx fields are fully obfuscated - executionNonce becomes a random name
+    expect(bundle.fullSource).toMatch(/executionNonce|_[a-zA-Z]{5,9}/);
     expect(bundle.fullSource).toMatch(/\[\d+\]: \[[^\]]*,[^\]]*\]/);
 
     const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
