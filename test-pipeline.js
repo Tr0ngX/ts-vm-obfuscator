@@ -269,6 +269,13 @@ const gatingInputs = [
     if (!pass) allPass = false;
   }
 
+  // 6. Derived Class and Super Call (Verified VM Path)
+  const expectedDerived = 'Derived:200:Base:100:42';
+  const actualDerived = mod.verifyArtemisDerivedClassAndSuper();
+  const passDerived = expectedDerived === actualDerived;
+  console.log(`  ${passDerived ? '✅' : '❌'} verifyArtemisDerivedClassAndSuper() = '${actualDerived}' (expected '${expectedDerived}')`);
+  if (!passDerived) allPass = false;
+
   if (allPass) {
     console.log('\n✅ ALL TESTS PASSED — Perfect Semantic Equivalence Verified (NASA Codex Compliant).');
   } else {

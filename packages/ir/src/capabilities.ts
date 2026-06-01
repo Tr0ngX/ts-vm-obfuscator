@@ -132,16 +132,9 @@ function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
 function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): string[] {
   const reasons = new Set<string>();
 
-  if (node.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) {
-    reasons.add('class uses extends');
-  }
-
   const visit = (current: ts.Node) => {
     if (ts.isConstructorDeclaration(current) && current.parameters.some((parameter) => parameter.modifiers?.length)) {
       reasons.add('class uses parameter properties');
-    }
-    if (ts.isClassStaticBlockDeclaration(current)) {
-      reasons.add('class uses static blocks');
     }
     if (
       (ts.isMethodDeclaration(current) || ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current))

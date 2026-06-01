@@ -36,6 +36,14 @@ export class GenericConfusionPass implements TransformPass {
         consider(local.register);
       }
       for (const block of func.blocks) {
+        if (block.phiNodes) {
+          for (const phi of block.phiNodes) {
+            consider(phi.result);
+            for (const incoming of phi.incoming) {
+              consider(incoming.register);
+            }
+          }
+        }
         for (const inst of block.instructions) {
           consider(inst.result);
           for (const op of inst.operands) {

@@ -21,6 +21,7 @@ interface LoweringOptions {
   readonly isNested?: boolean;
   readonly prologueEmitter?: ((lowering: ASTLowering) => void) | undefined;
   readonly privateIdentifierBindings?: ReadonlyMap<string, string>;
+  readonly instanceFieldsToInitialize?: readonly NormalizedClassFieldElement[];
 }
 
 export interface LowerToIROptions {
@@ -101,6 +102,7 @@ interface NormalizedClass {
   readonly privateIdentifiers: ReadonlyMap<string, string>;
   readonly instanceElements: readonly NormalizedClassElement[];
   readonly staticElements: readonly NormalizedClassElement[];
+  readonly extendsExpression?: ts.Expression;
 }
 
 const LEXICAL_THIS_CAPTURE = '$$vm_lexical_this';
@@ -276,6 +278,7 @@ class ASTLowering {
   private readonly isAsyncFunction: boolean;
   private readonly isGenerator: boolean;
   private readonly privateIdentifierBindings: ReadonlyMap<string, string>;
+  private readonly instanceFieldsToInitialize?: readonly NormalizedClassFieldElement[];
 
   constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
     this.functionId = modBuilder.getNextFunctionId();
@@ -283,6 +286,7 @@ class ASTLowering {
     this.sourceFile = node.getSourceFile();
     this.capturedLocals = options.analysis.capturedByDescendants;
     this.privateIdentifierBindings = options.privateIdentifierBindings ?? new Map();
+    this.instanceFieldsToInitialize = options.instanceFieldsToInitialize;
     if (options.isExported) {
       this.fnBuilder.addAttribute(FunctionAttribute.Exported);
     }
@@ -613,8 +617,10 @@ class ASTLowering {
   }
 
   private normalizeClassLike(node: ts.ClassDeclaration | ts.ClassExpression): NormalizedClass {
-    if (node.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) {
-      this.failUnsupported(node, 'class extends is not supported on the vm-safe path');
+    let extendsExpression: ts.Expression | undefined;
+    const extendsClause = node.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword);
+    if (extendsClause && extendsClause.types && extendsClause.types.length > 0) {
+      extendsExpression = extendsClause.types[0]?.expression;
     }
 
     const computedNames: NormalizedComputedName[] = [];
@@ -644,7 +650,12 @@ class ASTLowering {
         continue;
       }
       if (ts.isClassStaticBlockDeclaration(member)) {
-        this.failUnsupported(member, 'class static blocks are not supported on the vm-safe path');
+        pushElement({
+          kind: 'static_block',
+          node: member,
+          isStatic: true,
+        });
+        continue;
       }
       const modifiers = ts.canHaveModifiers(member) ? ts.getModifiers(member) ?? [] : [];
       if (ts.isPropertyDeclaration(member) && modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)) {
@@ -746,6 +757,7 @@ class ASTLowering {
       privateIdentifiers,
       instanceElements,
       staticElements,
+      extendsExpression,
     };
   }
 
@@ -758,8 +770,27 @@ class ASTLowering {
       (element): element is NormalizedClassFieldElement => element.kind === 'field',
     );
     const explicitCtor = normalized.constructorElement?.kind === 'constructor' ? normalized.constructorElement.node : undefined;
-    const ctorNode: SupportedFunctionNode = explicitCtor
-      ?? ts.factory.createFunctionExpression(undefined, undefined, undefined, undefined, [], undefined, ts.factory.createBlock([], true));
+    let ctorNode: SupportedFunctionNode;
+    if (explicitCtor) {
+      ctorNode = explicitCtor;
+    } else {
+      const bodyStatements: ts.Statement[] = [];
+      if (normalized.extendsExpression) {
+        bodyStatements.push(
+          ts.factory.createExpressionStatement(
+            ts.factory.createCallExpression(
+              ts.factory.createSuper(),
+              undefined,
+              []
+            )
+          )
+        );
+      }
+      ctorNode = ts.factory.createFunctionExpression(
+        undefined, undefined, undefined, undefined, [], undefined,
+        ts.factory.createBlock(bodyStatements, true)
+      );
+    }
 
     const fieldInitializerNodes = instanceFields.flatMap((field) => {
       const nodes: ts.Node[] = [];
@@ -792,9 +823,12 @@ class ASTLowering {
       isNested: true,
       prologueEmitter: (lowering) => {
         lowering.emitClassConstructorGuard(classDisplayName);
-        lowering.emitInstanceFieldInitializers(instanceFields);
+        if (!normalized.extendsExpression) {
+          lowering.emitInstanceFieldInitializers(instanceFields);
+        }
       },
       privateIdentifierBindings: normalized.privateIdentifiers,
+      instanceFieldsToInitialize: normalized.extendsExpression ? instanceFields : undefined,
     });
     const envReg = this.buildClosureEnvironment(analysis.capturedFromOuter);
     const functionIdIndex = this.modBuilder.addConstant(ConstantKind.String, nestedLowering.functionId);
@@ -908,6 +942,11 @@ class ASTLowering {
   }
 
   private lowerClassLike(node: ts.ClassDeclaration | ts.ClassExpression, classBindingNameOverride?: string): Register {
+    const extendsExpr = node.heritageClauses?.find((c) => c.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
+    let parentClassReg: Register | undefined;
+    if (extendsExpr) {
+      parentClassReg = this.visitExpression(extendsExpr);
+    }
     const normalized = this.normalizeClassLike(node);
     const classBindingName = classBindingNameOverride ?? normalized.bindingName;
 
@@ -950,6 +989,46 @@ class ASTLowering {
       prototypeReg,
     );
 
+    if (parentClassReg) {
+      const parentProtoReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: parentClassReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'prototype') },
+        ],
+        parentProtoReg,
+      );
+      const setPrototypeOfReg = this.resolveVar('Object');
+      const setProtoMethodReg = this.fnBuilder.allocRegister();
+      this.currentBlock.addInstruction(
+        OpCode.PropGet,
+        [
+          { kind: OperandKind.Register, value: setPrototypeOfReg },
+          { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'setPrototypeOf') },
+        ],
+        setProtoMethodReg,
+      );
+      this.currentBlock.addInstruction(
+        OpCode.Call,
+        [
+          { kind: OperandKind.Register, value: setProtoMethodReg },
+          { kind: OperandKind.Register, value: prototypeReg },
+          { kind: OperandKind.Register, value: parentProtoReg },
+        ],
+        this.fnBuilder.allocRegister(),
+      );
+      this.currentBlock.addInstruction(
+        OpCode.Call,
+        [
+          { kind: OperandKind.Register, value: setProtoMethodReg },
+          { kind: OperandKind.Register, value: ctorReg },
+          { kind: OperandKind.Register, value: parentClassReg },
+        ],
+        this.fnBuilder.allocRegister(),
+      );
+    }
+
     for (const element of normalized.instanceElements) {
       if (element.kind === 'field' || element.kind === 'constructor') {
         continue;
@@ -989,13 +1068,14 @@ class ASTLowering {
           availableOuterNames,
           extraCapturedFromOuter: [...normalized.privateIdentifiers.values()],
           privateIdentifierBindings: normalized.privateIdentifiers,
+          attributes: [FunctionAttribute.Static],
         });
         const callPropReg = this.emitConstant(ConstantKind.String, 'call');
         this.currentBlock.addInstruction(OpCode.CallMethod, [
           { kind: OperandKind.Register, value: fnReg },
           { kind: OperandKind.Register, value: callPropReg },
           { kind: OperandKind.Register, value: ctorReg },
-        ]);
+        ], this.fnBuilder.allocRegister());
         continue;
       }
       const methodReg = this.lowerNestedFunctionLike(element.node as any, undefined, {
@@ -2452,6 +2532,9 @@ class ASTLowering {
             [{ kind: OperandKind.Register, value: argArrayReg }],
             resReg,
           );
+          if (this.instanceFieldsToInitialize) {
+            this.emitInstanceFieldInitializers(this.instanceFieldsToInitialize);
+          }
           return resReg;
         }
         if (ts.isPropertyAccessExpression(expr.expression)) {
@@ -2503,6 +2586,9 @@ class ASTLowering {
       if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
         const ops: Operand[] = args.map(a => ({ kind: OperandKind.Register, value: a } as Operand));
         this.currentBlock.addInstruction(OpCode.SuperCall, ops, resReg);
+        if (this.instanceFieldsToInitialize) {
+          this.emitInstanceFieldInitializers(this.instanceFieldsToInitialize);
+        }
         return resReg;
       }
       

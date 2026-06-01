@@ -238,7 +238,7 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
   return {
     opcodeRemapping: true,
     immediateEncoding: 2, // ImmediateEncodingScheme.XorMasked
-    superInstructions: false,
+    superInstructions: true,
     handlerLayoutRandom: true,
     constantPoolEncoding: 1, // ConstantEncodingScheme.XorRotate
     traceMode: false,

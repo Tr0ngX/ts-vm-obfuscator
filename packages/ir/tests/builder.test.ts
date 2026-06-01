@@ -91,10 +91,10 @@ describe('IR builder', () => {
   });
 
   it('still fails loudly for unsupported AST with location context', () => {
-    const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
+    const filePath = path.join(__dirname, 'fixtures', 'debugger-blocked.ts');
 
     expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
-      /Unsupported AST in IR builder: .* at .*class-blocked\.ts:\d+:\d+ near /
+      /Unsupported AST in IR builder: .* at .*debugger-blocked\.ts:\d+:\d+ near /
     );
   });
 
@@ -263,9 +263,9 @@ describe('IR builder', () => {
   it('keeps only verified class features on the vm-safe path', () => {
     const filePath = path.join(__dirname, 'fixtures', 'class-blocked.ts');
     const reports = analyzeFunctionCapabilities(filePath);
-    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'classExtendsPack')?.tier).toBe('vm_safe');
     expect(reports.find((report) => report.functionName === 'classPrivatePack')?.tier).toBe('vm_safe');
-    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('js_lowered');
+    expect(reports.find((report) => report.functionName === 'classStaticBlockPack')?.tier).toBe('vm_safe');
   });
 
   it('lowers nested lexical this and lexical new.target arrows through closure captures', () => {

@@ -140,4 +140,35 @@ export async function verifyArtemisAsyncLoop(count: number): Promise<number> {
   return sum;
 }
 
+/** @virtualize */
+export function verifyArtemisDerivedClassAndSuper(): string {
+  class BaseTelemetry {
+    public value: number;
+    constructor(val: number) {
+      this.value = val;
+    }
+    getStatus() {
+      return `Base:${this.value}`;
+    }
+  }
+
+  class DerivedTelemetry extends BaseTelemetry {
+    public bonus: number;
+    static blockValue = 0;
+    static {
+      this.blockValue = 42;
+    }
+    constructor(val: number, bonus: number) {
+      super(val);
+      this.bonus = bonus;
+    }
+    getStatus() {
+      return `Derived:${this.bonus}:${super.getStatus()}:${DerivedTelemetry.blockValue}`;
+    }
+  }
+
+  const derived = new DerivedTelemetry(100, 200);
+  return derived.getStatus();
+}
+
 main();

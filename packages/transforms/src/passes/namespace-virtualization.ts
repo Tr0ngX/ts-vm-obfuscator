@@ -1,5 +1,5 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, Register } from '@tsvm/shared';
-import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
+import { OpCode, ConstantKind, OperandKind, IRType, FunctionAttribute } from '@tsvm/shared';
 
 /**
  * 1) Invariant đầu vào: Hàm truy cập các symbol thông qua namespace hoặc exported object (PropGet/PropSet).
@@ -37,6 +37,14 @@ export class NamespaceVirtualizationPass implements TransformPass {
         consider(local.register);
       }
       for (const block of func.blocks) {
+        if (block.phiNodes) {
+          for (const phi of block.phiNodes) {
+            consider(phi.result);
+            for (const incoming of phi.incoming) {
+              consider(incoming.register);
+            }
+          }
+        }
         for (const inst of block.instructions) {
           consider(inst.result);
           for (const op of inst.operands) {
@@ -97,7 +105,13 @@ export class NamespaceVirtualizationPass implements TransformPass {
       'readFileSync', 'writeFileSync', 'readdirSync', 'statSync', 'execSync', 'mtime', 'getTime',
       'exec', 'test', 'match', 'replace', 'split', 'trim', 'toLowerCase', 'toUpperCase',
       // Symbol properties or other standard ones
-      'Symbol', 'iterator', 'asyncIterator', 'toStringTag'
+      'Symbol', 'iterator', 'asyncIterator', 'toStringTag',
+      // Reflect and Object proxy trap builtins
+      'setPrototypeOf', 'getPrototypeOf', 'defineProperty', 'defineProperties',
+      'getOwnPropertyDescriptor', 'getOwnPropertyNames', 'getOwnPropertySymbols',
+      'create', 'assign', 'freeze', 'seal', 'preventExtensions', 'isExtensible',
+      'isFrozen', 'isSealed', 'construct', 'has', 'get', 'set', 'deleteProperty',
+      'ownKeys'
     ]);
 
     function hashString(str: string, seed: number): string {
@@ -275,7 +289,8 @@ export class NamespaceVirtualizationPass implements TransformPass {
             const objOp = inst.operands[0];
             const keyOp = inst.operands[1];
 
-            const isObjThis = objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' &&
+            const isStaticContext = func.attributes && func.attributes.indexOf(FunctionAttribute.Static) >= 0;
+            const isObjThis = !isStaticContext && objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' &&
               (isThisRegister(func, objOp.value) || lexicalThisRegs.has(objOp.value));
             const isObjParam = objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && paramRegs.has(objOp.value);
             const isLocalObj = objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && localObjects.has(objOp.value);

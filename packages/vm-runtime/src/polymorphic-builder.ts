@@ -37,77 +37,83 @@ function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a:
   const rng = new SeededRandom(seed ^ 0x93b2a5);
   const choice = rng.nextRange(0, 9);
 
+  let expr = '';
   if (op === 'add') {
     // All verified: a+b identity variants
     switch (choice) {
-      case 0: return `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;          // a+b = (a^b) + 2*(a&b)
-      case 1: return `(((${a}) | (${b})) + ((${a}) & (${b})))`;              // a+b = (a|b) + (a&b)
-      case 2: return `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;          // a+b = 2*(a|b) - (a^b)
-      case 3: return `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;    // a+b = (a^~b) + 2*(a|b) + 1
-      case 4: return `(((${a}) - (-(${b}))))`;                                // a+b = a - (-b)
-      case 5: return `(((${a}) - ~(${b})) - 1)`;                             // a+b = a - ~b - 1, since ~b = -(b+1)
-      case 6: return `(~(~(${a}) - (${b})))`;                                // a+b = ~(~a - b), since ~(~a-b) = a+b
-      case 7: return `((((${a}) + (${b})) | 0))`;                            // a+b with int coercion
-      case 8: return `((${a}) * 2 - (${a}) + (${b}))`;                       // 2a - a + b = a + b
-      default: return `((${a}) + (${b}))`;
+      case 0: expr = `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`; break;         // a+b = (a^b) + 2*(a&b)
+      case 1: expr = `(((${a}) | (${b})) + ((${a}) & (${b})))`; break;             // a+b = (a|b) + (a&b)
+      case 2: expr = `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`; break;         // a+b = 2*(a|b) - (a^b)
+      case 3: expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`; break;   // a+b = (a^~b) + 2*(a|b) + 1
+      case 4: expr = `(((${a}) - (-(${b}))))`; break;                               // a+b = a - (-b)
+      case 5: expr = `(((${a}) - ~(${b})) - 1)`; break;                            // a+b = a - ~b - 1, since ~b = -(b+1)
+      case 6: expr = `(~(~(${a}) - (${b})))`; break;                               // a+b = ~(~a - b), since ~(~a-b) = a+b
+      case 7: expr = `((((${a}) + (${b})) | 0))`; break;                           // a+b with int coercion
+      case 8: expr = `((${a}) * 2 - (${a}) + (${b}))`; break;                      // 2a - a + b = a + b
+      default: expr = `((${a}) + (${b}))`; break;
     }
   } else if (op === 'sub') {
     // All verified: a-b identity variants
     switch (choice) {
-      case 0: return `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;   // a-b via complement add
-      case 1: return `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;            // a-b = (a&~b) - (~a&b)
-      case 2: return `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;            // a-b via complement or
-      case 3: return `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;         // a-b = (a^b) - 2*(~a&b)
-      case 4: return `((${a}) + (-(${b})))`;                                  // a-b = a + (-b)
-      case 5: return `(~((${b}) - (${a}) - 1))`;                             // a-b = ~(b-a-1), since ~x = -(x+1)
-      case 6: return `((${a}) + (~(${b})) + 1)`;                             // a-b = a + ~b + 1 (two's complement)
-      case 7: return `(((${a}) | 0) - ((${b}) | 0))`;                        // a-b with int coercion
-      case 8: return `(~(~(${a}) + (${b})))`;                                // a-b = ~(~a+b), since ~(~a+b) = -(~a+b+1) = a-b
-      default: return `((${a}) - (${b}))`;
+      case 0: expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`; break;  // a-b via complement add
+      case 1: expr = `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`; break;           // a-b = (a&~b) - (~a&b)
+      case 2: expr = `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`; break;           // a-b via complement or
+      case 3: expr = `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`; break;        // a-b = (a^b) - 2*(~a&b)
+      case 4: expr = `((${a}) + (-(${b})))`; break;                                 // a-b = a + (-b)
+      case 5: expr = `(~((${b}) - (${a}) - 1))`; break;                            // a-b = ~(b-a-1), since ~x = -(x+1)
+      case 6: expr = `((${a}) + (~(${b})) + 1)`; break;                            // a-b = a + ~b + 1 (two's complement)
+      case 7: expr = `(((${a}) | 0) - ((${b}) | 0))`; break;                       // a-b with int coercion
+      case 8: expr = `(~(~(${a}) + (${b})))`; break;                               // a-b = ~(~a+b), since ~(~a+b) = -(~a+b+1) = a-b
+      default: expr = `((${a}) - (${b}))`; break;
     }
   } else if (op === 'and') {
     // All verified: a&b identity variants
     switch (choice) {
-      case 0: return `(((${a}) | (${b})) - ((${a}) ^ (${b})))`;              // a&b = (a|b) - (a^b)
-      case 1: return `((((${a}) + (${b})) - ((${a}) ^ (${b}))) >> 1)`;       // a&b = ((a+b) - (a^b)) / 2
-      case 2: return `(~(~(${a}) | ~(${b})))`;                               // De Morgan: a&b = ~(~a|~b)
-      case 3: return `((${a}) & (${b}))`;                                     // identity
-      case 4: return `(((${a}) | (${b})) & ~((${a}) ^ (${b})))`;             // a&b = (a|b) & ~(a^b)
-      case 5: return `(((${a}) + (${b}) - ((${a}) | (${b}))))`;              // a&b = a+b - (a|b)
-      case 6: return `((${a}) - ((${a}) & ~(${b})))`;                        // a&b = a - (a&~b)
-      case 7: return `((${b}) - (~(${a}) & (${b})))`;                        // a&b = b - (~a&b)
-      case 8: return `((${a}) ^ ((${a}) ^ ((${a}) & (${b}))))`;              // a ^ a ^ (a&b) = a&b
-      default: return `((${a}) & (${b}))`;
+      case 0: expr = `(((${a}) | (${b})) - ((${a}) ^ (${b})))`; break;             // a&b = (a|b) - (a^b)
+      case 1: expr = `((((${a}) + (${b})) - ((${a}) ^ (${b}))) >> 1)`; break;      // a&b = ((a+b) - (a^b)) / 2
+      case 2: expr = `(~(~(${a}) | ~(${b})))`; break;                              // De Morgan: a&b = ~(~a|~b)
+      case 3: expr = `((${a}) & (${b}))`; break;                                    // identity
+      case 4: expr = `(((${a}) | (${b})) & ~((${a}) ^ (${b})))`; break;            // a&b = (a|b) & ~(a^b)
+      case 5: expr = `(((${a}) + (${b}) - ((${a}) | (${b}))))`; break;             // a&b = a+b - (a|b)
+      case 6: expr = `((${a}) - ((${a}) & ~(${b})))`; break;                       // a&b = a - (a&~b)
+      case 7: expr = `((${b}) - (~(${a}) & (${b})))`; break;                       // a&b = b - (~a&b)
+      case 8: expr = `((${a}) ^ ((${a}) ^ ((${a}) & (${b}))))`; break;             // a ^ a ^ (a&b) = a&b
+      default: expr = `((${a}) & (${b}))`; break;
     }
   } else if (op === 'or') {
     // All verified: a|b identity variants
     switch (choice) {
-      case 0: return `(((${a}) & (${b})) + ((${a}) ^ (${b})))`;              // a|b = (a&b) + (a^b)
-      case 1: return `(((${a}) ^ (${b})) | ((${a}) & (${b})))`;              // a|b = (a^b) | (a&b) (disjoint)
-      case 2: return `(~(~(${a}) & ~(${b})))`;                               // De Morgan: a|b = ~(~a&~b)
-      case 3: return `((${a}) | (${b}))`;                                     // identity
-      case 4: return `(((${a}) + (${b})) - ((${a}) & (${b})))`;              // a|b = a+b - (a&b)
-      case 5: return `(((${a}) ^ (${b})) + ((${a}) & (${b})))`;              // a|b = (a^b) + (a&b) (same as case 0)
-      case 6: return `((${a}) + ((${b}) & ~(${a})))`;                        // a|b = a + (b&~a)
-      case 7: return `((${b}) + ((${a}) & ~(${b})))`;                        // a|b = b + (a&~b)
-      case 8: return `((${a}) ^ ((${a}) ^ ((${a}) | (${b}))))`;              // a ^ a ^ (a|b) = a|b
-      default: return `((${a}) | (${b}))`;
+      case 0: expr = `(((${a}) & (${b})) + ((${a}) ^ (${b})))`; break;             // a|b = (a&b) + (a^b)
+      case 1: expr = `(((${a}) ^ (${b})) | ((${a}) & (${b})))`; break;             // a|b = (a^b) | (a&b) (disjoint)
+      case 2: expr = `(~(~(${a}) & ~(${b})))`; break;                              // De Morgan: a|b = ~(~a&~b)
+      case 3: expr = `((${a}) | (${b}))`; break;                                    // identity
+      case 4: expr = `(((${a}) + (${b})) - ((${a}) & (${b})))`; break;             // a|b = a+b - (a&b)
+      case 5: expr = `(((${a}) ^ (${b})) + ((${a}) & (${b})))`; break;             // a|b = (a^b) + (a&b) (same as case 0)
+      case 6: expr = `((${a}) + ((${b}) & ~(${a})))`; break;                       // a|b = a + (b&~a)
+      case 7: expr = `((${b}) + ((${a}) & ~(${b})))`; break;                       // a|b = b + (a&~b)
+      case 8: expr = `((${a}) ^ ((${a}) ^ ((${a}) | (${b}))))`; break;             // a ^ a ^ (a|b) = a|b
+      default: expr = `((${a}) | (${b}))`; break;
     }
   } else {
     // XOR: All verified via bit-level truth tables
     switch (choice) {
-      case 0: return `(((${a}) | (${b})) - ((${a}) & (${b})))`;              // a^b = (a|b) - (a&b)
-      case 1: return `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`;          // a^b = a+b - 2*(a&b)
-      case 2: return `(~(((${a}) | ~(${b})) & (~(${a}) | (${b}))))`;         // FIX: ~XNOR = XOR
-      case 3: return `((${a}) ^ (${b}))`;                                     // identity
-      case 4: return `(~(${a}) ^ ~(${b}))`;                                   // ~a ^ ~b = a ^ b
-      case 5: return `(2 * ((${a}) | (${b})) - (${a}) - (${b}))`;            // 2*(a|b) - a - b = a^b
-      case 6: return `(((${a}) | (${b})) ^ ((${a}) & (${b})))`;              // (a|b) ^ (a&b) = a^b
-      case 7: return `((~(${a}) & (${b})) | ((${a}) & ~(${b})))`;            // textbook XOR definition
-      case 8: return `((${a}) - (${b}) + 2 * (~(${a}) & (${b})))`;           // a^b = (a-b) + 2*(~a&b)
-      default: return `((${a}) ^ (${b}))`;
+      case 0: expr = `(((${a}) | (${b})) - ((${a}) & (${b})))`; break;             // a^b = (a|b) - (a&b)
+      case 1: expr = `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`; break;         // a^b = a+b - 2*(a&b)
+      case 2: expr = `(~(((${a}) | ~(${b})) & (~(${a}) | (${b}))))`; break;        // FIX: ~XNOR = XOR
+      case 3: expr = `((${a}) ^ (${b}))`; break;                                    // identity
+      case 4: expr = `(~(${a}) ^ ~(${b}))`; break;                                  // ~a ^ ~b = a ^ b
+      case 5: expr = `(2 * ((${a}) | (${b})) - (${a}) - (${b}))`; break;           // 2*(a|b) - a - b = a^b
+      case 6: expr = `(((${a}) | (${b})) ^ ((${a}) & (${b})))`; break;             // (a|b) ^ (a&b) = a^b
+      case 7: expr = `((~(${a}) & (${b})) | ((${a}) & ~(${b})))`; break;           // textbook XOR definition
+      case 8: expr = `((${a}) - (${b}) + 2 * (~(${a}) & (${b})))`; break;          // a^b = (a-b) + 2*(~a&b)
+      default: expr = `((${a}) ^ (${b}))`; break;
     }
   }
+
+  if (op === 'and' || op === 'or' || op === 'xor') {
+    return `((${expr}) | 0)`;
+  }
+  return expr;
 }
 
 /**
@@ -140,13 +146,11 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
       // (x & 1) + ((x >> 1) & 1) < 3 is always true (max value is 2)
       return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`, alwaysTrue: true };
     case 5:
-      // (3*x*x + 2*x + 7) % 6 will never be 0 for all int x → always true
-      // Proof: 3x²+2x+7 mod 6: for x=0→1, x=1→0... actually this can be 0.
-      // Use safer: (x^2 + x) is always even → always true
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} ^ (${pVar} >> 1)) | 0) === (${pVar} ^ (${pVar} >> 1)); })()`, alwaysTrue: true };
+      // SMT Solver Killer: x^2 % 4 is always 0 or 1, never 3.
+      return { expr: `(function(){ var ${pVar} = (${runtimeVal} & 255); return (${pVar} * ${pVar} & 3) !== 3; })()`, alwaysTrue: true };
     case 6:
-      // ~(~x) === x is always true (involution)
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return ~(~${pVar}) === ${pVar}; })()`, alwaysTrue: true };
+      // SMT Solver Killer 2: (31 * x)^2 % 3 is always 0 or 1, never 2.
+      return { expr: `(function(){ var ${pVar} = (${runtimeVal} & 255) * 31; return (${pVar} * ${pVar}) % 3 !== 2; })()`, alwaysTrue: true };
     default:
       // (x | 0) === (x | 0) is always true (reflexivity + int coercion)
       return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | 0) === ${pVar}; })()`, alwaysTrue: true };
@@ -692,9 +696,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.LoadGlobal, `
     ${readArgs}
     var propName = ctx.regs[args[0]];
+    var globalVal = ${ctxRef('globalScope')}[propName];
+    if (propName === 'Object' || propName === 'TypeError') {
+      console.log("[DEBUG] LoadGlobal for:", propName);
+      console.log("[DEBUG] globalScope exists:", !!${ctxRef('globalScope')});
+      console.log("[DEBUG] globalScope[propName] is function:", typeof globalVal === 'function');
+      console.log("[DEBUG] globalScope[propName] value:", globalVal);
+    }
     ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
       ? ${top.result}[propName]
-      : ${ctxRef('globalScope')}[propName];
+      : globalVal;
   `);
   declareHandler(OpCode.StoreGlobal, `
     ${readArgs}
@@ -797,6 +808,12 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.Call, `
     ${readArgs}
     var fn = ${regRef('args[0]')};
+    if (typeof fn === 'undefined' || fn === null) {
+      console.log("[DEBUG] OpCode.Call failed: fn is undefined!");
+      console.log("[DEBUG] args[0] register index:", args[0]);
+      console.log("[DEBUG] register values:", ctx.regs);
+      console.log("[DEBUG] args array:", args);
+    }
     var ab = [];
     for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
       ab.push(${regRef('args[ci2]')});
@@ -886,12 +903,18 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(OpCode.SuperPropGet, `
     ${readArgs}
-    var superProto = ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(ctx.thisArg));
+    var isStatic = typeof ${ctxRef('thisArg')} === 'function';
+    var superProto = isStatic 
+      ? ${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')})
+      : ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')}));
     ctx.regs[args[1]] = superProto[ctx.regs[args[0]]];
   `);
   declareHandler(OpCode.SuperPropSet, `
     ${readArgs}
-    var superProto = ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(ctx.thisArg));
+    var isStatic = typeof ${ctxRef('thisArg')} === 'function';
+    var superProto = isStatic 
+      ? ${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')})
+      : ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')}));
     superProto[ctx.regs[args[0]]] = ctx.regs[args[1]];
   `);
   declareHandler(OpCode.SuperCall, `
@@ -899,22 +922,22 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     if (!${top.reflectObj} || !${top.reflectObj}.construct) {
       throw new TypeError('Reflect.construct is required for super()');
     }
-    var superCtor = ${top.objectObj}.getPrototypeOf(ctx.thisArg.constructor);
+    var superCtor = ${top.objectObj}.getPrototypeOf(${ctxRef('newTarget')});
     var aa = [];
     for (var ci = 0; ci < args.length - 1; ci++) {
       aa.push(ctx.regs[args[ci]]);
     }
-    ctx.thisArg = ${top.reflectObj}.construct(superCtor, aa, ctx.newTarget || ctx.thisArg.constructor);
-    ctx.regs[args[args.length - 1]] = ctx.thisArg;
+    ${ctxRef('thisArg')} = ${top.reflectObj}.construct(superCtor, aa, ${ctxRef('newTarget')});
+    ctx.regs[args[args.length - 1]] = ${ctxRef('thisArg')};
   `);
   declareHandler(OpCode.SuperCallWithArray, `
     ${readArgs}
     if (!${top.reflectObj} || !${top.reflectObj}.construct) {
       throw new TypeError('Reflect.construct is required for super()');
     }
-    var superCtor = ${top.objectObj}.getPrototypeOf(ctx.thisArg.constructor);
-    ctx.thisArg = ${top.reflectObj}.construct(superCtor, ctx.regs[args[0]], ctx.newTarget || ctx.thisArg.constructor);
-    ctx.regs[args[1]] = ctx.thisArg;
+    var superCtor = ${top.objectObj}.getPrototypeOf(${ctxRef('newTarget')});
+    ${ctxRef('thisArg')} = ${top.reflectObj}.construct(superCtor, ctx.regs[args[0]], ${ctxRef('newTarget')});
+    ctx.regs[args[1]] = ${ctxRef('thisArg')};
   `);
 
   declareHandler(OpCode.Yield, `
@@ -1666,7 +1689,13 @@ const ${top.vmFunctions} = (function() {
       if (outcome.kind === 'await') {
         throw new Error('VM await suspension reached sync executor');
       }
-      return outcome.value;
+      var retVal = outcome.value;
+      if (new.target) {
+        if (retVal === undefined || (typeof retVal !== 'object' && typeof retVal !== 'function')) {
+          return ctx.${ctx.thisArg};
+        }
+      }
+      return retVal;
     };
   }
 

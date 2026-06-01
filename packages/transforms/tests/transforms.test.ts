@@ -239,6 +239,7 @@ const mockProfile: ObfuscationProfile = {
       OpCode.BitOr,
       OpCode.LoadConst,
       OpCode.BitAnd,
+      OpCode.LoadConst,
       OpCode.Mul,
       OpCode.Mul,
       OpCode.LoadConst,

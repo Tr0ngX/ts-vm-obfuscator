@@ -458,10 +458,10 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).not.toContain('#value');
   });
 
-  it('should execute private fields while skipping unsupported derived classes and static blocks', () => {
+  it('should execute derived classes, static blocks, and private fields under full virtualization', () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'class-blocked.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, {
-      forceVirtualizeFunctionNames: new Set(['classPrivatePack', 'classStaticBlockPack']),
+      forceVirtualizeFunctionNames: new Set(['classPrivatePack', 'classStaticBlockPack', 'classExtendsPack']),
       compatibilityFallback: true,
     });
     const bytecode = compileToBytecode(ir, createVMConfig(89));
@@ -471,8 +471,8 @@ describe('VM Runtime', () => {
     new Function('module', bundle.fullSource)(moduleShim);
 
     expect(moduleShim.exports.classPrivatePack()).toBe(1);
-    expect(moduleShim.exports.classStaticBlockPack).toBeUndefined();
-    expect(moduleShim.exports.classExtendsPack).toBeUndefined();
+    expect(moduleShim.exports.classStaticBlockPack()).toBe(2);
+    expect(moduleShim.exports.classExtendsPack()).toBe(2);
   });
 
   it('should execute verified async/await functions through the VM runtime', async () => {
