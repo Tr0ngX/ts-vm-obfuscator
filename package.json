@@ -16,7 +16,8 @@
     "clean": "turbo run clean",
     "typecheck": "turbo run typecheck",
     "visualizer": "pnpm --filter @tsvm/visualizer dev",
-    "cli": "pnpm --filter @tsvm/cli start"
+    "cli": "pnpm --filter @tsvm/cli start",
+    "benchmark": "node run-benchmark.js"
   },
   "devDependencies": {
     "turbo": "^2.4.0",
