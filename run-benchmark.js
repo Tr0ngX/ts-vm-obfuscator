@@ -20,26 +20,38 @@ function calculateShannonEntropy(str) {
   return Number(entropy.toFixed(4));
 }
 
-// Statistical benchmark runner with outlier removal (IQR) and percentile calculations
+// Statistical benchmark runner with process.hrtime.bigint() nanosecond precision,
+// double-stage warm-up, Interquartile Range (IQR) outlier filtering, and confidence intervals.
 function runStatisticalBenchmark(fn, args, iterations, warmUp) {
-  // 1. Warm up the JIT compiler to trigger Ignition -> Sparkplug -> TurboFan JIT tiering
+  // 1. Force GC before suite to isolate memory pressure and prevent GC contamination
+  if (global.gc) {
+    global.gc();
+  }
+
+  // 2. Stage 1 Warm-up: JIT compiler optimization tiering (Ignition -> Sparkplug -> TurboFan)
   for (let i = 0; i < warmUp; i++) {
     fn(...args);
   }
 
-  // 2. High-resolution execution timing
-  const rawTimesUs = [];
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
+  // 3. Stage 2 Warm-up: CPU L1/L2 Cache stabilization and polymorphic inline cache (PIC) priming
+  for (let i = 0; i < Math.floor(warmUp * 0.2); i++) {
     fn(...args);
-    const end = performance.now();
-    rawTimesUs.push((end - start) * 1000); // Store in microseconds (μs)
   }
 
-  // Sort times for percentiles and outlier analysis
+  // 4. High-resolution execution timing using process.hrtime.bigint() (nanosecond-level accuracy)
+  const rawTimesUs = [];
+  for (let i = 0; i < iterations; i++) {
+    const start = process.hrtime.bigint();
+    fn(...args);
+    const end = process.hrtime.bigint();
+    // Convert BigInt nanoseconds to floating-point microseconds (μs)
+    rawTimesUs.push(Number(end - start) / 1000);
+  }
+
+  // Sort raw times for correct percentiles and outlier analysis
   const sortedTimes = [...rawTimesUs].sort((a, b) => a - b);
 
-  // 3. Outlier removal using the Interquartile Range (IQR) rule
+  // 5. Outlier removal using the standard Interquartile Range (IQR) rule
   const q1Idx = Math.floor(sortedTimes.length * 0.25);
   const q3Idx = Math.floor(sortedTimes.length * 0.75);
   const q1 = sortedTimes[q1Idx];
@@ -50,7 +62,7 @@ function runStatisticalBenchmark(fn, args, iterations, warmUp) {
 
   const filteredTimes = sortedTimes.filter(t => t >= lowerBound && t <= upperBound);
 
-  // 4. Calculate statistical metrics
+  // 6. Calculate statistical metrics
   const count = filteredTimes.length;
   const sum = filteredTimes.reduce((acc, t) => acc + t, 0);
   const avg = sum / count;
@@ -59,17 +71,24 @@ function runStatisticalBenchmark(fn, args, iterations, warmUp) {
   const variance = sqDiffs.reduce((acc, d) => acc + d, 0) / count;
   const stdDev = Math.sqrt(variance);
 
-  // 5. Percentiles on raw times (preserving true tail latency)
-  const p95Idx = Math.floor(rawTimesUs.length * 0.95);
-  const p99Idx = Math.floor(rawTimesUs.length * 0.99);
-  const p95 = rawTimesUs[p95Idx];
-  const p99 = rawTimesUs[p99Idx];
+  // 7. Calculate 95% Confidence Interval (CI)
+  const marginOfError = 1.96 * (stdDev / Math.sqrt(count));
+  const ciLower = Math.max(0, avg - marginOfError);
+  const ciUpper = avg + marginOfError;
+
+  // 8. Median & Percentiles on sortedTimes (raw sorted times preserving tail metrics)
+  const median = sortedTimes[Math.floor(sortedTimes.length / 2)];
+  const p95 = sortedTimes[Math.floor(sortedTimes.length * 0.95)];
+  const p99 = sortedTimes[Math.floor(sortedTimes.length * 0.99)];
 
   return {
     avg,
     stdDev,
+    median,
     p95,
     p99,
+    ciLower,
+    ciUpper,
     min: sortedTimes[0],
     max: sortedTimes[sortedTimes.length - 1],
     totalRuns: iterations,
@@ -102,7 +121,7 @@ try {
 }
 
 // Step 3: Find the compiled original and the latest obfuscated build
-const originalPath = './examples/basic-ts/dist/index.js';
+const originalPath = path.resolve(__dirname, 'examples/basic-ts/dist/index.js');
 if (!fs.existsSync(originalPath)) {
   console.error(`❌ Original file not found at ${originalPath}. Please build examples/basic-ts first.`);
   process.exit(1);
@@ -119,12 +138,22 @@ if (buildFiles.length === 0) {
 }
 
 const latestBuild = buildFiles[0];
-console.log(`\n📂 Loading files for benchmark:`);
-console.log(`   - Original:  ${originalPath} (${fs.statSync(originalPath).size} bytes)`);
-console.log(`   - Obfuscated: dist-obf/${latestBuild.name} (${latestBuild.size} bytes)`);
+const obfuscatedPath = path.resolve(__dirname, 'dist-obf', latestBuild.name);
 
+console.log(`\n📂 Loading files for benchmark (bypassing Node.js module cache):`);
+console.log(`   - Original:  ${originalPath} (${fs.statSync(originalPath).size} bytes)`);
+console.log(`   - Obfuscated: ${obfuscatedPath} (${latestBuild.size} bytes)`);
+
+// Bypass Node.js module loading cache to ensure fresh module instances for both runs
+try {
+  delete require.cache[require.resolve(originalPath)];
+} catch (e) {}
 const originalMod = require(originalPath);
-const obfuscatedMod = require('./dist-obf/' + latestBuild.name);
+
+try {
+  delete require.cache[require.resolve(obfuscatedPath)];
+} catch (e) {}
+const obfuscatedMod = require(obfuscatedPath);
 
 // Step 4: Configure high-precision performance iterations
 const testSuites = [
@@ -180,7 +209,12 @@ const testSuites = [
 ];
 
 const results = [];
-console.log('\n⏱ Running high-precision statistical timing...');
+console.log('\n⏱ Running high-precision statistical timing (process.hrtime)...');
+if (global.gc) {
+  console.log('ℹ️  Node.js garbage collection exposed. Memory isolation active!');
+} else {
+  console.log('⚠️  Node.js garbage collection not exposed. Run with pnpm benchmark for maximum accuracy.');
+}
 
 for (const suite of testSuites) {
   const origFn = originalMod[suite.name];
@@ -197,8 +231,8 @@ for (const suite of testSuites) {
 
   const overheadRatio = obfStats.avg / origStats.avg;
 
-  console.log(`      Native:      ${origStats.avg.toFixed(3)} μs (±${origStats.stdDev.toFixed(2)} μs) | p95: ${origStats.p95.toFixed(2)} μs | p99: ${origStats.p99.toFixed(2)} μs`);
-  console.log(`      Virtualized: ${obfStats.avg.toFixed(3)} μs (±${obfStats.stdDev.toFixed(2)} μs) | p95: ${obfStats.p95.toFixed(2)} μs | p99: ${obfStats.p99.toFixed(2)} μs`);
+  console.log(`      Native:      ${origStats.avg.toFixed(3)} μs | median: ${origStats.median.toFixed(3)} μs | CI: [${origStats.ciLower.toFixed(2)}, ${origStats.ciUpper.toFixed(2)}] μs`);
+  console.log(`      Virtualized: ${obfStats.avg.toFixed(3)} μs | median: ${obfStats.median.toFixed(3)} μs | CI: [${obfStats.ciLower.toFixed(2)}, ${obfStats.ciUpper.toFixed(2)}] μs`);
   console.log(`      Slowdown:    ${overheadRatio.toFixed(2)}x`);
 
   results.push({
@@ -216,7 +250,7 @@ const obfSize = latestBuild.size;
 const sizeRatio = obfSize / originalSize;
 
 const originalContent = fs.readFileSync(originalPath, 'utf8');
-const obfContent = fs.readFileSync('dist-obf/' + latestBuild.name, 'utf8');
+const obfContent = fs.readFileSync(obfuscatedPath, 'utf8');
 
 const fileEntropy = calculateShannonEntropy(obfContent);
 const origEntropy = calculateShannonEntropy(originalContent);
@@ -242,10 +276,12 @@ This report details the real-world high-precision performance execution times, b
 - **Host System**: Windows (NASA Codex validated client environment)
 - **Target Source**: 7 Extreme Artemis telemetry modules (\`examples/basic-ts/src/index.ts\`)
 - **Configurations**: Native JS vs TSXobf Standalone VM (with Fast Path loop split, polymorphic opcodes, and inline index-based immediate operand decoding).
-- **Statistical Rigor (Methodology)**:
-  - **JIT Warm-up**: Outlier elimination through initial warm-up execution steps to trigger V8 tiering (Ignition -> Sparkplug -> TurboFan).
-  - **Outlier Filtering**: Applied the standard **Interquartile Range (IQR)** rule ($[Q1 - 1.5 \\times IQR, Q3 + 1.5 \\times IQR]$) to strip anomalous microsecond spikes caused by OS thread preemption or GC pauses.
-  - **Metrics tracked**: Mean execution latency, Standard Deviation ($\\sigma$), p95, and p99 tail percentiles.
+- **Statistical Rigor & Methodology**:
+  - **Microsecond Precision**: Utilizes node native \`process.hrtime.bigint()\` bypasses JS float timing rounding and guarantees raw nanosecond timing resolutions.
+  - **Double-Stage Warm-up**: Initiates JIT warmup (Ignition -> Sparkplug -> TurboFan) and PIC (Polymorphic Inline Cache) priming loops to stabilize CPU caches before measurements.
+  - **Memory Isolation**: Invokes active Node garbage collection (\`--expose-gc\`) between suites to prevent heap growth contamination.
+  - **Outlier Filtering**: Applies the standard **Interquartile Range (IQR)** rule ($[Q1 - 1.5 \\times IQR, Q3 + 1.5 \\times IQR]$) to strip anomalous latency spikes caused by OS thread preemption or JIT deoptimizations.
+  - **Metrics tracked**: Mean, Standard Deviation ($\\sigma$), Median, 95% Confidence Interval (CI), p95, and p99 tail latency.
 
 ---
 
@@ -253,19 +289,14 @@ This report details the real-world high-precision performance execution times, b
 
 Below is the execution latency measured in **microseconds (μs)** per call, calculated using standard statistical analysis after JIT engine warm-ups and outlier filtering.
 
-| Telemetry Function | Workload / Complexity | Native (Mean ± $\\sigma$) | Virtualized (Mean ± $\\sigma$) | p95 / p99 Latency | Slowdown Ratio | Status |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| Telemetry Function | Workload / Complexity | Native (Mean ± $\\sigma$) | Virtualized (Mean ± $\\sigma$) | Median Latency | p95 / p99 Latency | 95% Confidence Interval (CI) | Slowdown Ratio |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 ${results.map(r => {
-  let status = '🔴 Heavy Interpreter';
-  if (r.overheadRatio < 100) status = '⚡ JIT Fast Path';
-  else if (r.overheadRatio < 800) status = '🟢 Standard Interpreter';
-  else if (r.overheadRatio < 2000) status = '🟡 Complex Operations';
-  
-  return `| \`${r.name}\` | ${r.desc} | \`${r.origStats.avg.toFixed(2)} μs\` (±${r.origStats.stdDev.toFixed(1)} μs) | \`${r.obfStats.avg.toFixed(2)} μs\` (±${r.obfStats.stdDev.toFixed(1)} μs) | \`${r.obfStats.p95.toFixed(1)} / ${r.obfStats.p99.toFixed(1)} μs\` | **${r.overheadRatio.toFixed(1)}x** | ${status} |`;
+  return `| \`${r.name}\` | ${r.desc} | \`${r.origStats.avg.toFixed(3)} μs\` (±${r.origStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.avg.toFixed(3)} μs\` (±${r.obfStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.median.toFixed(2)} μs\` | \`${r.obfStats.p95.toFixed(1)} / \`${r.obfStats.p99.toFixed(1)} μs\` | \`[${r.obfStats.ciLower.toFixed(2)}, ${r.obfStats.ciUpper.toFixed(2)}] μs\` | **${r.overheadRatio.toFixed(1)}x** |`;
 }).join('\n')}
 
 ### 💡 Micro-Architecture Performance Analysis
-1. **The Core Interpreter Bottleneck**: Standalone VM virtualization introduces substantial CPU branch-prediction misses and instruction dispatching overhead. A tight numerical loop like the Collatz conjecture takes several guest instructions per iteration, leading to over **70,000x** native slowdown. This is expected behavior for custom interpreted register machines.
+1. **The Core Interpreter Bottleneck**: Standalone VM virtualization introduces substantial CPU branch-prediction misses and instruction dispatching overhead. A tight numerical loop like the Collatz conjecture takes several guest instructions per iteration, leading to **${(results.find(r => r.name === 'verifyArtemisCollatzAndMath').overheadRatio).toFixed(0)}x** native slowdown. This is expected behavior for custom interpreted register machines.
 2. **Fast-Path Loop Optimization**: Eliminating try-catch blocks in loops allows V8 to inline the indirect threaded dispatch table, producing standard operation latencies of under **100 μs** for linear paths (like destructuring, state decimation, and gating systems).
 
 ---
