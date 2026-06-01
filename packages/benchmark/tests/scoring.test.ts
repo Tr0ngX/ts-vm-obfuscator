@@ -1,9 +1,127 @@
 import { describe, it, expect } from 'vitest';
-// import { calculateAICost } from '../src/index.js';
+import { runBenchmarkSuite } from '../src/index.js';
+import type { IRModule, BytecodeModule, ObfuscationProfile } from '@tsvm/shared';
 
-describe('Benchmark AI Resistance', () => {
-  it('should accurately calculate token cost for reversing the graph', () => {
-    // Placeholder test
-    expect(true).toBe(true);
+describe('Benchmark Suite Executor', () => {
+  it('should accurately analyze complexity and timing on mock profiles', async () => {
+    // 1. Arrange
+    const mockProfile: ObfuscationProfile = {
+      name: 'stealth-profile',
+      target: 'generic',
+      seed: 42,
+      transforms: {
+        deadCode: { enabled: true, density: 0.1 },
+        controlFlowFlattening: { enabled: true, passes: 1 },
+        opaquePredicates: { enabled: true, density: 0.2 },
+        stringEncryption: { enabled: true, threshold: 0.8 },
+        namespaceVirtualization: { enabled: true },
+        typeLevelFakePath: { enabled: true }
+      },
+      vm: {
+        runtimeHardening: 'stealth',
+        opcodeRemapping: true,
+        rollingKeys: true,
+        threadedDispatch: true,
+        antiDebug: true,
+        tamperDetection: true,
+        stealthDispatch: true,
+      }
+    };
+
+    const mockIR: IRModule[] = [
+      {
+        id: 'mod_1',
+        sourceFile: 'index.ts',
+        functions: [
+          {
+            name: 'calculateSecretHash',
+            locals: [{ name: 'hash' }, { name: 'i' }],
+            blocks: [],
+            registers: 2,
+            parametersCount: 1
+          } as any
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [],
+        metadata: {
+          sourceFile: 'index.ts',
+          originalByteSize: 1500,
+          functionCount: 1,
+          blockCount: 5,
+          instructionCount: 45,
+          buildTimestamp: Date.now()
+        }
+      }
+    ];
+
+    const mockBytecode: BytecodeModule[] = [
+      {
+        magic: 0x5453564d,
+        version: 1,
+        buildId: 'build_test_123',
+        opcodeMapping: {} as any,
+        constantPool: [],
+        functions: [
+          {
+            id: 0,
+            name: 'calculateSecretHash',
+            bytecode: new Uint8Array([
+              0x02, 0x00, 0x00, 0x00, 0x00, // LoadLocal
+              0x30, 0x0A, 0x00, 0x00, 0x00, // Jmp
+              0x40, 0x01, 0x00, 0x00, 0x00, // Call
+              0x03, 0x00, 0x00, 0x00, 0x00, // StoreLocal
+            ]),
+            registers: 2,
+            parametersCount: 1
+          } as any
+        ],
+        entryPointIndex: 0,
+        metadata: {
+          buildId: 'build_test_123',
+          sourceHash: 'abc',
+          profile: 'stealth-profile',
+          deterministicSeed: 42
+        }
+      }
+    ];
+
+    // 2. Act
+    const results = await runBenchmarkSuite(mockIR, mockBytecode, mockProfile);
+
+    // 3. Assert
+    expect(results).toBeDefined();
+    expect(results.suiteId).toBeDefined();
+    expect(results.cases).toHaveLength(1);
+
+    const mainCase = results.cases[0]!;
+    expect(mainCase.profile).toBe('stealth-profile');
+    expect(mainCase.buildId).toBe('build_test_123');
+    expect(mainCase.syntaxPass).toBe(true);
+    expect(mainCase.buildPass).toBe(true);
+    expect(mainCase.semanticEquivalence).toBe(true);
+
+    // Validate size overhead measurements
+    expect(mainCase.sizeOverheadPercent).toBeGreaterThan(0);
+    expect(mainCase.sizeOverheadBytes).toBeGreaterThan(0);
+
+    // Validate control flow branch density and shannon entropy
+    const branchMetric = mainCase.metrics.find(m => m.name === 'CFG Branch Density Ratio');
+    expect(branchMetric).toBeDefined();
+    expect(branchMetric!.value).toBeDefined();
+    expect(branchMetric!.unit).toBe('%');
+
+    const renamingEntropyMetric = mainCase.metrics.find(m => m.name === 'Renaming Information Entropy');
+    expect(renamingEntropyMetric).toBeDefined();
+    expect(renamingEntropyMetric!.value).toBeGreaterThan(0);
+
+    // Validate reverse attempts scoring (resilience)
+    expect(results.reverseAttempts).toHaveLength(2);
+    const solverAttempt = results.reverseAttempts.find(r => r.model === 'LLM_SymbolicExecutor');
+    expect(solverAttempt).toBeDefined();
+    expect(solverAttempt!.semanticRecovery).toBeLessThan(40); // Hardened by stealth & rolling keys
+    expect(solverAttempt!.graphRecovery).toBeLessThan(45);
   });
 });
+

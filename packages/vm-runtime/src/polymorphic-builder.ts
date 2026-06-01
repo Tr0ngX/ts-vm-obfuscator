@@ -700,7 +700,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var propName = ctx.regs[args[0]];
     var globalVal = ${ctxRef('globalScope')}[propName];
-    if (propName === 'Object' || propName === 'TypeError') {
+    if (false) {
       console.log("[DEBUG] LoadGlobal for:", propName);
       console.log("[DEBUG] globalScope exists:", !!${ctxRef('globalScope')});
       console.log("[DEBUG] globalScope[propName] is function:", typeof globalVal === 'function');
