@@ -522,7 +522,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       const numJunk = canonical % 3;
       let junkSkip = '';
       for (let i = 0; i < numJunk; i++) {
-        junkSkip += `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`;
+        junkSkip += config.rollingKeys
+          ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`
+          : `  ctx.pc++;\n`;
       }
 
       // Read args
@@ -551,28 +553,29 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
           ${valVar} = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
         `}
       ` : `
-        let ${kindNumVar} = ${top.readByte}(ctx);
+        let ${kindNumVar} = ctx.bytecode[ctx.pc++];
         let ${valVar} = 0;
         ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
           let shift = 0;
           let b;
           do {
-            b = ${top.readByte}(ctx);
+            b = ctx.bytecode[ctx.pc++];
             ${valVar} |= (b & 0x7F) << shift;
             shift += 7;
           } while (b & 0x80);
         ` : `
-          let b0 = ${top.readByte}(ctx);
-          let b1 = ${top.readByte}(ctx);
-          let b2 = ${top.readByte}(ctx);
-          let b3 = ${top.readByte}(ctx);
+          let b0 = ctx.bytecode[ctx.pc];
+          let b1 = ctx.bytecode[ctx.pc + 1];
+          let b2 = ctx.bytecode[ctx.pc + 2];
+          let b3 = ctx.bytecode[ctx.pc + 3];
+          ctx.pc += 4;
           ${valVar} = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
         `}
       `;
 
       if (isVarLength) {
         myReadArgs = `
-          let argCount = ${top.readByte}(ctx);
+          let argCount = ${config.rollingKeys ? `${top.readByte}(ctx)` : `ctx.bytecode[ctx.pc++]`};
           const ${argsVar} = [];
           for (let i = 0; i < argCount; i++) {
             ${myAdvanceArg}
@@ -1469,10 +1472,47 @@ const ${top.vmFunctions} = (function() {
     let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
     while(handler && ${ctxRef('running')}) {
-      while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
-        ${ctxRef('tryFrames')}.pop();
-      }
-      try {
+      if (${ctxRef('tryFrames')}.length > 0) {
+        while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
+          ${ctxRef('tryFrames')}.pop();
+        }
+        if (${ctxRef('tryFrames')}.length === 0) {
+          continue;
+        }
+        try {
+          if (${ctxRef('resumeMode')} === 'store') {
+            ctx.${ctx.regs}[ctx.${ctx.resumeReg}] = ctx.${ctx.resumeValue};
+            ${ctxRef('resumeMode')} = 'normal';
+            ${ctxRef('resumeValue')} = undefined;
+            ${ctxRef('resumeReg')} = -1;
+          } else if (${ctxRef('resumeMode')} === 'throw') {
+            const pendingError = ctx.${ctx.resumeValue};
+            ${ctxRef('resumeMode')} = 'normal';
+            ${ctxRef('resumeValue')} = undefined;
+            throw pendingError;
+          }
+          if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
+            handler = resolveRoute(ctx, handler(ctx));
+          } else {
+            handler = handler(ctx);
+          }
+        } catch (error) {
+          const handlerFrame = ${ctxRef('tryFrames')}.pop();
+          ${regRef(frameRef('handlerFrame', 'exceptionReg'))} = error;
+          ${ctxRef('running')} = true;
+          ${ctxRef('pc')} = ${frameRef('handlerFrame', 'catchPc')};
+          if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) {
+            handler = null;
+          } else {
+            let nextOp = ${top.readByte}(ctx);
+            if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
+              handler = resolveRoute(ctx, makeRouteToken(ctx, nextOp));
+            } else {
+              handler = ${locals.dispatchBank}[nextOp];
+            }
+          }
+        }
+      } else {
         if (${ctxRef('resumeMode')} === 'store') {
           ctx.${ctx.regs}[ctx.${ctx.resumeReg}] = ctx.${ctx.resumeValue};
           ${ctxRef('resumeMode')} = 'normal';
@@ -1484,30 +1524,10 @@ const ${top.vmFunctions} = (function() {
           ${ctxRef('resumeValue')} = undefined;
           throw pendingError;
         }
-        
         if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
           handler = resolveRoute(ctx, handler(ctx));
         } else {
           handler = handler(ctx);
-        }
-      } catch (error) {
-        if (${ctxRef('tryFrames')}.length === 0) {
-          throw error;
-        }
-        const handlerFrame = ${ctxRef('tryFrames')}.pop();
-        ${regRef(frameRef('handlerFrame', 'exceptionReg'))} = error;
-        ${ctxRef('running')} = true;
-        ${ctxRef('pc')} = ${frameRef('handlerFrame', 'catchPc')};
-        
-        if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) {
-          handler = null;
-        } else {
-          let nextOp = ${top.readByte}(ctx);
-          if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
-            handler = resolveRoute(ctx, makeRouteToken(ctx, nextOp));
-          } else {
-            handler = ${locals.dispatchBank}[nextOp];
-          }
         }
       }
     }
