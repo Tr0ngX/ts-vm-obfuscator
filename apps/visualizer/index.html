@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="TSXobf is a TypeScript semantic-aware obfuscation pipeline that compiles selected functions into polymorphic VM bytecode."
+    />
+    <title>TSXobf - TypeScript VM Obfuscator</title>
+    <link rel="preload" href="site/styles.css" as="style" />
+    <link rel="stylesheet" href="site/styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <header class="nav-wrap">
+      <a class="brand" href="#top" aria-label="TSXobf home">
+        <span class="brand-glyph">TS</span>
+        <span>TSXobf</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#pipeline">Pipeline</a>
+        <a href="#features">Features</a>
+        <a href="#proof">Proof</a>
+        <a href="#status">Status</a>
+        <a href="#run">Run</a>
+      </nav>
+      <a class="nav-button" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator">Download</a>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Semantic-aware TypeScript VM obfuscator</p>
+          <h1>Ship TypeScript logic as hostile bytecode.</h1>
+          <p class="hero-lede">
+            TSXobf compiles selected functions into a polymorphic JavaScript VM while the rest of your app stays native.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="#run">
+              Download and run
+              <span aria-hidden="true">-></span>
+            </a>
+            <a class="secondary-action" href="#pipeline">See how it works</a>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal">
+          <img src="site/visuals/vm-core.svg" alt="Polymorphic VM bytecode core visualization" />
+          <div class="floating-card card-a">
+            <strong>handler = handler(ctx)</strong>
+            <span>Indirect threaded dispatch</span>
+          </div>
+          <div class="floating-card card-b">
+            <strong>xorLog recovery</strong>
+            <span>Self-modifying bytecode</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-strip reveal" aria-label="Project highlights">
+        <div><strong>Selective</strong><span>@virtualize target model</span></div>
+        <div><strong>Register IR</strong><span>typed lowering surface</span></div>
+        <div><strong>Polymorphic VM</strong><span>randomized opcodes and handlers</span></div>
+        <div><strong>Netlify-ready</strong><span>static visualizer website</span></div>
+      </section>
+
+      <section class="product-shot reveal">
+        <div class="product-frame">
+          <div class="terminal-bar">
+            <span></span><span></span><span></span>
+            <p>dist-obf/build_1779526130061_index_ts.js</p>
+          </div>
+          <div class="terminal-grid">
+            <pre><code>/** @virtualize */
+export function calculateSecretHash(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}</code></pre>
+            <div class="byte-wall" aria-hidden="true">
+              <span>73</span><span>7a</span><span>59</span><span>0e</span><span>f4</span><span>0b</span>
+              <span>08</span><span>5a</span><span>c9</span><span>21</span><span>ac</span><span>90</span>
+              <span>44</span><span>17</span><span>d2</span><span>61</span><span>9f</span><span>03</span>
+              <span>bb</span><span>6e</span><span>10</span><span>2d</span><span>80</span><span>c1</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-shell" id="pipeline">
+        <div class="section-copy reveal">
+          <h2>A compiler backend, not a prettier AST mess.</h2>
+          <p>
+            TSXobf follows the full project pipeline documented in the repo: TypeScript analysis, semantic graph,
+            IR lowering, transform passes, bytecode compilation, runtime generation, and bundle emission.
+          </p>
+        </div>
+        <div class="pipeline-grid">
+          <article class="pipeline-node reveal"><span>01</span><h3>TypeScript project analysis</h3><p>Uses the TypeScript Compiler API to resolve imports, exports, scope rules, and typed symbols.</p></article>
+          <article class="pipeline-node reveal"><span>02</span><h3>Register-based IR</h3><p>Selected regions are lowered into a VM-safe intermediate representation with explicit control flow.</p></article>
+          <article class="pipeline-node reveal"><span>03</span><h3>Transform passes</h3><p>String pools, symbol indirection, fake paths, generic confusion, namespace virtualization, and debug stripping.</p></article>
+          <article class="pipeline-node reveal"><span>04</span><h3>Bytecode compiler</h3><p>IR instructions compile into encrypted, remapped, build-specific opcode streams.</p></article>
+          <article class="pipeline-node reveal"><span>05</span><h3>Generated VM runtime</h3><p>Runtime handlers execute through polymorphic dispatch and protected private-state access.</p></article>
+          <article class="pipeline-node reveal"><span>06</span><h3>Standalone output</h3><p>The CLI writes protected JavaScript bundles into <code>dist-obf/</code> for Node, browser, Electron, or workers.</p></article>
+        </div>
+      </section>
+
+      <section class="feature-section" id="features">
+        <div class="feature-art reveal">
+          <img src="site/visuals/semantic-dna.svg" alt="Semantic DNA randomized VM architecture diagram" />
+        </div>
+        <div class="feature-list">
+          <article class="feature-card reveal"><h3>Semantic-aware compilation</h3><p>Protects TypeScript functions with real compiler context instead of relying only on rename and dead-code tricks.</p></article>
+          <article class="feature-card reveal"><h3>1-to-N opcode aliasing</h3><p>One canonical instruction can map to multiple virtual opcodes, randomized per build.</p></article>
+          <article class="feature-card reveal"><h3>Anti-symbolic fake paths</h3><p>Trap-backed unreachable blocks sit behind congruence predicates designed to waste dynamic exploration.</p></article>
+          <article class="feature-card reveal"><h3>Encrypted constant pool</h3><p>Strings, numbers, and property lookups are moved into lazy-decoded runtime storage.</p></article>
+          <article class="feature-card reveal"><h3>Profiles for real apps</h3><p>Generic, React, Electron, and library profiles keep protection aligned with different deployment surfaces.</p></article>
+          <article class="feature-card reveal"><h3>WASM hybrid option</h3><p>Validates a native WebAssembly bootstrap while preserving current bytecode semantics through the JS VM executor.</p></article>
+        </div>
+      </section>
+
+      <section class="proof-section" id="proof">
+        <div class="proof-copy reveal">
+          <h2>Proof that does not hide the cost.</h2>
+          <p>
+            The project reports real verification and benchmark tradeoffs: VM interpretation raises analysis cost, but
+            it is intentionally used for selected high-value logic because overhead is real.
+          </p>
+        </div>
+        <div class="proof-grid">
+          <article class="proof-tile reveal"><strong>62</strong><span>Vitest checks in the latest hardening pass</span></article>
+          <article class="proof-tile reveal"><strong>13</strong><span>workspace build tasks passed in the documented regression</span></article>
+          <article class="proof-tile reveal"><strong>7.15</strong><span>Shannon bits reported for bytecode instruction payload entropy</span></article>
+          <article class="proof-tile reveal"><strong>Selective</strong><span>critical algorithms protected, UI and framework code stay native</span></article>
+        </div>
+      </section>
+
+      <section class="threat-model reveal">
+        <h2>Security posture, honestly stated.</h2>
+        <div class="threat-rows">
+          <div><strong>Naive static analysis</strong><span>High protection</span><p>AST deobfuscators and signature regex tools lose the original execution shape.</p></div>
+          <div><strong>Automated emulation</strong><span>Medium protection</span><p>Rolling bytecode and opaque predicates raise solver friction but can be traced by determined tools.</p></div>
+          <div><strong>Manual VM devirtualization</strong><span>Low-medium protection</span><p>A skilled reverser can still recover behavior with enough dynamic analysis time.</p></div>
+        </div>
+      </section>
+
+      <section class="status-section" id="status">
+        <div class="section-copy reveal">
+          <h2>Full feature surface, with the limits visible.</h2>
+          <p>
+            This website mirrors the Markdown docs: strong verified coverage is highlighted, and unstable syntax remains
+            explicit instead of being sold as universal JavaScript support.
+          </p>
+        </div>
+        <div class="status-matrix">
+          <article class="status-card reveal"><span>Fully supported</span><h3>Loops, switch, throw, delete, calls, new, for-in, for-of</h3></article>
+          <article class="status-card reveal"><span>Fully supported</span><h3>Destructuring, rest and spread, sparse arrays, computed keys</h3></article>
+          <article class="status-card reveal"><span>Fully supported</span><h3>Closures, nested functions, this, new.target, generators</h3></article>
+          <article class="status-card reveal"><span>Supported with limits</span><h3>Async/await, base classes, object forms, wasm-hybrid</h3></article>
+          <article class="status-card reveal"><span>Not stable yet</span><h3>Derived classes with extends/super and static class blocks</h3></article>
+          <article class="status-card reveal"><span>Guardrail</span><h3>Unsupported AST fails loudly instead of silently compiling wrong behavior</h3></article>
+        </div>
+      </section>
+
+      <section class="run-section" id="run">
+        <div class="run-panel reveal">
+          <div>
+            <h2>Download. Build. Protect one function.</h2>
+            <p>
+              The path is intentionally simple for a technical buyer: clone the repo, install the workspace, build, and
+              run the CLI against the sample project.
+            </p>
+          </div>
+          <pre><code>git clone https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
+cd ts-vm-obfuscator
+pnpm install
+pnpm build
+node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile generic</code></pre>
+          <div class="run-actions">
+            <a class="primary-action" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator">Download from GitHub <span aria-hidden="true">-></span></a>
+            <a class="secondary-action" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator/blob/main/docs/support-status.md">Read support status</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="site/site.js" defer></script>
+  </body>
+</html>

@@ -274,9 +274,11 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
           const ops = inst.operands!;
           if (inst.opcode === OpCode.Jmp) {
-             const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-             (ops[0] as any).value = instByteOffset[targetIdx]!;
-             (ops[0] as any).kind = OperandKind.Immediate;
+             if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
+               const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
+               (ops[0] as any).value = instByteOffset[targetIdx]!;
+               (ops[0] as any).kind = OperandKind.Immediate;
+             }
           } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
               const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
               const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;

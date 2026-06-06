@@ -42,6 +42,14 @@ export class ControlFlowFlatteningPass implements TransformPass {
       }
       const stateReg = `r${maxReg + 1}` as Register;
       const tempReg = `r${maxReg + 2}` as Register;
+      const tableReg = `r${maxReg + 3}` as Register;
+      const primeReg = `r${maxReg + 4}` as Register;
+      const sizeReg = `r${maxReg + 5}` as Register;
+      const mulReg = `r${maxReg + 6}` as Register;
+      const idxReg = `r${maxReg + 7}` as Register;
+      const targetReg = `r${maxReg + 8}` as Register;
+      const constIdxReg = `r${maxReg + 9}` as Register;
+      const constLblReg = `r${maxReg + 10}` as Register;
 
       // 3. Add state constants to constant pool
       const stateConstants = new Map<number, number>(); // stateId -> cpIndex
@@ -51,30 +59,19 @@ export class ControlFlowFlatteningPass implements TransformPass {
         stateConstants.set(stateId, cpIdx);
       }
 
+      const getOrAddNumberConstant = (val: number): number => {
+        let idx = constantPool.findIndex(c => c.kind === ConstantKind.Number && c.value === val);
+        if (idx === -1) {
+          idx = constantPool.length;
+          constantPool.push({ index: idx, kind: ConstantKind.Number, value: val });
+        }
+        return idx;
+      };
+
       // 4. Build the dispatcher block
       const dispatcherId = `__cff_dispatch_${ctx.rng.identifier(6)}`;
       const exitId = `__cff_exit_${ctx.rng.identifier(4)}`;
       const entryStateId = stateMap.get(func.blocks[0]!.id)!;
-
-      // Entry block: set initial state, jump to dispatcher
-      const entryBlockId = `__cff_entry_${ctx.rng.identifier(4)}`;
-      const entryBlock: BasicBlock = {
-        id: entryBlockId,
-        label: 'cff_entry',
-        instructions: [
-          {
-            opcode: OpCode.LoadConst,
-            operands: [
-              { kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }
-            ],
-            result: stateReg
-          }
-        ],
-        terminator: { kind: 'jump', targets: [dispatcherId] },
-        predecessors: [],
-        successors: [dispatcherId],
-        phiNodes: []
-      };
 
       // 5. Transform each original block into a case block
       // Each block ends by setting stateReg to the next state and jumping back to dispatcher
@@ -158,70 +155,223 @@ export class ControlFlowFlatteningPass implements TransformPass {
         });
       }
 
-      // 6. Build dispatcher block with chained comparisons
-      const dispatchInstructions: Instruction[] = [];
-      // The dispatcher loads stateReg and compares with each case state
-      // We use a chain of Eq + JmpIf checks
-      // This gets compiled to a series of: LoadConst stateVal -> Eq stateReg, stateVal -> JmpIf
-
-      // For now, build the dispatcher with direct terminator-based routing
-      // The dispatcher is a chain block: compare state, branch to matching case or next comparison
-      const comparisonBlocks: BasicBlock[] = [];
+      // Build perfect hashing table
       const orderedCases = [...caseBlocks.filter(b => b.label?.startsWith('cff_case_'))];
 
-      // Pre-generate comparison block IDs so they link correctly without random mismatch
-      const cmpBlockIds: string[] = [];
-      for (let i = 0; i < orderedCases.length; i++) {
-        cmpBlockIds.push(`__cff_cmp_${i}_${ctx.rng.identifier(4)}`);
+      let tableSize = 1;
+      while (tableSize < orderedCases.length) {
+        tableSize *= 2;
       }
 
-      for (let i = 0; i < orderedCases.length; i++) {
-        const caseBlock = orderedCases[i]!;
-        const stateId = stateMap.get(caseBlock.label!.replace('cff_case_', '')!)!;
-        const compBlockId = cmpBlockIds[i]!;
-        const nextCompId = i < orderedCases.length - 1 ? cmpBlockIds[i + 1]! : exitId;
+      // Find a prime that results in a collision-free mapping
+      const primes = [
+        31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 
+        101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199,
+        211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293,
+        307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397
+      ];
 
-        const cmpTempReg = `r${maxReg + 3 + i}` as Register;
+      let selectedPrime = 31;
+      let collisionFree = false;
 
-        comparisonBlocks.push({
-          id: compBlockId,
-          label: `cff_dispatch_${i}`,
-          instructions: [
-            {
-              opcode: OpCode.LoadConst,
-              operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(stateId)! }],
-              result: cmpTempReg
-            },
-            {
-              opcode: OpCode.Eq,
-              operands: [
-                { kind: OperandKind.Register, value: stateReg },
-                { kind: OperandKind.Register, value: cmpTempReg }
-              ],
-              result: tempReg
+      while (!collisionFree) {
+        for (const prime of primes) {
+          const seen = new Set<number>();
+          let collision = false;
+          for (const block of orderedCases) {
+            const stateId = stateMap.get(block.label!.replace('cff_case_', '')!)!;
+            const idx = (stateId * prime) % tableSize;
+            if (seen.has(idx)) {
+              collision = true;
+              break;
             }
-          ],
-          terminator: {
-            kind: 'branch',
-            targets: [caseBlock.id, nextCompId],
-            condition: tempReg
-          },
-          predecessors: i === 0 ? [entryBlockId, dispatcherId] : [cmpBlockIds[i - 1]!],
-          successors: [caseBlock.id, nextCompId],
-          phiNodes: []
-        });
+            seen.add(idx);
+          }
+          if (!collision) {
+            selectedPrime = prime;
+            collisionFree = true;
+            break;
+          }
+        }
+        if (!collisionFree) {
+          tableSize *= 2;
+        }
       }
 
-      // Dispatcher block just jumps to first comparison
+      const tableSlots = new Map<number, string>();
+      for (const caseBlock of orderedCases) {
+        const stateId = stateMap.get(caseBlock.label!.replace('cff_case_', '')!)!;
+        const slotIdx = (stateId * selectedPrime) % tableSize;
+        tableSlots.set(slotIdx, caseBlock.id);
+      }
+
+      // Entry block: set initial state, initialize jump table array, jump to dispatcher
+      const entryBlockId = `__cff_entry_${ctx.rng.identifier(4)}`;
+      const entryBlockInstructions: Instruction[] = [
+        {
+          opcode: OpCode.LoadConst,
+          operands: [
+            { kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }
+          ],
+          result: stateReg
+        },
+        // Initialize jump table array
+        {
+          opcode: OpCode.ArrayNew,
+          operands: [],
+          result: tableReg
+        }
+      ];
+
+      // Populating the table array
+      for (let i = 0; i < tableSize; i++) {
+        const targetBlockId = tableSlots.get(i) || exitId;
+        const valIdx = getOrAddNumberConstant(i);
+        entryBlockInstructions.push(
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.BlockLabel, value: targetBlockId }],
+            result: constLblReg
+          },
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: valIdx }],
+            result: constIdxReg
+          },
+          {
+            opcode: OpCode.ComputedSet,
+            operands: [
+              { kind: OperandKind.Register, value: tableReg },
+              { kind: OperandKind.Register, value: constIdxReg },
+              { kind: OperandKind.Register, value: constLblReg }
+            ]
+          }
+        );
+      }
+
+      const entryBlock: BasicBlock = {
+        id: entryBlockId,
+        label: 'cff_entry',
+        instructions: entryBlockInstructions,
+        terminator: { kind: 'jump', targets: [dispatcherId] },
+        predecessors: [],
+        successors: [dispatcherId],
+        phiNodes: []
+      };
+
+      // Real dispatcher block performing perfect hashing modulo jump table
       const dispatcherBlock: BasicBlock = {
         id: dispatcherId,
         label: 'cff_dispatcher',
-        instructions: [],
-        terminator: { kind: 'jump', targets: [comparisonBlocks[0]?.id || exitId] },
-        predecessors: [entryBlockId],
-        successors: [comparisonBlocks[0]?.id || exitId],
+        instructions: [
+          // 1. Load prime
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(selectedPrime) }],
+            result: primeReg
+          },
+          // 2. Mul: stateReg * primeReg
+          {
+            opcode: OpCode.Mul,
+            operands: [
+              { kind: OperandKind.Register, value: stateReg },
+              { kind: OperandKind.Register, value: primeReg }
+            ],
+            result: mulReg
+          },
+          // 3. Load table size
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(tableSize) }],
+            result: sizeReg
+          },
+          // 4. Mod: mulReg % sizeReg
+          {
+            opcode: OpCode.Mod,
+            operands: [
+              { kind: OperandKind.Register, value: mulReg },
+              { kind: OperandKind.Register, value: sizeReg }
+            ],
+            result: idxReg
+          },
+          // 5. ComputedGet: tableReg[idxReg] -> targetReg
+          {
+            opcode: OpCode.ComputedGet,
+            operands: [
+              { kind: OperandKind.Register, value: tableReg },
+              { kind: OperandKind.Register, value: idxReg }
+            ],
+            result: targetReg
+          },
+          // 6. Jmp targetReg
+          {
+            opcode: OpCode.Jmp,
+            operands: [{ kind: OperandKind.Register, value: targetReg }]
+          }
+        ],
+        terminator: { kind: 'dynamic_jmp' as any, targets: [] },
+        predecessors: [entryBlockId, ...caseBlocks.map(b => b.id)],
+        successors: [],
         phiNodes: []
       };
+
+      // 6. Build decoy comparison chains as noise to confuse pattern scanners
+      const decoyBlocks: BasicBlock[] = [];
+      for (let i = 0; i < 2; i++) {
+        const decoyCmpBlockId = `__cff_decoy_cmp_${i}_${ctx.rng.identifier(4)}`;
+        const decoyCaseBlockId = `__cff_decoy_case_${i}_${ctx.rng.identifier(4)}`;
+        const decoyNextBlockId = i === 0 ? `__cff_decoy_cmp_1_${ctx.rng.identifier(4)}` : exitId;
+        const decoyStateId = ctx.rng.nextRange(1000, 0x7FFFFFFF);
+        const decoyStateIdx = getOrAddNumberConstant(decoyStateId);
+        
+        decoyBlocks.push(
+          {
+            id: decoyCmpBlockId,
+            label: `cff_decoy_cmp_${i}`,
+            instructions: [
+              {
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: decoyStateIdx }],
+                result: tempReg
+              },
+              {
+                opcode: OpCode.Eq,
+                operands: [
+                  { kind: OperandKind.Register, value: stateReg },
+                  { kind: OperandKind.Register, value: tempReg }
+                ],
+                result: tempReg
+              }
+            ],
+            terminator: {
+              kind: 'branch',
+              targets: [decoyCaseBlockId, decoyNextBlockId],
+              condition: tempReg
+            },
+            predecessors: [],
+            successors: [decoyCaseBlockId, decoyNextBlockId],
+            phiNodes: []
+          },
+          {
+            id: decoyCaseBlockId,
+            label: `cff_decoy_case_${i}`,
+            instructions: [
+              {
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: decoyStateIdx }],
+                result: stateReg
+              }
+            ],
+            terminator: {
+              kind: 'jump',
+              targets: [dispatcherId]
+            },
+            predecessors: [decoyCmpBlockId],
+            successors: [dispatcherId],
+            phiNodes: []
+          }
+        );
+      }
 
       // Exit block (trap / unreachable)
       const exitBlock: BasicBlock = {
@@ -238,7 +388,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const allBlocks = ctx.rng.shuffle([
         entryBlock,
         dispatcherBlock,
-        ...comparisonBlocks,
+        ...decoyBlocks,
         ...caseBlocks,
         exitBlock
       ]);

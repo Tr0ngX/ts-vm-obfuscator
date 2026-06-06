@@ -115,11 +115,16 @@ export class NamespaceVirtualizationPass implements TransformPass {
     ]);
 
     function hashString(str: string, seed: number): string {
-      let hash = 5381 + seed;
+      // FNV-1a with keyed initialization and output folding
+      let hash = (seed ^ 0x811c9dc5) >>> 0;
+      const prime = 0x01000193;
       for (let i = 0; i < str.length; i++) {
-        hash = (hash * 33) ^ str.charCodeAt(i);
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, prime) >>> 0;
       }
-      return (hash >>> 0).toString(16);
+      // XOR-fold and combine with rotated seed for wider hash space
+      const folded = ((hash >>> 16) ^ (hash & 0xFFFF)) ^ ((seed >>> 8) & 0xFFFF);
+      return folded.toString(16).padStart(4, '0') + ((hash ^ seed) >>> 0).toString(16);
     }
 
     const newFunctions = ctx.module.functions.map(func => {

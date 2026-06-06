@@ -377,7 +377,7 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).toContain('let kindNum = readByte(ctx);');
     expect(bundle.fullSource).toContain('let argCount = readByte(ctx);');
     expect(bundle.fullSource).toContain('ctx.bytecode[pos] ^= mask;');
-    expect(bundle.fullSource).toContain('ctx.xorLog[pos] ^= mask;');
+    expect(bundle.fullSource).toContain('ctx.xorLog[pos] ^= revMask;');
     expect(bundle.fullSource).toContain('Math.imul');
     expect(bundle.fullSource).toContain('return handlers[nextOp];');
     expect(bundle.fullSource).toContain('handler = handler(ctx);');

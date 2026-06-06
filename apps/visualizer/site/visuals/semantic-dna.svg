@@ -1,0 +1,22 @@
+<svg width="760" height="920" viewBox="0 0 760 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="760" height="920" rx="44" fill="#080E0B"/>
+  <rect x="28" y="28" width="704" height="864" rx="34" fill="#0D1712" stroke="#D6FFDF" stroke-opacity=".14"/>
+  <path d="M380 92C238 176 238 282 380 366C522 450 522 556 380 640C238 724 238 810 380 868" stroke="#9DFF6F" stroke-width="3"/>
+  <path d="M380 92C522 176 522 282 380 366C238 450 238 556 380 640C522 724 522 810 380 868" stroke="#4DF79F" stroke-width="3" stroke-opacity=".72"/>
+  <g stroke="#D6FFDF" stroke-opacity=".18">
+    <path d="M279 158h202M251 238h258M296 318h168M286 398h188M244 478h272M294 558h172M252 638h256M280 718h200M308 798h144"/>
+  </g>
+  <g font-family="Consolas, monospace" font-size="15" fill="#CFE6D8">
+    <text x="78" y="110">SEMANTIC DNA</text>
+    <text x="78" y="150" fill="#8EA39A">seeded VM heterogeneity</text>
+    <text x="78" y="274">ISA shuffle</text>
+    <text x="78" y="514">bytecode permutation</text>
+    <text x="78" y="754">handler topology</text>
+    <text x="514" y="274">register model</text>
+    <text x="514" y="514">constant pool</text>
+    <text x="514" y="754">dispatch route</text>
+  </g>
+  <g fill="#9DFF6F">
+    <circle cx="380" cy="92" r="8"/><circle cx="380" cy="366" r="8"/><circle cx="380" cy="640" r="8"/><circle cx="380" cy="868" r="8"/>
+  </g>
+</svg>

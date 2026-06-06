@@ -98,7 +98,7 @@ export class StringPoolEncodingPass implements TransformPass {
 
               if (constant && constant.kind === ConstantKind.String && typeof constant.value === 'string' && constant.value.length >= minLength) {
                 const fullStr = constant.value;
-                const key = ctx.rng.nextRange(1, 255);
+                const baseKey = ctx.rng.nextRange(1, 255);
 
                 const r_arr = `r${nextTempRegId++}` as Register;
                 const r_val = `r${nextTempRegId++}` as Register;
@@ -135,10 +135,19 @@ export class StringPoolEncodingPass implements TransformPass {
                   }
                 ];
 
+                // Per-character cascading key derivation:
+                // charKey_i = ((baseKey * (i + 1)) ^ prevEncoded ^ (i * 37)) & 0xFF
+                // prevEncoded starts as baseKey, then becomes the current encoded value
+                let prevEncoded = baseKey;
                 for (let i = 0; i < fullStr.length; i++) {
-                  const tempVal = fullStr.charCodeAt(i) ^ key;
-                  const valIdx = getOrAddNumberConstant(tempVal);
-                  const keyIdx = getOrAddNumberConstant(key);
+                  const charKey = ((baseKey * (i + 1)) ^ prevEncoded ^ (i * 37)) & 0xFF;
+                  // Ensure charKey is non-zero to avoid identity XOR
+                  const effectiveKey = charKey === 0 ? 1 : charKey;
+                  const encoded = fullStr.charCodeAt(i) ^ effectiveKey;
+                  prevEncoded = encoded & 0xFF;
+
+                  const valIdx = getOrAddNumberConstant(encoded);
+                  const keyIdx = getOrAddNumberConstant(effectiveKey);
                   const idxIdx = getOrAddNumberConstant(i);
 
                   stringPoolInsts.push(

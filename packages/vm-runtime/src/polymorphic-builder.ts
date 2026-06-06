@@ -577,9 +577,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         myReadArgs = `
           let argCount = ${config.rollingKeys ? `${top.readByte}(ctx)` : `ctx.bytecode[ctx.pc++]`};
           const ${argsVar} = [];
+          const kinds = [];
           for (let i = 0; i < argCount; i++) {
             ${myAdvanceArg}
             ${argsVar}.push(${valVar});
+            kinds.push(${kindNumVar});
           }
         `;
       } else {
@@ -595,9 +597,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         }
         myReadArgs = `
           const ${argsVar} = [];
+          const kinds = [];
           for (let i = 0; i < ${operandCount}; i++) {
             ${myAdvanceArg}
             ${argsVar}.push(${valVar});
+            kinds.push(${kindNumVar});
           }
         `;
       }
@@ -691,7 +695,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(OpCode.LoadConst, `
     ${readArgs}
-    ${regRef('args[1]')} = ${top.getCP}(args[0]);
+    ${regRef('args[1]')} = (kinds[0] === 2) ? ${top.getCP}(args[0]) : args[0];
   `);
   declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
@@ -854,7 +858,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       : new (Function.prototype.bind.apply(ctorArray, [null].concat(ctorArrayArgs)))();
   `);
   
-  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = args[0];`);
+  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = (kinds[0] === 0) ? ctx.regs[args[0]] : args[0];`);
   declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];`);
   declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];`);
   
@@ -977,12 +981,26 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   ` : '';
 
   const tamperDetectionLogic = config.tamperDetection ? `
-    // Premium JS-Confuser-inspired native intrinsics verification
+    // Multi-layer native intrinsics verification (hardened against toString spoofing)
     var _isNative = function(fn) {
       try { 
+        if (typeof fn !== 'function') return false;
         var s = ${top.nativeToString}.call(fn);
-        return /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/.test(s) || 
+        var regexPass = /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/.test(s) || 
                (s.indexOf('[native code]') !== -1 && s.indexOf('function') !== -1);
+        if (!regexPass) return false;
+        // Cross-check: verify our cached toString reference itself reports native
+        var selfCheck = ${top.nativeToString}.call(${top.nativeToString});
+        if (selfCheck.indexOf('[native code]') === -1) return false;
+        // Prototype identity: native functions have non-configurable prototype
+        var protoDesc = Object.getOwnPropertyDescriptor(fn, 'prototype');
+        // Most builtins lack own 'prototype' (WeakMap.prototype.get, etc.)
+        // If present, it should not be configurable on native constructors
+        if (protoDesc && protoDesc.configurable && fn.length === 0) return false;
+        // Name consistency: native function name should not be writable
+        var nameDesc = Object.getOwnPropertyDescriptor(fn, 'name');
+        if (nameDesc && nameDesc.writable) return false;
+        return true;
       }
       catch (_) { return false; }
     };
@@ -1065,7 +1083,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
           for (let offset = 0; offset < 16; offset++) {
             const vOp = (b << 4) | offset;
             const variants = vOpToVariants[vOp];
-            subCases += `        case ${offset}: var va = ${variants}; return va[(Math.random() * va.length) | 0];\n`;
+            subCases += `        case ${offset}: var va = ${variants}; return va[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % va.length];\n`;
           }
           casesStr += `      case ${b}:\n        switch (nextOp & 0xF) {\n${subCases}        }\n        break;\n`;
         }
@@ -1105,7 +1123,7 @@ ${casesStr}
     var h = (nibSwap ^ ${saltByte} ^ ${saltByte2}) & 0xFF;
     var variants = _hcVT[h];
     if (!variants || !variants.length) return ${trapFnName};
-    return variants[(Math.random() * variants.length) | 0];
+    return variants[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % variants.length];
   }
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
@@ -1129,7 +1147,7 @@ ${casesStr}
     var scrambled = (nextOp ^ ${xorScramble}) & 0xFF;
     var variants = _tfVT[scrambled];
     if (!variants || !variants.length) return ${trapFnName};
-    return variants[(Math.random() * variants.length) | 0];
+    return variants[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % variants.length];
   }
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
@@ -1164,7 +1182,7 @@ ${casesStr}
     var h = (_rev8(nextOp) ^ ${bitRevSalt}) & 0xFF;
     var variants = _brVT[h];
     if (!variants || !variants.length) return ${trapFnName};
-    return variants[(Math.random() * variants.length) | 0];
+    return variants[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % variants.length];
   }
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
@@ -1190,7 +1208,7 @@ ${casesStr}
     var h = ((nextOp * ${oddMul}) + ${addConst4}) & 0xFF;
     var variants = _afVT[h];
     if (!variants || !variants.length) return ${trapFnName};
-    return variants[(Math.random() * variants.length) | 0];
+    return variants[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % variants.length];
   }
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
@@ -1224,7 +1242,9 @@ ${casesStr}
       r: fn.maxRegisters,
       s: fnSalt
     };
-    allBytecodes.push(...fn.bytecode);
+    for (let i = 0; i < fn.bytecode.length; i++) {
+      allBytecodes.push(fn.bytecode[i]!);
+    }
     currentOffset += fn.bytecode.length;
   }
 
@@ -1258,6 +1278,7 @@ ${casesStr}
   const sourceCode = `
 // Polymorphic Threaded VM Engine - Build: ${module.buildId}
 const ${top.vmFunctions} = (function() {
+  "use strict";
   const ${top.seed} = ${config.seed};
   const ${top.rawCP} = ${cp};
   const ${top.weakMapCtor} = WeakMap;
@@ -1275,13 +1296,10 @@ const ${top.vmFunctions} = (function() {
   let executionCounter = 0;
 
   function selfDestruct(ctx) {
-    if (ctx) {
-      ctx.poisoned = true;
-      return;
-    }
-    ctx.${ctx.regs} = [];
-    ctx.${ctx.pc} = 999999;
+    if (!ctx) return;
+    ctx.poisoned = true;
     ctx.${ctx.running} = false;
+    ctx.${ctx.pc} = 999999;
     if (ctx.${ctx.bytecode}) {
       for (var i = 0; i < ctx.${ctx.bytecode}.length; i++) {
         ctx.${ctx.bytecode}[i] = 0;
@@ -1292,6 +1310,7 @@ const ${top.vmFunctions} = (function() {
         ctx.${ctx.xorLog}[i] = 0;
       }
     }
+    ctx.${ctx.regs} = [];
     ctx.${ctx.env} = [];
     ctx.${ctx.tryFrames} = [];
     ctx.${ctx.returnValue} = undefined;
@@ -1360,13 +1379,25 @@ const ${top.vmFunctions} = (function() {
     var nonce = ctx.executionNonce || 0;
     var op = ctx.currentOpcode || 0;
     var mixed = (pos ^ decoded ^ op ^ salt ^ nonce) & 0xFF;
-    ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ mixed, ${mulConst}) + ${addConst}) | 0;
+    // MurmurHash3-inspired non-linear mixing (replaces reversible LCG)
+    var s = ctx.${ctx.rollingState} ^ mixed;
+    s = Math.imul(s, 0xcc9e2d51);
+    s = ((s << 15) | (s >>> 17));
+    s = Math.imul(s, 0x1b873593);
+    s ^= (s >>> 13);
+    s = Math.imul(s, 0xc2b2ae35);
+    s ^= (s >>> 16);
+    ctx.${ctx.rollingState} = s;
   }
 
   function corruptByteNear(ctx, at, mask) {
     if (at >= 0 && at < ctx.bytecode.length) {
+      // Asymmetric masking: xorLog gets bit-reversed mask (linear over XOR, prevents cancellation)
+      var rev = ((mask & 0xF0) >>> 4) | ((mask & 0x0F) << 4);
+      rev = ((rev & 0xCC) >>> 2) | ((rev & 0x33) << 2);
+      rev = ((rev & 0xAA) >>> 1) | ((rev & 0x55) << 1);
       ctx.bytecode[at] ^= mask;
-      ctx.${ctx.xorLog}[at] ^= mask;
+      ctx.${ctx.xorLog}[at] ^= rev;
     }
   }
 
@@ -1381,13 +1412,23 @@ const ${top.vmFunctions} = (function() {
     if (pos >= ${ctxRef('bytecode')}.length) return 0;
     var byte = ${ctxRef('bytecode')}[pos];
     ${config.rollingKeys ? `
-      byte ^= ${ctxRef('xorLog')}[pos];
+      var xorVal = ${ctxRef('xorLog')}[pos];
+      var rev = ((xorVal & 0xF0) >>> 4) | ((xorVal & 0x0F) << 4);
+      rev = ((rev & 0xCC) >>> 2) | ((rev & 0x33) << 2);
+      rev = ((rev & 0xAA) >>> 1) | ((rev & 0x55) << 1);
+      byte ^= rev;
       var rawDecoded = byte ^ ((${top.seed} ^ pos) & 0xFF);
       var decoded = (rawDecoded - pos) & 0xFF;
       if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
         mixRollingState(ctx, pos, decoded);
       } else {
-        ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState}, ${mulConst}) + ${addConst}) | 0;
+        // Non-linear state advancement (replaces reversible LCG)
+        var s_nr = ctx.${ctx.rollingState} ^ pos;
+        s_nr = Math.imul(s_nr, 0xcc9e2d51);
+        s_nr = ((s_nr << 15) | (s_nr >>> 17));
+        s_nr = Math.imul(s_nr, 0x1b873593);
+        s_nr ^= (s_nr >>> 13);
+        ctx.${ctx.rollingState} = s_nr;
       }
       var mask = ((ctx.${ctx.rollingState} >>> 16) & 0xFF) | 1;
       if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
@@ -1397,8 +1438,11 @@ const ${top.vmFunctions} = (function() {
         var stride = ((ctx.${ctx.rollingState} >>> 8) & 3) + 2;
         corruptByteNear(ctx, pos + stride, (mask * 13) & 0xFF);
       } else {
-        ctx.${ctx.bytecode}[pos] ^= mask;
-        ctx.${ctx.xorLog}[pos] ^= mask;
+         var revMask = ((mask & 0xF0) >>> 4) | ((mask & 0x0F) << 4);
+         revMask = ((revMask & 0xCC) >>> 2) | ((revMask & 0x33) << 2);
+         revMask = ((revMask & 0xAA) >>> 1) | ((revMask & 0x55) << 1);
+         ctx.${ctx.bytecode}[pos] ^= mask;
+         ctx.${ctx.xorLog}[pos] ^= revMask;
       }
       return decoded;
     ` : `
@@ -1435,10 +1479,38 @@ const ${top.vmFunctions} = (function() {
   }
 
   function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr, registerCount, salt) {
-    const ctx = {
+    var rawRegs = new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined);
+    var regCount = rawRegs.length;
+    var ctx;
+    var regsProxy = new Proxy(rawRegs, {
+      get: function(target, prop) {
+        if (typeof prop === 'string') {
+          var idx = +prop;
+          if (idx === idx) {
+            if (idx < 0 || idx >= regCount) {
+              throw new Error('Register out of bounds (get): ' + idx + ', regCount: ' + regCount);
+            }
+          }
+        }
+        return target[prop];
+      },
+      set: function(target, prop, val) {
+        if (typeof prop === 'string') {
+          var idx = +prop;
+          if (idx === idx) {
+            if (idx < 0 || idx >= regCount) {
+              throw new Error('Register out of bounds (set): ' + idx + ', regCount: ' + regCount + ', val: ' + val);
+            }
+          }
+        }
+        target[prop] = val;
+        return true;
+      }
+    });
+    ctx = {
       ${ctx.pc}: 0,
       ${ctx.bytecode}: ${config.rollingKeys ? 'Uint8Array.from(bytecodeArr)' : 'bytecodeArr'},
-      ${ctx.regs}: new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined),
+      ${ctx.regs}: regsProxy,
       ${ctx.fnArgs}: argsArr,
       ${ctx.env}: envArr || [],
       ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
@@ -1456,7 +1528,8 @@ const ${top.vmFunctions} = (function() {
       ${ctx.executionNonce}: ${config.rollingKeys ? `(++executionCounter)` : '0'},
       salt: ${config.rollingKeys ? 'salt' : '0'},
       currentOpcode: 0,
-      poisoned: false
+      poisoned: false,
+      regCount: regCount
     };
     for (let i = 0; i < argsArr.length; i++) {
       ${regRef('i')} = argsArr[i];
@@ -1471,7 +1544,7 @@ const ${top.vmFunctions} = (function() {
     let ${locals.opByte} = ${top.readByte}(ctx);
     let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
-    while(handler && ${ctxRef('running')}) {
+    while(handler && ${ctxRef('running')} && !ctx.poisoned) {
       if (${ctxRef('tryFrames')}.length > 0) {
         while (${ctxRef('tryFrames')}.length > 0 && ${ctxRef('pc')} >= ${ctxRef('tryFrames')}[${ctxRef('tryFrames')}.length - 1].${frame.endPc}) {
           ${ctxRef('tryFrames')}.pop();
@@ -1721,6 +1794,9 @@ const ${top.vmFunctions} = (function() {
 
   var ${top.result} = {};
 ${exportedFunctions.map(fn => `  ${top.result}['${fn.name}'] = ${top.getExecutorById}('${fn.id}');`).join('\n')}
+  if (typeof Object.freeze === 'function') {
+    Object.freeze(${top.result});
+  }
   return ${top.result};
 })();
 

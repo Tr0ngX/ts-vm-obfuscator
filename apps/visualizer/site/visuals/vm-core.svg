@@ -1,0 +1,27 @@
+<svg width="920" height="820" viewBox="0 0 920 820" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="920" height="820" rx="48" fill="#07100C"/>
+  <rect x="24" y="24" width="872" height="772" rx="36" fill="#0B1511" stroke="#D6FFDF" stroke-opacity=".13"/>
+  <path d="M84 148H836M84 672H836" stroke="#D6FFDF" stroke-opacity=".12"/>
+  <circle cx="460" cy="410" r="198" fill="#4DF79F" fill-opacity=".08"/>
+  <circle cx="460" cy="410" r="142" stroke="#9DFF6F" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="460" cy="410" r="80" fill="#9DFF6F" fill-opacity=".12" stroke="#9DFF6F"/>
+  <path d="M460 224v372M274 410h372M328 278l264 264M592 278 328 542" stroke="#D6FFDF" stroke-opacity=".16"/>
+  <g font-family="Consolas, monospace" font-size="17" fill="#9DFF6F">
+    <text x="398" y="418">VM CORE</text>
+    <text x="110" y="122">73 7a 59 0e f4 0b 08 5a c9 21 ac 90</text>
+    <text x="110" y="716">handler = handler(ctx) / xorLog recover / LCG mask</text>
+  </g>
+  <g>
+    <rect x="86" y="190" width="168" height="92" rx="18" fill="#111D18" stroke="#D6FFDF" stroke-opacity=".16"/>
+    <rect x="666" y="190" width="168" height="92" rx="18" fill="#111D18" stroke="#D6FFDF" stroke-opacity=".16"/>
+    <rect x="86" y="538" width="168" height="92" rx="18" fill="#111D18" stroke="#D6FFDF" stroke-opacity=".16"/>
+    <rect x="666" y="538" width="168" height="92" rx="18" fill="#111D18" stroke="#D6FFDF" stroke-opacity=".16"/>
+  </g>
+  <g font-family="Consolas, monospace" font-size="14" fill="#C8D9D0">
+    <text x="118" y="226">Register IR</text><text x="118" y="252" fill="#8EA39A">r0 r1 r2</text>
+    <text x="702" y="226">Opcode Map</text><text x="702" y="252" fill="#8EA39A">1-to-N alias</text>
+    <text x="118" y="574">Fake Path</text><text x="118" y="600" fill="#8EA39A">Trap block</text>
+    <text x="702" y="574">Constant Pool</text><text x="702" y="600" fill="#8EA39A">lazy decode</text>
+  </g>
+  <path d="M254 236C342 236 374 310 406 360M666 236C578 236 546 310 514 360M254 584C342 584 374 510 406 460M666 584C578 584 546 510 514 460" stroke="#4DF79F" stroke-width="2" stroke-opacity=".42"/>
+</svg>
