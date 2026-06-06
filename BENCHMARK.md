@@ -1,6 +1,6 @@
 # TSXobf Performance & Security Benchmark Report
 > **NASA Artemis II Control System Flight Security Standard**
-> *Generated on:* `11:33:36 1/6/2026` (Asia/Ho_Chi_Minh)
+> *Generated on:* `17:03:37 6/6/2026` (Asia/Ho_Chi_Minh)
 
 This report details the real-world high-precision performance execution times, bundle size expansion, and realistic reverse engineering resilience of the **TSXobf** switchless polymorphic WebAssembly-hybrid register-based virtual machine obfuscator.
 
@@ -27,16 +27,16 @@ Below is the execution latency measured in **microseconds (μs)** per call, calc
 
 | Telemetry Function | Workload / Complexity | Native (Mean ± $\sigma$) | Virtualized (Mean ± $\sigma$) | Median Latency | p95 / p99 Latency | 95% Confidence Interval (CI) | Slowdown Ratio |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `calculateSecretHash` | FNV-1a String Hashing (Loop Heavy) | `0.478 μs` (±0.09 μs) | `6299.880 μs` (±1839.08 μs) | `5661.60 μs` | `15800.8 / `38851.6 μs` | `[6215.15, 6384.61] μs` | **13173.8x** |
-| `encryptTEA` | Tiny Encryption Algorithm (Math & Bitwise Core) | `22.308 μs` (±2.20 μs) | `7365.859 μs` (±701.77 μs) | `7223.50 μs` | `12099.0 / `28288.5 μs` | `[7262.18, 7469.54] μs` | **330.2x** |
-| `verifyArtemisCollatzAndMath` | Collatz Sequence Conjecture & Nested Bitwise Accumulators | `8.783 μs` (±7.76 μs) | `17973.293 μs` (±806.04 μs) | `17986.50 μs` | `25998.8 / `60986.7 μs` | `[17853.87, 18092.72] μs` | **2046.4x** |
-| `verifyArtemisStateDecimation` | Object Mutation, Property Deletions, Array Manipulations | `2.754 μs` (±0.20 μs) | `2549.163 μs` (±760.81 μs) | `2540.10 μs` | `6030.8 / `22158.8 μs` | `[2479.41, 2618.92] μs` | **925.7x** |
-| `verifyArtemisGatingSystem` | Nested Ternary Branches & Multiple Logical Conditions | `0.213 μs` (±0.07 μs) | `461.541 μs` (±178.15 μs) | `478.20 μs` | `1242.6 / `2859.9 μs` | `[450.15, 472.93] μs` | **2170.4x** |
-| `verifyArtemisComputedDestructuring` | Computed Object Properties & Dynamic Variable Destructuring | `1.614 μs` (±0.24 μs) | `790.985 μs` (±387.58 μs) | `767.50 μs` | `3423.1 / `6893.8 μs` | `[755.29, 826.68] μs` | **490.0x** |
-| `verifyArtemisDerivedClassAndSuper` | Class Inheritance, Super Constructors & Static Initializers | `33.537 μs` (±11.16 μs) | `2259.755 μs` (±849.06 μs) | `2128.80 μs` | `6048.5 / `9449.6 μs` | `[2181.74, 2337.77] μs` | **67.4x** |
+| `calculateSecretHash` | FNV-1a String Hashing (Loop Heavy) | `1.036 μs` (±1.11 μs) | `9884.586 μs` (±3328.07 μs) | `8269.50 μs` | `19370.6 / 32764.1 μs` | `[9735.87, 10033.30] μs` | **9537.5x** |
+| `encryptTEA` | Tiny Encryption Algorithm (Math & Bitwise Core) | `26.497 μs` (±4.54 μs) | `21332.785 μs` (±3073.15 μs) | `21291.70 μs` | `34705.4 / 42175.1 μs` | `[20874.84, 21790.73] μs` | **805.1x** |
+| `verifyArtemisCollatzAndMath` | Collatz Sequence Conjecture & Nested Bitwise Accumulators | `6.849 μs` (±6.97 μs) | `44165.013 μs` (±8966.28 μs) | `44410.10 μs` | `73992.0 / 122851.8 μs` | `[42879.88, 45450.15] μs` | **6448.4x** |
+| `verifyArtemisStateDecimation` | Object Mutation, Property Deletions, Array Manipulations | `2.607 μs` (±0.35 μs) | `1772.936 μs` (±819.23 μs) | `1628.90 μs` | `5421.3 / 10202.2 μs` | `[1698.55, 1847.32] μs` | **680.1x** |
+| `verifyArtemisGatingSystem` | Nested Ternary Branches & Multiple Logical Conditions | `0.245 μs` (±0.05 μs) | `360.221 μs` (±145.28 μs) | `344.60 μs` | `789.0 / 1481.9 μs` | `[350.99, 369.45] μs` | **1468.0x** |
+| `verifyArtemisComputedDestructuring` | Computed Object Properties & Dynamic Variable Destructuring | `1.860 μs` (±0.13 μs) | `546.568 μs` (±213.41 μs) | `492.00 μs` | `1680.8 / 4267.5 μs` | `[527.11, 566.03] μs` | **293.9x** |
+| `verifyArtemisDerivedClassAndSuper` | Class Inheritance, Super Constructors & Static Initializers | `29.465 μs` (±4.35 μs) | `2936.096 μs` (±869.06 μs) | `2853.50 μs` | `6415.7 / 17682.1 μs` | `[2856.15, 3016.04] μs` | **99.6x** |
 
 ### 💡 Micro-Architecture Performance Analysis
-1. **The Core Interpreter Bottleneck**: Standalone VM virtualization introduces substantial CPU branch-prediction misses and instruction dispatching overhead. A tight numerical loop like the Collatz conjecture takes several guest instructions per iteration, leading to **2046x** native slowdown. This is expected behavior for custom interpreted register machines.
+1. **The Core Interpreter Bottleneck**: Standalone VM virtualization introduces substantial CPU branch-prediction misses and instruction dispatching overhead. A tight numerical loop like the Collatz conjecture takes several guest instructions per iteration, leading to **6448x** native slowdown. This is expected behavior for custom interpreted register machines.
 2. **Fast-Path Loop Optimization**: Eliminating try-catch blocks in loops allows V8 to inline the indirect threaded dispatch table, producing standard operation latencies of under **100 μs** for linear paths (like destructuring, state decimation, and gating systems).
 
 ---
@@ -45,13 +45,13 @@ Below is the execution latency measured in **microseconds (μs)** per call, calc
 
 | Resource Metric | Native Code (Original) | Obfuscated Standalone VM | Expansion Factor / Score |
 | :--- | :---: | :---: | :---: |
-| **Bundle File Size** | `5.066 KB` | `928.184 KB` | **183.20x** |
-| **File-Wide Character Entropy** | `4.6686 bits` | `3.3850 bits` | **3.3850 Shannon bits** (Medium Entropy) |
+| **Bundle File Size** | `5.066 KB` | `868.603 KB` | **171.44x** |
+| **File-Wide Character Entropy** | `4.6686 bits` | `3.1963 bits` | **3.1963 Shannon bits** (Medium Entropy) |
 | **Bytecode Instruction Payload** | `N/A` | `7.152 bits` | **High Entropy** (Randomized bytecode sequence) |
 
 > [!NOTE]
 > **Understanding File-Wide Shannon Entropy**: 
-> While the file-wide character entropy of the obfuscated bundle scores a medium **3.385 bits**, this is due to the presence of clean ASCII VM boilerplate wrapper structures, standard JS keywords (`function`, `ctx`, `regs`), and brackets which lower overall character-level entropy. However, the *raw compiled guest instruction stream array* itself scores **~7.15 Shannon bits**, indicating high random noise that prevents naive static signature analysis.
+> While the file-wide character entropy of the obfuscated bundle scores a medium **3.196 bits**, this is due to the presence of clean ASCII VM boilerplate wrapper structures, standard JS keywords (`function`, `ctx`, `regs`), and brackets which lower overall character-level entropy. However, the *raw compiled guest instruction stream array* itself scores **~7.15 Shannon bits**, indicating high random noise that prevents naive static signature analysis.
 > 
 > **Selective Virtualization is Key**: Because **TSXobf** utilizes **Selective Virtualization** through the JSDoc `/** @virtualize */` annotation, **only critical mathematical algorithms (such as licensing, telemetry validation, and cryptography helpers) are virtualized**. The rest of your application (UI components, API calls, and framework code) continues to run natively at 100% V8 speed.
 

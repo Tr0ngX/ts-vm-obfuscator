@@ -292,7 +292,7 @@ Below is the execution latency measured in **microseconds (μs)** per call, calc
 | Telemetry Function | Workload / Complexity | Native (Mean ± $\\sigma$) | Virtualized (Mean ± $\\sigma$) | Median Latency | p95 / p99 Latency | 95% Confidence Interval (CI) | Slowdown Ratio |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 ${results.map(r => {
-  return `| \`${r.name}\` | ${r.desc} | \`${r.origStats.avg.toFixed(3)} μs\` (±${r.origStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.avg.toFixed(3)} μs\` (±${r.obfStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.median.toFixed(2)} μs\` | \`${r.obfStats.p95.toFixed(1)} / \`${r.obfStats.p99.toFixed(1)} μs\` | \`[${r.obfStats.ciLower.toFixed(2)}, ${r.obfStats.ciUpper.toFixed(2)}] μs\` | **${r.overheadRatio.toFixed(1)}x** |`;
+  return `| \`${r.name}\` | ${r.desc} | \`${r.origStats.avg.toFixed(3)} μs\` (±${r.origStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.avg.toFixed(3)} μs\` (±${r.obfStats.stdDev.toFixed(2)} μs) | \`${r.obfStats.median.toFixed(2)} μs\` | \`${r.obfStats.p95.toFixed(1)} / ${r.obfStats.p99.toFixed(1)} μs\` | \`[${r.obfStats.ciLower.toFixed(2)}, ${r.obfStats.ciUpper.toFixed(2)}] μs\` | **${r.overheadRatio.toFixed(1)}x** |`;
 }).join('\n')}
 
 ### 💡 Micro-Architecture Performance Analysis
