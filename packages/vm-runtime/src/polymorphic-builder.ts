@@ -962,6 +962,15 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${ctxRef('running')} = false;
   `);
 
+  // GetEntropy: Fast VM-internal entropy source (replaces expensive Date.now() reflection)
+  // Derives entropy from rolling VM state without any external API calls
+  declareHandler(OpCode.GetEntropy, `
+    ${readArgs}
+    var entropy = (ctx.${ctx.rollingState} ^ (${ctxRef('pc')} * 2654435761)) >>> 0;
+    entropy = (entropy ^ (entropy >>> 16)) & 0xFF;
+    ctx.regs[args[0]] = entropy;
+  `);
+
   const antiDebugLogic = config.antiDebug ? `
     // Anti-Debug DevTools & Trace Protection (Self-Destruct Trap)
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();

@@ -231,16 +231,9 @@ const mockProfile: ObfuscationProfile = {
     expect(rewrittenEntry.terminator.targets).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.successors).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.instructions.map(inst => inst.opcode)).toEqual([
-      OpCode.LoadConst,
-      OpCode.LoadGlobal,
-      OpCode.LoadConst,
-      OpCode.CallMethod,
-      OpCode.LoadConst,
-      OpCode.BitOr,
-      OpCode.LoadConst,
-      OpCode.BitAnd,
-      OpCode.LoadConst,
+      OpCode.GetEntropy,
       OpCode.Mul,
+      OpCode.LoadConst,
       OpCode.Mul,
       OpCode.LoadConst,
       OpCode.Mul,
@@ -249,14 +242,13 @@ const mockProfile: ObfuscationProfile = {
       OpCode.Add,
       OpCode.LoadConst,
       OpCode.Mod,
+      OpCode.LoadConst,
       OpCode.StrictEq,
       OpCode.Not
     ]);
     const lastOp = fakeBlock.instructions.at(-1)?.opcode;
     expect([OpCode.Trap, OpCode.LoadConst, OpCode.Move]).toContain(lastOp);
     expect(result.module.constantPool).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: ConstantKind.String, value: 'Date' }),
-      expect.objectContaining({ kind: ConstantKind.String, value: 'now' }),
       expect.objectContaining({ kind: ConstantKind.Number, value: 3 }),
       expect.objectContaining({ kind: ConstantKind.Number, value: 5 }),
       expect.objectContaining({ kind: ConstantKind.Number, value: 7 }),

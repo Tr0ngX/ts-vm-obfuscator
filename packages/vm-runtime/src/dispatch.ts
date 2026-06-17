@@ -155,6 +155,12 @@ const canonicalHandlers: Record<number, DispatchHandler> = {
     const valReg = readOperand(vm, bytecode).value;
     vm.registers[0] = vm.registers[valReg];
     vm.halted = true;
+  },
+  [OpCode.GetEntropy]: (vm, bytecode) => {
+    const destReg = readOperand(vm, bytecode).value;
+    // Fast entropy: derive from VM internal state without calling external APIs
+    const raw = (vm.pc * 2654435761) >>> 0; // Knuth multiplicative hash
+    vm.registers[destReg] = (raw ^ (vm.pc << 13)) & 0xFF;
   }
 };
 

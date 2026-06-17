@@ -200,41 +200,25 @@ export class TypeLevelFakePathPass implements TransformPass {
         nodesTransformed++;
 
         const maxReg = getMaxRegister(currentFunc);
-        const tempA = `r${maxReg + 1}` as Register; // Date global
-        const tempB = `r${maxReg + 2}` as Register; // "Date" / "now" string
-        const tempC = `r${maxReg + 3}` as Register; // Date.now()
-        const tempD = `r${maxReg + 4}` as Register; // 0 or salt constant
-        const tempE = `r${maxReg + 5}` as Register; // x = (Date.now() | 0) & 3
-        const tempF = `r${maxReg + 6}` as Register; // x^2 or mixed temp
-        const tempG = `r${maxReg + 7}` as Register; // 3
-        const tempH = `r${maxReg + 8}` as Register; // 3 * x^2 or intermediate
-        const tempI = `r${maxReg + 9}` as Register; // 5
-        const tempJ = `r${maxReg + 10}` as Register; // 5 * x
-        const tempK = `r${maxReg + 11}` as Register; // 3 * x^2 + 5 * x
-        const tempL = `r${maxReg + 12}` as Register; // 7
-        const tempM = `r${maxReg + 13}` as Register; // 3 * x^2 + 5 * x + 7
-        const tempN = `r${maxReg + 14}` as Register; // 4
-        const tempO = `r${maxReg + 15}` as Register; // (3 * x^2 + 5 * x + 7) % 4
-        const tempP = `r${maxReg + 16}` as Register; // rem === 0
-        const tempQ = `r${maxReg + 17}` as Register; // rem !== 0 (always true!)
-        const junkTemp1 = `r${maxReg + 18}` as Register;
-        const junkTemp2 = `r${maxReg + 19}` as Register;
-        const junkTemp3 = `r${maxReg + 20}` as Register; // Extra junk register for decoys
+        // Streamlined register allocation — GetEntropy replaces Date.now() reflection
+        // Old: 20 registers for Date global lookup + CallMethod + BitOr/BitAnd masking
+        // New: 10 registers — GetEntropy loads entropy directly into a register
+        const tempA = `r${maxReg + 1}` as Register; // x = GetEntropy result (0-255)
+        const tempB = `r${maxReg + 2}` as Register; // x^2 or intermediate computation
+        const tempC = `r${maxReg + 3}` as Register; // constant loader / multiplied result
+        const tempD = `r${maxReg + 4}` as Register; // constant loader / comparison target
+        const tempE = `r${maxReg + 5}` as Register; // intermediate result
+        const tempF = `r${maxReg + 6}` as Register; // intermediate result
+        const tempG = `r${maxReg + 7}` as Register; // modulo / final math result
+        const tempP = `r${maxReg + 8}` as Register;  // predicate equality check
+        const tempQ = `r${maxReg + 9}` as Register;  // final condition (always true!)
+        const junkTemp1 = `r${maxReg + 10}` as Register;
+        const junkTemp2 = `r${maxReg + 11}` as Register;
+        const junkTemp3 = `r${maxReg + 12}` as Register;
 
         const regX = currentFunc.params.length > 0 ? currentFunc.params[0]!.register : ('r0' as Register);
 
-        let dateIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'Date');
-        if (dateIdx === -1) {
-          dateIdx = newCP.length;
-          newCP.push({ index: dateIdx, kind: ConstantKind.String, value: 'Date' });
-        }
-
-        let nowIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'now');
-        if (nowIdx === -1) {
-          nowIdx = newCP.length;
-          newCP.push({ index: nowIdx, kind: ConstantKind.String, value: 'now' });
-        }
-
+        // Shared constants — only allocate what we need (no more "Date" / "now" strings)
         let zeroIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 0);
         if (zeroIdx === -1) {
           zeroIdx = newCP.length;
@@ -271,65 +255,55 @@ export class TypeLevelFakePathPass implements TransformPass {
           newCP.push({ index: fortyTwoIdx, kind: ConstantKind.Number, value: 42 });
         }
 
-        let twoFiftyFiveIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 255);
-        if (twoFiftyFiveIdx === -1) {
-          twoFiftyFiveIdx = newCP.length;
-          newCP.push({ index: twoFiftyFiveIdx, kind: ConstantKind.Number, value: 255 });
-        }
-
         let undefinedIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Undefined);
         if (undefinedIdx === -1) {
           undefinedIdx = newCP.length;
           newCP.push({ index: undefinedIdx, kind: ConstantKind.Undefined, value: null });
         }
 
-        // We choose one of our 5 templates (expanded from 3)
+        // We choose one of our 5 templates
         const templateId = isParanoid ? ctx.rng.nextRange(0, 4) : 0;
         let opaqueInsts: Instruction[] = [];
 
+        // ─── ALL TEMPLATES NOW USE GetEntropy ───
+        // GetEntropy loads a dynamic 0-255 value derived from VM internal state
+        // directly into a register. No external API calls, no global lookups,
+        // no Date.now() reflection, no 32-bit overflow bugs.
+
         if (templateId === 0) {
           // Congruence invariant: (3 * x^2 + 5 * x + 7) % 4 !== 0
+          // Proof: x^2 mod 4 ∈ {0,1}. Enumerate: 3·0+5·0+7=7≡3, 3·1+5·1+7=15≡3,
+          //   3·0+5·2+7=17≡1, 3·1+5·3+7=25≡1 (mod 4). Never 0. ∎
           opaqueInsts = [
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: dateIdx }], result: tempB },
-            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempB }], result: tempA },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: nowIdx }], result: tempB },
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempC },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },
-            { opcode: OpCode.BitOr, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoFiftyFiveIdx }], result: tempG },
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // tempE = x = (Date.now() | 0) & 255
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempG },
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempE }], result: tempF },
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempF }], result: tempH },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fiveIdx }], result: tempI },
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempI }, { kind: OperandKind.Register, value: tempE }], result: tempJ },
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempH }, { kind: OperandKind.Register, value: tempJ }], result: tempK },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: sevenIdx }], result: tempL },
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempK }, { kind: OperandKind.Register, value: tempL }], result: tempM },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fourIdx }], result: tempN },
-            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempM }, { kind: OperandKind.Register, value: tempN }], result: tempO },
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempO }, { kind: OperandKind.Register, value: tempD }], result: tempP },
-            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }
+            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x ∈ [0,255]
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempA }], result: tempB },  // tempB = x^2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC },          // tempC = 3
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempB }], result: tempD },  // tempD = 3*x^2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fiveIdx }], result: tempC },           // tempC = 5
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempA }], result: tempE },  // tempE = 5*x
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempE }], result: tempF },  // tempF = 3*x^2 + 5*x
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: sevenIdx }], result: tempC },          // tempC = 7
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempF }, { kind: OperandKind.Register, value: tempC }], result: tempG },  // tempG = 3*x^2 + 5*x + 7
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fourIdx }], result: tempC },           // tempC = 4
+            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempC }], result: tempE },  // tempE = (...) % 4
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempC },           // tempC = 0
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempC }], result: tempP }, // tempP = (rem === 0), always false
+            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }                         // tempQ = true (always!)
           ];
         } else if (templateId === 1) {
-          // Quadratic non-residue mod 4: ((x * x) & 3) !== 3 (always true!)
+          // Quadratic non-residue mod 4: (x^2 & 3) !== 3 (always true!)
+          // Proof: x^2 mod 4 ∈ {0,1} for all integers. Never 3. ∎
           opaqueInsts = [
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: dateIdx }], result: tempB },
-            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempB }], result: tempA },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: nowIdx }], result: tempB },
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempC },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },
-            { opcode: OpCode.BitOr, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE }, // tempE = Date.now() | 0
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoFiftyFiveIdx }], result: tempG },
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // tempE = x = (Date.now() | 0) & 255
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempE }], result: tempF }, // tempF = x * x
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempG }, // tempG = 3
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempF }, { kind: OperandKind.Register, value: tempG }], result: tempH }, // tempH = (x * x) & 3
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempH }, { kind: OperandKind.Register, value: tempG }], result: tempP },
-            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }
+            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempA }], result: tempB },  // tempB = x^2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC },          // tempC = 3
+            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempD }, // tempD = x^2 & 3
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempC }], result: tempP }, // tempP = (x^2 & 3 === 3), always false
+            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }                         // tempQ = true
           ];
         } else if (templateId === 2) {
           // Quadratic non-residue mod 3: (31 * x)^2 % 3 !== 2 (always true!)
+          // Proof: For any integer n, n^2 mod 3 ∈ {0,1}. Never 2. ∎
           let thirtyOneIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 31);
           if (thirtyOneIdx === -1) {
             thirtyOneIdx = newCP.length;
@@ -341,56 +315,36 @@ export class TypeLevelFakePathPass implements TransformPass {
             newCP.push({ index: twoIdx, kind: ConstantKind.Number, value: 2 });
           }
           opaqueInsts = [
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: dateIdx }], result: tempB },
-            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempB }], result: tempA },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: nowIdx }], result: tempB },
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempC },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },
-            { opcode: OpCode.BitOr, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE }, // tempE = Date.now() | 0
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoFiftyFiveIdx }], result: tempG },
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // tempE = x = (Date.now() | 0) & 255
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempG }, // tempG = 31
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempE }], result: tempF }, // tempF = 31 * x
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempF }, { kind: OperandKind.Register, value: tempF }], result: tempH }, // tempH = (31 * x)^2
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempI }, // tempI = 3
-            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempH }, { kind: OperandKind.Register, value: tempI }], result: tempJ }, // tempJ = (31 * x)^2 % 3
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempL }, // tempL = 2
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempJ }, { kind: OperandKind.Register, value: tempL }], result: tempP },
-            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }
+            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempC },      // tempC = 31
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempA }], result: tempB },  // tempB = 31*x
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempB }], result: tempD },  // tempD = (31*x)^2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC },          // tempC = 3
+            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempC }], result: tempE },  // tempE = (31*x)^2 % 3
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempC },            // tempC = 2
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempC }], result: tempP }, // tempP = false always
+            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }                         // tempQ = true
           ];
         } else if (templateId === 3) {
-          // Fermat's Little Theorem variant: ((x^2 + x) % 2 === 0) is always true for all integers
-          // Because x^2 + x = x(x+1), product of consecutive integers is always even
+          // Fermat parity: (x^2 + x) % 2 === 0 is always true
+          // Proof: x^2 + x = x(x+1), product of consecutive integers is always even. ∎
           let twoIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 2);
           if (twoIdx === -1) {
             twoIdx = newCP.length;
             newCP.push({ index: twoIdx, kind: ConstantKind.Number, value: 2 });
           }
-          let oneIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 1);
-          if (oneIdx === -1) {
-            oneIdx = newCP.length;
-            newCP.push({ index: oneIdx, kind: ConstantKind.Number, value: 1 });
-          }
           opaqueInsts = [
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: dateIdx }], result: tempB },
-            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempB }], result: tempA },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: nowIdx }], result: tempB },
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempC },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },
-            { opcode: OpCode.BitOr, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoFiftyFiveIdx }], result: tempG },
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // tempE = x
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempE }], result: tempF }, // tempF = x^2
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempF }, { kind: OperandKind.Register, value: tempE }], result: tempH }, // tempH = x^2 + x
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempI }, // tempI = 2
-            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempH }, { kind: OperandKind.Register, value: tempI }], result: tempJ }, // tempJ = (x^2 + x) % 2
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempJ }, { kind: OperandKind.Register, value: tempD }], result: tempP }, // tempP = (result === 0), always true
-            // Result tempP is already true, so we use it directly as the condition
+            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempA }], result: tempB },  // tempB = x^2
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempA }], result: tempC },  // tempC = x^2 + x
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempD },            // tempD = 2
+            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE },  // tempE = (x^2+x) % 2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },           // tempD = 0
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempD }], result: tempP }, // always true
             { opcode: OpCode.Move, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }
           ];
         } else {
-          // Template 4: Parity check: ((x * (x+1)) % 2 === 0) is always true
-          // since consecutive integers always have one even
+          // Template 4: Consecutive parity: (x * (x+1)) % 2 === 0 is always true
           let twoIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 2);
           if (twoIdx === -1) {
             twoIdx = newCP.length;
@@ -402,20 +356,14 @@ export class TypeLevelFakePathPass implements TransformPass {
             newCP.push({ index: oneIdx, kind: ConstantKind.Number, value: 1 });
           }
           opaqueInsts = [
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: dateIdx }], result: tempB },
-            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempB }], result: tempA },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: nowIdx }], result: tempB },
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempC },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD },
-            { opcode: OpCode.BitOr, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempD }], result: tempE },
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoFiftyFiveIdx }], result: tempG },
-            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // tempE = x
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: oneIdx }], result: tempF }, // tempF = 1
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempF }], result: tempH }, // tempH = x + 1
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempH }], result: tempI }, // tempI = x * (x + 1)
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempJ }, // tempJ = 2
-            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempI }, { kind: OperandKind.Register, value: tempJ }], result: tempK }, // tempK = (x * (x+1)) % 2
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempK }, { kind: OperandKind.Register, value: tempD }], result: tempP }, // tempP = (result === 0), always true
+            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: oneIdx }], result: tempC },            // tempC = 1
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempC }], result: tempB },  // tempB = x+1
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempB }], result: tempD },  // tempD = x*(x+1)
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempC },            // tempC = 2
+            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempC }], result: tempE },  // tempE = x*(x+1) % 2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempC },           // tempC = 0
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempC }], result: tempP }, // always true
             { opcode: OpCode.Move, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }
           ];
         }
@@ -475,26 +423,18 @@ export class TypeLevelFakePathPass implements TransformPass {
         });
 
         const addedLocals = [
-          { name: `fake_path_temp_${tempA}`, register: tempA, type: IRType.Object, isCaptured: false },
-          { name: `fake_path_temp_${tempB}`, register: tempB, type: IRType.String, isCaptured: false },
+          { name: `fake_path_entropy_${tempA}`, register: tempA, type: IRType.Number, isCaptured: false },
+          { name: `fake_path_temp_${tempB}`, register: tempB, type: IRType.Number, isCaptured: false },
           { name: `fake_path_temp_${tempC}`, register: tempC, type: IRType.Number, isCaptured: false },
           { name: `fake_path_temp_${tempD}`, register: tempD, type: IRType.Number, isCaptured: false },
           { name: `fake_path_temp_${tempE}`, register: tempE, type: IRType.Number, isCaptured: false },
           { name: `fake_path_temp_${tempF}`, register: tempF, type: IRType.Number, isCaptured: false },
           { name: `fake_path_temp_${tempG}`, register: tempG, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempH}`, register: tempH, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempI}`, register: tempI, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempJ}`, register: tempJ, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempK}`, register: tempK, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempL}`, register: tempL, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempM}`, register: tempM, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempN}`, register: tempN, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempO}`, register: tempO, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${tempP}`, register: tempP, type: IRType.Boolean, isCaptured: false },
-          { name: `fake_path_temp_${tempQ}`, register: tempQ, type: IRType.Boolean, isCaptured: false },
-          { name: `fake_path_temp_${junkTemp1}`, register: junkTemp1, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${junkTemp2}`, register: junkTemp2, type: IRType.Number, isCaptured: false },
-          { name: `fake_path_temp_${junkTemp3}`, register: junkTemp3, type: IRType.Any, isCaptured: false }
+          { name: `fake_path_pred_${tempP}`, register: tempP, type: IRType.Boolean, isCaptured: false },
+          { name: `fake_path_cond_${tempQ}`, register: tempQ, type: IRType.Boolean, isCaptured: false },
+          { name: `fake_path_junk_${junkTemp1}`, register: junkTemp1, type: IRType.Number, isCaptured: false },
+          { name: `fake_path_junk_${junkTemp2}`, register: junkTemp2, type: IRType.Number, isCaptured: false },
+          { name: `fake_path_junk_${junkTemp3}`, register: junkTemp3, type: IRType.Any, isCaptured: false }
         ];
 
         currentFunc = {

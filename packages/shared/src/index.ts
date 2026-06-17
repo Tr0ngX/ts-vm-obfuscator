@@ -338,6 +338,7 @@ export enum OpCode {
   Nop = 0xF0,
   Halt = 0xF1,
   Trap = 0xF2,
+  GetEntropy = 0xF3,
   SuperInstruction = 0xFE,
 }
 

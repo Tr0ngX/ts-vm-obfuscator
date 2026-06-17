@@ -30,22 +30,22 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
 
   rng.shuffle(availableSlots);
 
-  // Distribute 256 slots across the available opcodes (1-to-N aliasing)
+  // 1. Assign exactly 1 slot to each canonical opcode to ensure coverage
   for (let i = 0; i < opcodes.length; i++) {
     const canonical = opcodes[i]!;
-    // Assign at least 1, up to 5 aliases depending on remaining slots
-    const aliasCount = i === opcodes.length - 1 ? availableSlots.length : Math.max(1, rng.nextRange(1, 5));
-    const mapped: number[] = [];
-    
-    for (let j = 0; j < aliasCount; j++) {
-      if (availableSlots.length > 0) {
-        const slot = availableSlots.pop()!;
-        mapped.push(slot);
-        (mapping.reverse as Map<number, OpCode>).set(slot, canonical);
-      }
-    }
-    
-    (mapping.forward as Map<OpCode, number | readonly number[]>).set(canonical, mapped);
+    const slot = availableSlots.pop()!;
+    const mapped = [slot];
+    (mapping.reverse as Map<number, OpCode>).set(slot, canonical);
+    (mapping.forward as Map<OpCode, number[]>).set(canonical, mapped);
+  }
+
+  // 2. Distribute any remaining slots as additional aliases
+  while (availableSlots.length > 0) {
+    const slot = availableSlots.pop()!;
+    const randomOpcode = opcodes[rng.nextRange(0, opcodes.length - 1)]!;
+    const mapped = mapping.forward.get(randomOpcode) as number[];
+    mapped.push(slot);
+    (mapping.reverse as Map<number, OpCode>).set(slot, randomOpcode);
   }
 
   return mapping;
