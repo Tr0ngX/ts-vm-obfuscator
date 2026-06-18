@@ -5,205 +5,353 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="TSXobf compiles selected TypeScript functions into polymorphic VM bytecode. Semantic-aware, selective virtualization, open source." />
     <meta name="theme-color" content="#050706" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preload" href="site/styles.css" as="style" />
     <link rel="stylesheet" href="site/styles.css" />
     <title>TSXobf — TypeScript VM Obfuscator</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='20' fill='%239dff6f'/%3E%3Ctext x='20' y='24' text-anchor='middle' fill='%23050a07' font-family='monospace' font-size='13' font-weight='900'%3ETS%3C/text%3E%3C/svg%3E" />
   </head>
   <body>
-    <div class="noise" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="cursor-glow" aria-hidden="true"></div>
 
-    <header class="nav-wrap">
-      <a class="brand" href="#top" aria-label="TSXobf home">
-        <span class="brand-glyph">TS</span>
-        <span class="brand-name">TSXobf</span>
-      </a>
-      <nav aria-label="Primary">
-        <a href="#pipeline">Pipeline</a>
-        <a href="#features">Features</a>
-        <a href="#security">Security</a>
-        <a href="#status">Status</a>
-        <a href="#run">Run</a>
-      </nav>
-      <a class="nav-button" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">GitHub</a>
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#top" aria-label="TSXobf home">
+          <span class="brand-mark">TS</span>
+          <span class="brand-label">TSXobf</span>
+        </a>
+        <nav aria-label="Primary">
+          <a href="#pipeline">Pipeline</a>
+          <a href="#features">Features</a>
+          <a href="#security">Security</a>
+          <a href="#status">Status</a>
+          <a href="#run">Run</a>
+        </nav>
+        <a class="nav-cta" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">GitHub</a>
+      </div>
     </header>
 
     <main id="top">
       <section class="hero">
-        <div class="hero-copy fade-in">
-          <div class="hero-tag">Semantic-aware &bull; TypeScript-first &bull; Open source</div>
-          <h1>Ship logic as hostile bytecode.</h1>
-          <p class="hero-lede">
-            TSXobf compiles selected TypeScript functions into a polymorphic VM.
-            The rest of your app stays native.
-          </p>
-          <div class="hero-actions">
-            <a class="pri-action" href="#run">
-              <span>Download & run</span>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </a>
-            <a class="sec-action" href="#pipeline">How it works</a>
+        <div class="hero-bg-glow" aria-hidden="true"></div>
+        <div class="hero-inner">
+          <div class="hero-text">
+            <div class="hero-tag reveal fade-up">Semantic-aware &bull; TypeScript-first &bull; Open source</div>
+            <h1 class="reveal fade-up delay-1">
+              Ship logic as<br />
+              <span class="gradient-text">hostile bytecode.</span>
+            </h1>
+            <p class="hero-sub reveal fade-up delay-2">
+              TSXobf compiles selected TypeScript functions into a polymorphic VM.<br />
+              The rest of your app stays native.
+            </p>
+            <div class="hero-actions reveal fade-up delay-3">
+              <a class="btn-primary" href="#run">
+                <span>Download &amp; run</span>
+                <span class="btn-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7h9M7.5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+              </a>
+              <a class="btn-ghost" href="#pipeline">How it works</a>
+            </div>
           </div>
-        </div>
 
-        <div class="hero-visual fade-in" data-tilt>
-          <div class="terminal">
-            <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="terminal-body">
-              <div class="code-panel">
-                <div class="code-header">index.ts</div>
-                <pre><span class="kw">/** @virtualize */</span>
-<span class="kw">export function</span> <span class="fn">calculateSecretHash</span>(<span class="param">input</span>: <span class="typ">string</span>): <span class="typ">number</span> {
-  <span class="kw">let</span> hash = <span class="num">0</span>;
-  <span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i &lt; input.length; i++) {
-    hash = (hash &lt;&lt; <span class="num">5</span>) - hash + input.charCodeAt(i);
-    hash |= <span class="num">0</span>;
-  }
-  <span class="kw">return</span> hash;
-}</pre>
+          <div class="hero-visual reveal fade-up delay-2" data-tilt>
+            <div class="hero-visual-glow" aria-hidden="true"></div>
+            <div class="term">
+              <div class="term-bar">
+                <div class="term-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                <span class="term-path">~/ts-vm-obfuscator/src</span>
               </div>
-              <div class="byte-panel">
-                <div class="code-header">vm payload</div>
-                <div class="byte-grid" aria-label="Encrypted bytecode stream">
-                  <span>73</span><span>7a</span><span>59</span><span>0e</span>
-                  <span>f4</span><span>0b</span><span>08</span><span>5a</span>
-                  <span>c9</span><span>21</span><span>ac</span><span>90</span>
-                  <span>44</span><span>17</span><span>d2</span><span>61</span>
-                  <span>9f</span><span>03</span><span>bb</span><span>6e</span>
-                  <span>10</span><span>2d</span><span>80</span><span>c1</span>
+              <div class="term-body">
+                <div class="term-code">
+                  <div class="term-tab">index.ts</div>
+                  <pre><span class="syn-c">/** @virtualize */</span>
+<span class="syn-k">export function</span> <span class="syn-f">calculateSecretHash</span>(<span class="syn-v">input</span>: <span class="syn-t">string</span>): <span class="syn-t">number</span> {
+  <span class="syn-k">let</span> hash = <span class="syn-n">0</span>;
+  <span class="syn-k">for</span> (<span class="syn-k">let</span> i = <span class="syn-n">0</span>; i &lt; input.length; i++) {
+    hash = (hash &lt;&lt; <span class="syn-n">5</span>) - hash + input.charCodeAt(i);
+    hash |= <span class="syn-n">0</span>;
+  }
+  <span class="syn-k">return</span> hash;
+}</pre>
+                </div>
+                <div class="term-byte">
+                  <div class="term-tab">vm payload</div>
+                  <div class="byte-grid" aria-label="Encrypted bytecode stream">
+                    <span>73</span><span>7a</span><span>59</span><span>0e</span>
+                    <span>f4</span><span>0b</span><span>08</span><span>5a</span>
+                    <span>c9</span><span>21</span><span>ac</span><span>90</span>
+                    <span>44</span><span>17</span><span>d2</span><span>61</span>
+                    <span>9f</span><span>03</span><span>bb</span><span>6e</span>
+                    <span>10</span><span>2d</span><span>80</span><span>c1</span>
+                    <span class="byte-dim">a3</span><span class="byte-dim">7f</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="vm-badge a">handler = handler(ctx)</div>
-          <div class="vm-badge b">xorLog recovery</div>
-        </div>
-      </section>
 
-      <section class="trust-strip" aria-label="Key differentiators">
-        <div><strong>Selective</strong><span>@virtualize target model</span></div>
-        <div><strong>Register IR</strong><span>typed lowering surface</span></div>
-        <div><strong>Polymorphic</strong><span>randomized opcodes per build</span></div>
-        <div><strong>Standalone</strong><span>zero-dependency output bundle</span></div>
-      </section>
-
-      <section class="pipeline" id="pipeline">
-        <div class="section-head fade-in">
-          <h2>A compiler backend,<br />not a prettier AST.</h2>
-          <p>Traditional obfuscators rename variables and inject dead code. TSXobf is a full compiler pipeline: source to semantic IR to encrypted bytecode to a generated VM runtime.</p>
-        </div>
-        <div class="pipeline-timeline">
-          <article class="pipe-node fade-in"><span class="pipe-num">01</span><h3>TypeScript project analysis</h3><p>Resolves imports, exports, scope rules, and typed symbols through the official TS Compiler API.</p></article>
-          <div class="pipe-connector" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <article class="pipe-node fade-in"><span class="pipe-num">02</span><h3>Register-based IR</h3><p>Selected functions lower into a typed intermediate representation with explicit control flow, no hidden branches.</p></article>
-          <div class="pipe-connector" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <article class="pipe-node fade-in"><span class="pipe-num">03</span><h3>Transform passes</h3><p>String pool encoding, symbol indirection, dead code injection, fake type paths, generic confusion, namespace virtualization.</p></article>
-          <div class="pipe-connector" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <article class="pipe-node fade-in"><span class="pipe-num">04</span><h3>Bytecode compiler</h3><p>IR instructions compile into encrypted, remapped, build-specific opcode streams with 1-to-N opcode aliasing.</p></article>
-          <div class="pipe-connector" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <article class="pipe-node fade-in"><span class="pipe-num">05</span><h3>VM runtime generation</h3><p>Polymorphic dispatch handlers, encrypted constant pool, optional rolling self-modifying bytecode.</p></article>
-          <div class="pipe-connector" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <article class="pipe-node fade-in"><span class="pipe-num">06</span><h3>Standalone bundle</h3><p>CLI writes a clean, zero-dependency JS file to <code>dist-obf/</code> — works in Node, browser, Electron, Workers.</p></article>
-        </div>
-      </section>
-
-      <section class="features" id="features">
-        <div class="features-grid">
-          <div class="features-art fade-in">
-            <img src="site/visuals/semantic-dna.svg" alt="Semantic DNA randomized VM architecture" width="520" height="520" loading="lazy" />
-          </div>
-          <div class="features-list">
-            <article class="feature-card fade-in"><h3>Semantic-aware</h3><p>Full TS Compiler API integration — understands types, imports, class hierarchies, and scopes.</p></article>
-            <article class="feature-card fade-in"><h3>1-to-N opcode aliasing</h3><p>One instruction maps to many virtual opcodes, randomized per build. Defeats statistical pattern matching.</p></article>
-            <article class="feature-card fade-in"><h3>Anti-symbolic fake paths</h3><p>Trap-backed unreachable blocks behind congruence predicates that waste dynamic exploration tools.</p></article>
-            <article class="feature-card fade-in"><h3>Rolling self-modifying code</h3><p>Per-execution bytecode cloning with LCG-derived corruption masks and Shadow XOR Mask Buffer recovery.</p></article>
-            <article class="feature-card fade-in"><h3>Application profiles</h3><p>Generic, React, Electron, Library — protection tuned to each deployment surface with framework-specific hardening.</p></article>
-            <article class="feature-card fade-in"><h3>WASM hybrid backend</h3><p>Optional WebAssembly bootstrap validates native support while bytecode execution stays in the JS VM.</p></article>
-          </div>
-        </div>
-      </section>
-
-      <section class="metrics fade-in">
-        <div class="metric"><strong>62</strong><span>Vitest tests passing</span></div>
-        <div class="metric"><strong>13</strong><span>workspace build tasks</span></div>
-        <div class="metric"><strong>7.15</strong><span>Shannon bits entropy</span></div>
-        <div class="metric"><strong>Selective</strong><span>UI code stays native</span></div>
-      </section>
-
-      <section class="security" id="security">
-        <div class="section-head fade-in">
-          <h2>Security posture,<br />honestly stated.</h2>
-          <p>No cryptographic claims. No silver bullets. Realistic protection levels against common threat profiles.</p>
-        </div>
-        <div class="security-grid">
-          <article class="security-card fade-in">
-            <div class="sec-head"><span class="sec-level high">High</span><h3>Naive static analysis</h3></div>
-            <p>AST deobfuscators and signature regex tools lose the original execution shape entirely. Control flow, variable names, and literal values are gone.</p>
-          </article>
-          <article class="security-card fade-in">
-            <div class="sec-head"><span class="sec-level med">Medium</span><h3>Automated emulation</h3></div>
-            <p>Rolling bytecode, opaque predicates, and indirect dispatch raise solver friction. Deterministic emulation can still trace behavior over time.</p>
-          </article>
-          <article class="security-card fade-in">
-            <div class="sec-head"><span class="sec-level low">Low-Medium</span><h3>Manual devirtualization</h3></div>
-            <p>A skilled reverser with enough dynamic analysis time can recover behavior. Prioritize logic churn strategies when targeting advanced adversaries.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="status" id="status">
-        <div class="section-head fade-in">
-          <h2>Syntax coverage,<br />with the limits visible.</h2>
-          <p>Every unsupported construct fails loudly. No silent miscompilation.</p>
-        </div>
-        <div class="status-grid">
-          <article class="status-card fade-in"><span class="tag green">Fully supported</span><h3>Loops, switch, throw, delete, calls, new, for-in, for-of</h3></article>
-          <article class="status-card fade-in"><span class="tag green">Fully supported</span><h3>Destructuring, rest &amp; spread, sparse arrays, computed keys</h3></article>
-          <article class="status-card fade-in"><span class="tag green">Fully supported</span><h3>Closures, nested functions, this, new.target, generators</h3></article>
-          <article class="status-card fade-in"><span class="tag amber">Supported with limits</span><h3>Async/await, base classes, object forms, wasm-hybrid</h3></article>
-          <article class="status-card fade-in"><span class="tag red">Not stable</span><h3>Derived classes (extends/super), static class blocks</h3></article>
-          <article class="status-card fade-in"><span class="tag guardrail">Guardrail</span><h3>Unsupported AST fails loudly instead of silent miscompilation</h3></article>
-        </div>
-      </section>
-
-      <section class="run" id="run">
-        <div class="run-panel fade-in">
-          <div class="run-copy">
-            <h2>Clone. Install. Build. Protect one function.</h2>
-            <p>From zero to obfuscated in four commands. The CLI ships with a working sample project so you can verify semantic equivalence immediately.</p>
-            <div class="run-actions">
-              <a class="pri-action" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">
-                <span>Download from GitHub</span>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </a>
-              <a class="sec-action" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator/blob/main/docs/support-status.md" target="_blank" rel="noopener">Support status</a>
+            <div class="badge badge-a">
+              <span class="badge-code">handler = handler(ctx)</span>
+              <span class="badge-label">Indirect threaded dispatch</span>
+            </div>
+            <div class="badge badge-b">
+              <span class="badge-code">xorLog recovery</span>
+              <span class="badge-label">Self-modifying bytecode</span>
             </div>
           </div>
-          <div class="run-code">
-            <div class="cli-bar" aria-hidden="true"><span>$</span> ts-vm-obfuscator</div>
-            <pre><span class="tn">git clone</span> https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
-<span class="tn">cd</span> ts-vm-obfuscator
-<span class="tn">pnpm install</span>
-<span class="tn">pnpm build</span>
-<span class="tn">node</span> packages/cli/dist/cli.js <span class="flag">-p</span> examples/basic-ts/tsconfig.json <span class="flag">--out</span> dist-obf <span class="flag">--profile</span> generic</pre>
+        </div>
+
+        <div class="hero-scroll" aria-hidden="true">
+          <svg width="16" height="24" viewBox="0 0 16 24" fill="none">
+            <rect x="1.5" y="1.5" width="13" height="21" rx="6.5" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.5"/>
+            <circle cx="8" cy="8" r="2" fill="var(--acid)" opacity="0.6">
+              <animate attributeName="cy" values="8;15;8" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+      </section>
+
+      <section class="quick-stats" aria-label="Key differentiators">
+        <div class="quick-stat"><strong>Selective</strong><span>@virtualize target model</span></div>
+        <div class="quick-stat"><strong>Register IR</strong><span>typed lowering surface</span></div>
+        <div class="quick-stat"><strong>Polymorphic</strong><span>randomized opcodes per build</span></div>
+        <div class="quick-stat"><strong>Standalone</strong><span>zero-dependency output</span></div>
+      </section>
+
+      <section class="section-with-design" id="pipeline">
+        <div class="section-head">
+          <span class="section-eyebrow reveal fade-up">The pipeline</span>
+          <h2 class="reveal fade-up delay-1">A compiler backend,<br />not a prettier AST.</h2>
+          <p class="reveal fade-up delay-2">Traditional obfuscators rename variables and inject dead code. TSXobf is a full compiler pipeline: source &rarr; semantic IR &rarr; encrypted bytecode &rarr; generated VM runtime.</p>
+        </div>
+        <figure class="design-fig reveal fade-up">
+          <img src="site/visuals/3.png" alt="TSXobf pipeline: 6-stage compiler flow" width="1400" height="788" loading="lazy" />
+        </figure>
+        <div class="pipe-strip">
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">01</div>
+            <h3>TS project analysis</h3>
+            <p>Resolves imports, exports, scope rules, and typed symbols through the official TS Compiler API.</p>
+          </article>
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">02</div>
+            <h3>Register-based IR</h3>
+            <p>Selected functions lower into a typed intermediate representation with explicit control flow.</p>
+          </article>
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">03</div>
+            <h3>Transform passes</h3>
+            <p>String pool encoding, symbol indirection, dead code injection, fake paths, generic confusion, namespace virtualization.</p>
+          </article>
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">04</div>
+            <h3>Bytecode compiler</h3>
+            <p>IR compiles into encrypted, remapped, build-specific opcode streams with 1-to-N aliasing.</p>
+          </article>
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">05</div>
+            <h3>VM runtime</h3>
+            <p>Polymorphic dispatch handlers, encrypted constant pool, optional rolling self-modifying bytecode.</p>
+          </article>
+          <article class="pipe-card reveal fade-up">
+            <div class="pipe-num" aria-hidden="true">06</div>
+            <h3>Standalone bundle</h3>
+            <p>CLI writes a zero-dependency JS file to <code>dist-obf/</code> &mdash; Node, browser, Electron, Workers.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-with-design" id="features">
+        <div class="section-head">
+          <span class="section-eyebrow reveal fade-up">Capabilities</span>
+          <h2 class="reveal fade-up delay-1">What makes<br />TSXobf different.</h2>
+        </div>
+        <figure class="design-fig reveal fade-up">
+          <img src="site/visuals/4.png" alt="TSXobf capabilities: 6 feature cards with semantic DNA diagram" width="1400" height="788" loading="lazy" />
+        </figure>
+        <div class="features-list">
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2v16M2 10h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <h3>Semantic-aware compilation</h3>
+            <p>Full TS Compiler API integration &mdash; understands types, imports, class hierarchies, and scopes.</p>
+          </article>
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 16L16 4M8 4h8v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3>1-to-N opcode aliasing</h3>
+            <p>One instruction maps to many virtual opcodes, randomized per build. Defeats statistical pattern matching.</p>
+          </article>
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2v8l4 4M10 2a8 8 0 108 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <h3>Rolling self-modifying code</h3>
+            <p>Per-execution bytecode cloning with LCG-derived corruption masks and Shadow XOR Mask Buffer recovery.</p>
+          </article>
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 4h12v12H4zM4 10h12" stroke="currentColor" stroke-width="1.5"/><path d="M10 4v12" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <h3>Anti-symbolic fake paths</h3>
+            <p>Trap-backed unreachable blocks behind congruence predicates that waste dynamic exploration tools.</p>
+          </article>
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+            </div>
+            <h3>Application profiles</h3>
+            <p>Generic, React, Electron, Library &mdash; protection tuned to each deployment surface.</p>
+          </article>
+          <article class="feat-card reveal fade-up">
+            <div class="feat-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a8 8 0 100 16 8 8 0 000-16z" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <h3>WASM hybrid backend</h3>
+            <p>Optional WebAssembly bootstrap validates native support while execution stays in the JS VM.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-with-design">
+        <figure class="design-fig reveal fade-up design-full">
+          <img src="site/visuals/5.png" alt="TSXobf metrics: 4 metric cards showing test count, build tasks, entropy, and selective protection" width="1400" height="788" loading="lazy" />
+        </figure>
+      </section>
+
+      <section class="section-with-design" id="security">
+        <div class="section-head">
+          <span class="section-eyebrow reveal fade-up">Threat model</span>
+          <h2 class="reveal fade-up delay-1">Security posture,<br />honestly stated.</h2>
+          <p class="reveal fade-up delay-2">No cryptographic claims. No silver bullets. Realistic protection levels against common threat profiles.</p>
+        </div>
+        <figure class="design-fig reveal fade-up">
+          <img src="site/visuals/6.png" alt="TSXobf threat model: 3 security cards for static analysis, emulation, and devirtualization" width="1400" height="788" loading="lazy" />
+        </figure>
+        <div class="sec-grid">
+          <article class="sec-card reveal fade-up">
+            <div class="sec-badge sec-high">High</div>
+            <h3>Naive static analysis</h3>
+            <p>AST deobfuscators and signature regex tools lose the original execution shape entirely. Control flow, variable names, and literal values are gone.</p>
+          </article>
+          <article class="sec-card reveal fade-up">
+            <div class="sec-badge sec-mid">Medium</div>
+            <h3>Automated emulation</h3>
+            <p>Rolling bytecode, opaque predicates, and indirect dispatch raise solver friction. Deterministic emulation can still trace behavior over time.</p>
+          </article>
+          <article class="sec-card reveal fade-up">
+            <div class="sec-badge sec-low">Low-Med</div>
+            <h3>Manual devirtualization</h3>
+            <p>A skilled reverser with enough dynamic analysis time can recover behavior. Prioritize logic churn when targeting advanced adversaries.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-with-design" id="status">
+        <div class="section-head">
+          <span class="section-eyebrow reveal fade-up">Syntax coverage</span>
+          <h2 class="reveal fade-up delay-1">Full surface,<br />with the limits visible.</h2>
+          <p class="reveal fade-up delay-2">Every unsupported construct fails loudly. No silent miscompilation.</p>
+        </div>
+        <figure class="design-fig reveal fade-up">
+          <img src="site/visuals/7.png" alt="TSXobf syntax coverage: 6 status cards showing supported and unsupported features" width="1400" height="788" loading="lazy" />
+        </figure>
+        <div class="status-grid">
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-green">Fully supported</span>
+            <h3>Loops, switch, throw, delete, calls, new, for-in, for-of</h3>
+          </article>
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-green">Fully supported</span>
+            <h3>Destructuring, rest &amp; spread, sparse arrays, computed keys</h3>
+          </article>
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-green">Fully supported</span>
+            <h3>Closures, nested functions, this, new.target, generators</h3>
+          </article>
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-amber">Supported with limits</span>
+            <h3>Async/await, base classes, object forms, wasm-hybrid</h3>
+          </article>
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-red">Not stable</span>
+            <h3>Derived classes (extends/super), static class blocks</h3>
+          </article>
+          <article class="status-card reveal fade-up">
+            <span class="status-tag st-cyan">Guardrail</span>
+            <h3>Unsupported AST fails loudly instead of silent miscompilation</h3>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-with-design" id="run">
+        <div class="section-head">
+          <span class="section-eyebrow reveal fade-up">Get started</span>
+          <h2 class="reveal fade-up delay-1">Clone. Install. Build.<br />Protect one function.</h2>
+        </div>
+        <figure class="design-fig reveal fade-up">
+          <img src="site/visuals/8.png" alt="TSXobf quick start: split panel with instructions and terminal" width="1400" height="788" loading="lazy" />
+        </figure>
+        <div class="run-panel reveal fade-up">
+          <div class="run-info">
+            <p>From zero to obfuscated in four commands. The CLI ships with a working sample project so you can verify semantic equivalence immediately.</p>
+            <div class="run-actions">
+              <a class="btn-primary" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">
+                <span>Download from GitHub</span>
+                <span class="btn-arrow" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7h9M7.5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+              </a>
+              <a class="btn-ghost" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator/blob/main/docs/support-status.md" target="_blank" rel="noopener">Support status</a>
+            </div>
           </div>
+          <div class="run-terminal">
+            <div class="term-bar">
+              <div class="term-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <span class="term-path">~/ts-vm-obfuscator</span>
+            </div>
+            <pre><span class="sh-dollar">$</span> <span class="sh-cmd">git clone</span> https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
+<span class="sh-dollar">$</span> <span class="sh-cmd">cd</span> ts-vm-obfuscator
+<span class="sh-dollar">$</span> <span class="sh-cmd">pnpm install</span>
+<span class="sh-dollar">$</span> <span class="sh-cmd">pnpm build</span>
+<span class="sh-dollar">$</span> <span class="sh-cmd">node</span> packages/cli/dist/cli.js <span class="sh-flag">-p</span> examples/basic-ts/tsconfig.json <span class="sh-flag">--out</span> dist-obf <span class="sh-flag">--profile</span> generic</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta-section">
+        <div class="cta-inner reveal fade-up">
+          <figure class="design-fig reveal fade-up cta-fig">
+            <img src="site/visuals/9.png" alt="TSXobf final call to action" width="1400" height="788" loading="lazy" />
+          </figure>
+          <h2>Ready to lock down<br />your critical logic?</h2>
+          <p>MIT licensed. No telemetry. No backend. Just a compiler that respects your code.</p>
+          <a class="btn-primary" href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">
+            <span>Get started on GitHub</span>
+            <span class="btn-arrow" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7h9M7.5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </a>
         </div>
       </section>
     </main>
 
     <footer class="footer">
       <div class="footer-inner">
-        <div class="footer-brand">
-          <span class="brand-glyph">TS</span>
-          <span>TSXobf</span>
+        <div class="footer-left">
+          <span class="brand-mark">TS</span>
+          <span class="footer-name">TSXobf</span>
         </div>
-        <nav class="footer-links">
+        <nav class="footer-nav">
           <a href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator" target="_blank" rel="noopener">GitHub</a>
           <a href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
           <a href="https://github.com/philleyquattro317-arch/ts-vm-obfuscator/blob/main/BENCHMARK.md" target="_blank" rel="noopener">Benchmarks</a>
         </nav>
-        <p class="footer-copy">&copy; 2026 TSXobf. Open source. No telemetry. No backend.</p>
+        <p class="footer-note">&copy; 2026 TSXobf &mdash; Open source. No telemetry. No backend.</p>
       </div>
     </footer>
 

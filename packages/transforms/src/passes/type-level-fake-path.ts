@@ -261,6 +261,61 @@ export class TypeLevelFakePathPass implements TransformPass {
           newCP.push({ index: undefinedIdx, kind: ConstantKind.Undefined, value: null });
         }
 
+        // Setup EB-COP constants
+        let processIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'process');
+        if (processIdx === -1) {
+          processIdx = newCP.length;
+          newCP.push({ index: processIdx, kind: ConstantKind.String, value: 'process' });
+        }
+
+        let windowIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'window');
+        if (windowIdx === -1) {
+          windowIdx = newCP.length;
+          newCP.push({ index: windowIdx, kind: ConstantKind.String, value: 'window' });
+        }
+
+        let lengthIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'length');
+        if (lengthIdx === -1) {
+          lengthIdx = newCP.length;
+          newCP.push({ index: lengthIdx, kind: ConstantKind.String, value: 'length' });
+        }
+
+        let thirtyOneIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 31);
+        if (thirtyOneIdx === -1) {
+          thirtyOneIdx = newCP.length;
+          newCP.push({ index: thirtyOneIdx, kind: ConstantKind.Number, value: 31 });
+        }
+
+        let fifteenIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 15);
+        if (fifteenIdx === -1) {
+          fifteenIdx = newCP.length;
+          newCP.push({ index: fifteenIdx, kind: ConstantKind.Number, value: 15 });
+        }
+
+        let eightIdx = newCP.findIndex(cp => cp.kind === ConstantKind.Number && cp.value === 8);
+        if (eightIdx === -1) {
+          eightIdx = newCP.length;
+          newCP.push({ index: eightIdx, kind: ConstantKind.Number, value: 8 });
+        }
+
+        let errorIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'Error');
+        if (errorIdx === -1) {
+          errorIdx = newCP.length;
+          newCP.push({ index: errorIdx, kind: ConstantKind.String, value: 'Error' });
+        }
+
+        let stackIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'stack');
+        if (stackIdx === -1) {
+          stackIdx = newCP.length;
+          newCP.push({ index: stackIdx, kind: ConstantKind.String, value: 'stack' });
+        }
+
+        let stringIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'string');
+        if (stringIdx === -1) {
+          stringIdx = newCP.length;
+          newCP.push({ index: stringIdx, kind: ConstantKind.String, value: 'string' });
+        }
+
         // We choose one of our 5 templates
         const templateId = isParanoid ? ctx.rng.nextRange(0, 4) : 0;
         let opaqueInsts: Instruction[] = [];
@@ -271,24 +326,52 @@ export class TypeLevelFakePathPass implements TransformPass {
         // no Date.now() reflection, no 32-bit overflow bugs.
 
         if (templateId === 0) {
-          // Congruence invariant: (3 * x^2 + 5 * x + 7) % 4 !== 0
-          // Proof: x^2 mod 4 ∈ {0,1}. Enumerate: 3·0+5·0+7=7≡3, 3·1+5·1+7=15≡3,
-          //   3·0+5·2+7=17≡1, 3·1+5·3+7=25≡1 (mod 4). Never 0. ∎
+          // EB-COP (Environment-Bound Cryptographic Opaque Predicates)
+          // Verifies the global environment process/window strings signature, hashes it,
+          // and ensures the stack object behaves as a valid string.
           opaqueInsts = [
-            { opcode: OpCode.GetEntropy, operands: [], result: tempA },                     // tempA = x ∈ [0,255]
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempA }, { kind: OperandKind.Register, value: tempA }], result: tempB },  // tempB = x^2
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC },          // tempC = 3
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempB }], result: tempD },  // tempD = 3*x^2
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fiveIdx }], result: tempC },           // tempC = 5
-            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempC }, { kind: OperandKind.Register, value: tempA }], result: tempE },  // tempE = 5*x
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempE }], result: tempF },  // tempF = 3*x^2 + 5*x
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: sevenIdx }], result: tempC },          // tempC = 7
-            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempF }, { kind: OperandKind.Register, value: tempC }], result: tempG },  // tempG = 3*x^2 + 5*x + 7
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fourIdx }], result: tempC },           // tempC = 4
-            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempC }], result: tempE },  // tempE = (...) % 4
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempC },           // tempC = 0
-            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempC }], result: tempP }, // tempP = (rem === 0), always false
-            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempP }], result: tempQ }                         // tempQ = true (always!)
+            // 1. typeof process length
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: processIdx }], result: tempA },
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempA },
+            { opcode: OpCode.TypeOf, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempB },
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: lengthIdx }], result: tempC },
+            { opcode: OpCode.PropGet, operands: [{ kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempD }, // len1
+            
+            // 2. typeof window length
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: windowIdx }], result: tempA },
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempA },
+            { opcode: OpCode.TypeOf, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempE },
+            { opcode: OpCode.PropGet, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempC }], result: tempF }, // len2
+
+            // 3. hash = (len1 * 31 + len2) & 0xF
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempA },
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempD }, { kind: OperandKind.Register, value: tempA }], result: tempG }, // len1 * 31
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempF }], result: tempG }, // len1 * 31 + len2
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fifteenIdx }], result: tempA },
+            { opcode: OpCode.BitAnd, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempA }], result: tempG }, // hash = tempG & 15
+
+            // 4. (hash * hash + 5) % 8 !== 0
+            { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: tempG }, { kind: OperandKind.Register, value: tempG }], result: tempE }, // hash * hash
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fiveIdx }], result: tempA },
+            { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempA }], result: tempE }, // hash * hash + 5
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: eightIdx }], result: tempA },
+            { opcode: OpCode.Mod, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempA }], result: tempE }, // (hash*hash+5) % 8
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempA },
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempA }], result: tempE }, // hashMod === 0
+            { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempE }], result: tempP }, // envOpaque = !hashModEqualsZero
+
+            // 5. stack = new Error().stack, typeof stack === 'string'
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: errorIdx }], result: tempA },
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempA },
+            { opcode: OpCode.New, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempB },
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: stackIdx }], result: tempC },
+            { opcode: OpCode.PropGet, operands: [{ kind: OperandKind.Register, value: tempB }, { kind: OperandKind.Register, value: tempC }], result: tempD }, // stack
+            { opcode: OpCode.TypeOf, operands: [{ kind: OperandKind.Register, value: tempD }], result: tempE }, // typeof stack
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: stringIdx }], result: tempA },
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempE }, { kind: OperandKind.Register, value: tempA }], result: tempF }, // typeof stack === 'string'
+
+            // 6. envPredicate = (rEnvOpaque === rIsString)
+            { opcode: OpCode.StrictEq, operands: [{ kind: OperandKind.Register, value: tempP }, { kind: OperandKind.Register, value: tempF }], result: tempQ } // tempQ is envPredicate (always true)
           ];
         } else if (templateId === 1) {
           // Quadratic non-residue mod 4: (x^2 & 3) !== 3 (always true!)

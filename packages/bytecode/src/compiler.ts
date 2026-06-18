@@ -80,41 +80,149 @@ function isVariableLengthOpcode(opcode: number): boolean {
     opcode === 0x55 || // OpCode.ObjectNew
     opcode === 0x56 || // OpCode.Spread
     opcode === 0x57 || // OpCode.SpreadIntoArray
-    opcode === 0x5E    // OpCode.SuperCall
+    opcode === 0x5E || // OpCode.SuperCall
+    opcode === 0xFE    // OpCode.SuperInstruction
   );
 }
 
-export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): BytecodeModule {
-  const bcFunctions: BytecodeFunction[] = [];
-  let entryPointIndex = -1;
+function isTerminator(opcode: number): boolean {
+  return (
+    opcode === OpCode.Jmp ||
+    opcode === OpCode.JmpIf ||
+    opcode === OpCode.JmpIfNot ||
+    opcode === OpCode.Switch ||
+    opcode === OpCode.Return ||
+    opcode === OpCode.ReturnVoid ||
+    opcode === OpCode.TailCall ||
+    opcode === OpCode.Throw ||
+    opcode === OpCode.Yield ||
+    opcode === OpCode.YieldStar ||
+    opcode === OpCode.Await ||
+    opcode === OpCode.Halt ||
+    opcode === OpCode.Trap
+  );
+}
 
+function fuseInstructions(insts: Instruction[], config: VMBuildConfig): Instruction[] {
+  if (!config.superInstructions) return insts;
+
+  const rng = new SeededRandom(config.seed);
+  const ids = rng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const loadConstMulId = ids[0]!;
+  const getEntropyMulId = ids[1]!;
+  const loadConstAddId = ids[2]!;
+
+  const fused: Instruction[] = [];
+  let i = 0;
+  while (i < insts.length) {
+    const inst1 = insts[i]!;
+    const inst2 = insts[i + 1];
+
+    if (inst2) {
+      // Pattern 1: LoadConst + Mul
+      if (
+        inst1.opcode === OpCode.LoadConst &&
+        inst2.opcode === OpCode.Mul &&
+        inst1.operands[0]?.kind === OperandKind.ConstantIndex &&
+        inst1.result &&
+        inst2.result
+      ) {
+        let matched = false;
+        let regX: any;
+        if (inst2.operands[0]?.kind === OperandKind.Register && inst2.operands[0].value === inst1.result) {
+          regX = inst2.operands[1];
+          matched = true;
+        } else if (inst2.operands[1]?.kind === OperandKind.Register && inst2.operands[1].value === inst1.result) {
+          regX = inst2.operands[0];
+          matched = true;
+        }
+        if (matched && regX) {
+          fused.push({
+            opcode: OpCode.SuperInstruction,
+            operands: [
+              { kind: OperandKind.Immediate, value: loadConstMulId },
+              inst1.operands[0], // constIdx
+              { kind: OperandKind.Register, value: inst1.result }, // regT
+              regX, // regX
+              { kind: OperandKind.Register, value: inst2.result } // regR
+            ]
+          });
+          i += 2;
+          continue;
+        }
+      }
+
+      // Pattern 2: GetEntropy + Mul (entropy * entropy)
+      if (
+        inst1.opcode === OpCode.GetEntropy &&
+        inst2.opcode === OpCode.Mul &&
+        inst1.result &&
+        inst2.operands[0]?.kind === OperandKind.Register &&
+        inst2.operands[0].value === inst1.result &&
+        inst2.operands[1]?.kind === OperandKind.Register &&
+        inst2.operands[1].value === inst1.result &&
+        inst2.result
+      ) {
+        fused.push({
+          opcode: OpCode.SuperInstruction,
+          operands: [
+            { kind: OperandKind.Immediate, value: getEntropyMulId },
+            { kind: OperandKind.Register, value: inst1.result }, // regT
+            { kind: OperandKind.Register, value: inst2.result } // regR
+          ]
+        });
+        i += 2;
+        continue;
+      }
+
+      // Pattern 3: LoadConst + Add
+      if (
+        inst1.opcode === OpCode.LoadConst &&
+        inst2.opcode === OpCode.Add &&
+        inst1.operands[0]?.kind === OperandKind.ConstantIndex &&
+        inst1.result &&
+        inst2.operands[0]?.kind === OperandKind.Register &&
+        inst2.operands[0].value === inst1.result &&
+        inst2.operands[1]?.kind === OperandKind.Register &&
+        inst2.result
+      ) {
+        fused.push({
+          opcode: OpCode.SuperInstruction,
+          operands: [
+            { kind: OperandKind.Immediate, value: loadConstAddId },
+            inst1.operands[0], // constIdx
+            { kind: OperandKind.Register, value: inst1.result }, // regT
+            inst2.operands[1], // regX (second operand)
+            { kind: OperandKind.Register, value: inst2.result } // regR
+          ]
+        });
+        i += 2;
+        continue;
+      }
+    }
+
+    fused.push(inst1);
+    i++;
+  }
+  return fused;
+}
+
+export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): BytecodeModule {
   const mapping = generateRemappedOpcodes(config.seed);
   const functions: BytecodeFunction[] = [];
   const rng = new SeededRandom(config.seed);
 
-  // 1. Shuffle constant pool index if enabled
-  const originalCP = [...irModule.constantPool];
-  const cpLength = originalCP.length;
-  
-  const originalIndices = Array.from({ length: cpLength }, (_, i) => i);
-  const shuffledIndices = rng.shuffle([...originalIndices]);
-  
-  const originalToShuffled = new Map<number, number>();
-  shuffledIndices.forEach((origIdx, shuffledIdx) => {
-    originalToShuffled.set(origIdx, shuffledIdx);
-  });
-  
-  const shuffledCP: ConstantPoolEntry[] = new Array(cpLength);
-  shuffledIndices.forEach((origIdx, shuffledIdx) => {
-    shuffledCP[shuffledIdx] = {
-      ...originalCP[origIdx]!,
-      index: shuffledIdx
-    };
-  });
+  const duplicatedCP: ConstantPoolEntry[] = [];
+  const tempFunctions: {
+    irFn: IRFunction;
+    flatInsts: Instruction[];
+    blockInstIndices: Map<string, number>;
+    maxRegs: number;
+  }[] = [];
 
+  // Pass 1: Build flatInsts, pre-resolve mapped opcodes, duplicate constant pool entries
   for (const irFn of irModule.functions) {
     if (irFn.isVirtualized) {
-      // 2. Local symbol / Register ID Shuffle
       const paramCount = irFn.params.length;
       const maxRegs = Math.max(collectMaxRegisterIndex(irFn), paramCount);
       const regIds = Array.from({ length: maxRegs - paramCount }, (_, i) => i + paramCount);
@@ -139,22 +247,19 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         return regStr;
       };
 
-      // 1. Resolve block instruction indices
       const blockInstIndices = new Map<string, number>();
       const flatInsts: Instruction[] = [];
 
       for (const block of irFn.blocks) {
         blockInstIndices.set(block.id, flatInsts.length);
         
-        // Map instruction registers and constant pool indices
         const mappedInstructions = block.instructions.map(inst => {
           const mappedOperands = inst.operands.map(op => {
             if (op.kind === OperandKind.Register) {
               return { ...op, value: mapReg(op.value) };
             }
             if (op.kind === OperandKind.ConstantIndex) {
-              const origIdx = op.value as number;
-              return { ...op, value: originalToShuffled.get(origIdx) ?? origIdx };
+              return { ...op };
             }
             return op;
           });
@@ -166,9 +271,9 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
           };
         });
 
-        flatInsts.push(...mappedInstructions);
+        const fusedInstructions = fuseInstructions(mappedInstructions, config);
+        flatInsts.push(...fusedInstructions);
         
-        // Convert terminators to pseudo-instructions
         if (block.terminator) {
           if (block.terminator.kind === 'jump') {
             flatInsts.push({
@@ -206,115 +311,189 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         }
       }
 
-      // 2. Compute byte offsets using Fixed-Point Iteration (Two-Pass)
-      const instByteOffset: number[] = new Array(flatInsts.length).fill(0);
-      let changed = true;
-
-      while (changed) {
-        changed = false;
-        let currentOffset = 0;
-
-        for (let i = 0; i < flatInsts.length; i++) {
-          if (instByteOffset[i] !== currentOffset) {
-            instByteOffset[i] = currentOffset;
-            changed = true;
-          }
-
-          const inst = flatInsts[i]!;
-          
-          let mappedOp = inst.opcode;
-          const forward = mapping.forward.get(inst.opcode);
-          if (Array.isArray(forward)) mappedOp = forward[0]!;
-          else if (forward !== undefined) mappedOp = forward as number;
-
-          let size = 1; // opcode
-          const numJunk = inst.opcode % 3;
-          size += numJunk; // junk bytes
-
-          const ops = [...(inst.operands || [])];
-          if (inst.result) {
-            ops.push({ kind: OperandKind.Register, value: inst.result } as any);
-          }
-
-          const isVarLength = isVariableLengthOpcode(inst.opcode);
-          if (isVarLength) {
-            size += 1; // argCount
-          }
-
-          for (let opIdx = 0; opIdx < ops.length; opIdx++) {
-            const op = ops[opIdx]!;
-            size += 1; // kindNum
-
-            let val = 0;
-            if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
-              const targetIdx = blockInstIndices.get(op.value as string)!;
-              val = instByteOffset[targetIdx] || 0;
-            } else if (typeof op.value === 'string' && op.value.startsWith('r')) {
-              val = parseInt(op.value.substring(1), 10);
-            } else if (typeof op.value === 'number') {
-              val = op.value;
-            }
-
-            if (config.immediateEncoding === 1) { // VariableLength
-              let v = val;
-              do {
-                v >>>= 7;
-                size++;
-              } while (v !== 0);
-            } else {
-              size += 4;
-            }
-          }
-          currentOffset += size;
-        }
-      }
-
-      // 3. Patch block labels definitively
+      // Pre-resolve mapped opcodes to make them available for expectedPathHash calculation
       for (const inst of flatInsts) {
-        if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
-          const ops = inst.operands!;
-          if (inst.opcode === OpCode.Jmp) {
-             if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
-               const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-               (ops[0] as any).value = instByteOffset[targetIdx]!;
-               (ops[0] as any).kind = OperandKind.Immediate;
-             }
-          } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
-              const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
-              const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
-              (ops[1] as any).value = instByteOffset[targetTrueIdx]!;
-              (ops[1] as any).kind = OperandKind.Immediate;
-              (ops[2] as any).value = instByteOffset[targetFalseIdx]!;
-              (ops[2] as any).kind = OperandKind.Immediate;
+        let mappedOp = inst.opcode;
+        const forward = mapping.forward.get(inst.opcode);
+        if (Array.isArray(forward)) {
+          mappedOp = (forward as readonly OpCode[])[Math.floor(rng.next() * forward.length)]!;
+        } else if (forward !== undefined) {
+          mappedOp = forward as OpCode;
+        }
+        (inst as any).mappedOp = mappedOp;
+      }
+
+      // Duplicate constant pool entries, mapping expected path hash values
+      let expectedPathHash = 0;
+      for (const inst of flatInsts) {
+        expectedPathHash = (Math.imul(expectedPathHash, 31) + (inst as any).mappedOp) & 0xFFFFFFFF;
+        for (const op of inst.operands) {
+          if (op.kind === OperandKind.ConstantIndex) {
+            const origIdx = op.value as number;
+            const origEntry = irModule.constantPool[origIdx]!;
+            const newIdx = duplicatedCP.length;
+            duplicatedCP.push({
+              ...origEntry,
+              index: newIdx,
+              expectedPathHash: config.rollingKeys ? expectedPathHash : undefined
+            } as any);
+            (op as any).value = newIdx;
           }
-        } else {
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
-              const targetIdx = blockInstIndices.get(op.value as string)!;
-              (op as any).value = instByteOffset[targetIdx]!;
-              (op as any).kind = OperandKind.Immediate;
-            }
-          }
+        }
+        if (isTerminator(inst.opcode)) {
+          expectedPathHash = 0;
         }
       }
 
-      // Encode instructions to bytecode
-      const bytecode = encodeBytecode(flatInsts, mapping, config, rng);
-
-      functions.push({
-        id: irFn.id,
-        name: irFn.name,
-        bytecode,
-        paramCount: irFn.params.length,
-        localCount: irFn.locals.length,
-        maxRegisters: maxRegs,
-        attributes: irFn.attributes,
-        isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported)
+      tempFunctions.push({
+        irFn,
+        flatInsts,
+        blockInstIndices,
+        maxRegs
       });
     }
   }
 
-  // Shuffle functions order deterministic based on seed
+  // Pass 2: Shuffle duplicated constant pool
+  const cpLength = duplicatedCP.length;
+  const originalIndices = Array.from({ length: cpLength }, (_, i) => i);
+  const shuffledIndices = rng.shuffle([...originalIndices]);
+
+  const duplicatedToShuffled = new Map<number, number>();
+  shuffledIndices.forEach((origIdx, shuffledIdx) => {
+    duplicatedToShuffled.set(origIdx, shuffledIdx);
+  });
+
+  const shuffledCP: ConstantPoolEntry[] = new Array(cpLength);
+  shuffledIndices.forEach((origIdx, shuffledIdx) => {
+    shuffledCP[shuffledIdx] = {
+      ...duplicatedCP[origIdx]!,
+      index: shuffledIdx
+    };
+  });
+
+  // Pass 3: Update indices, resolve block label offsets, build final functions
+  for (const temp of tempFunctions) {
+    const { irFn, flatInsts, blockInstIndices, maxRegs } = temp;
+
+    // Update ConstantIndex operands with shuffled indices
+    for (const inst of flatInsts) {
+      for (const op of inst.operands) {
+        if (op.kind === OperandKind.ConstantIndex) {
+          const dupIdx = op.value as number;
+          (op as any).value = duplicatedToShuffled.get(dupIdx) ?? dupIdx;
+        }
+      }
+    }
+
+    // Resolve block label offsets using Fixed-Point Iteration (Two-Pass)
+    const instByteOffset: number[] = new Array(flatInsts.length).fill(0);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      let currentOffset = 0;
+
+      for (let i = 0; i < flatInsts.length; i++) {
+        if (instByteOffset[i] !== currentOffset) {
+          instByteOffset[i] = currentOffset;
+          changed = true;
+        }
+
+        const inst = flatInsts[i]!;
+        
+        let mappedOp = (inst as any).mappedOp !== undefined ? (inst as any).mappedOp : inst.opcode;
+        const forward = mapping.forward.get(inst.opcode);
+        if ((inst as any).mappedOp === undefined) {
+          if (Array.isArray(forward)) mappedOp = forward[0]!;
+          else if (forward !== undefined) mappedOp = forward as number;
+        }
+
+        let size = 1; // opcode
+        const numJunk = inst.opcode % 3;
+        size += numJunk; // junk bytes
+
+        const ops = [...(inst.operands || [])];
+        if (inst.result) {
+          ops.push({ kind: OperandKind.Register, value: inst.result } as any);
+        }
+
+        const isVarLength = isVariableLengthOpcode(inst.opcode);
+        if (isVarLength) {
+          size += 1; // argCount
+        }
+
+        for (let opIdx = 0; opIdx < ops.length; opIdx++) {
+          const op = ops[opIdx]!;
+          size += 1; // kindNum
+
+          let val = 0;
+          if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
+            const targetIdx = blockInstIndices.get(op.value as string)!;
+            val = instByteOffset[targetIdx] || 0;
+          } else if (typeof op.value === 'string' && op.value.startsWith('r')) {
+            val = parseInt(op.value.substring(1), 10);
+          } else if (typeof op.value === 'number') {
+            val = op.value;
+          }
+
+          if (config.immediateEncoding === 1) { // VariableLength
+            let v = val;
+            do {
+              v >>>= 7;
+              size++;
+            } while (v !== 0);
+          } else {
+            size += 4;
+          }
+        }
+        currentOffset += size;
+      }
+    }
+
+    // Patch block labels definitively
+    for (const inst of flatInsts) {
+      if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
+        const ops = inst.operands!;
+        if (inst.opcode === OpCode.Jmp) {
+           if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
+             const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
+             (ops[0] as any).value = instByteOffset[targetIdx]!;
+             (ops[0] as any).kind = OperandKind.Immediate;
+           }
+        } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
+            const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
+            const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
+            (ops[1] as any).value = instByteOffset[targetTrueIdx]!;
+            (ops[1] as any).kind = OperandKind.Immediate;
+            (ops[2] as any).value = instByteOffset[targetFalseIdx]!;
+            (ops[2] as any).kind = OperandKind.Immediate;
+        }
+      } else {
+        for (const op of inst.operands) {
+          if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
+            const targetIdx = blockInstIndices.get(op.value as string)!;
+            (op as any).value = instByteOffset[targetIdx]!;
+            (op as any).kind = OperandKind.Immediate;
+          }
+        }
+      }
+    }
+
+    const bytecode = encodeBytecode(flatInsts, mapping, config, rng);
+
+    functions.push({
+      id: irFn.id,
+      name: irFn.name,
+      bytecode,
+      paramCount: irFn.params.length,
+      localCount: irFn.locals.length,
+      maxRegisters: maxRegs,
+      attributes: irFn.attributes,
+      isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported)
+    });
+  }
+
   const shuffledFunctions = rng.shuffle([...functions]);
 
   const constantPool = encodeConstantPool(shuffledCP, config.constantPoolEncoding, config.seed);

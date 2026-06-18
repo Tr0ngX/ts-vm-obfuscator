@@ -12,25 +12,53 @@ function isVariableLengthOpcode(opcode: number): boolean {
     opcode === 0x55 || // OpCode.ObjectNew
     opcode === 0x56 || // OpCode.Spread
     opcode === 0x57 || // OpCode.SpreadIntoArray
-    opcode === 0x5E    // OpCode.SuperCall
+    opcode === 0x5E || // OpCode.SuperCall
+    opcode === 0xFE    // OpCode.SuperInstruction
+  );
+}
+
+function isTerminator(opcode: number): boolean {
+  return (
+    opcode === OpCode.Jmp ||
+    opcode === OpCode.JmpIf ||
+    opcode === OpCode.JmpIfNot ||
+    opcode === OpCode.Switch ||
+    opcode === OpCode.Return ||
+    opcode === OpCode.ReturnVoid ||
+    opcode === OpCode.TailCall ||
+    opcode === OpCode.Throw ||
+    opcode === OpCode.Yield ||
+    opcode === OpCode.YieldStar ||
+    opcode === OpCode.Await ||
+    opcode === OpCode.Halt ||
+    opcode === OpCode.Trap
   );
 }
 
 export function encodeBytecode(instructions: Instruction[], mapping: any, config: VMBuildConfig, rng?: SeededRandom): Uint8Array {
   const bytes: number[] = [];
+  let currentHandlerIdx = 0;
 
   for (const inst of instructions) {
-    let mappedOp = inst.opcode;
-    const forward = mapping.forward.get(inst.opcode);
-    if (Array.isArray(forward)) {
-      if (!rng) throw new Error('SeededRandom required when opcodeMap is provided');
-      // Pick random alias if 1-to-N
-      mappedOp = forward[Math.floor(rng.next() * forward.length)];
-    } else if (forward !== undefined) {
-      mappedOp = forward;
+    let mappedOp = (inst as any).mappedOp !== undefined ? (inst as any).mappedOp : inst.opcode;
+    if ((inst as any).mappedOp === undefined) {
+      const forward = mapping.forward.get(inst.opcode);
+      if (Array.isArray(forward)) {
+        if (!rng) throw new Error('SeededRandom required when opcodeMap is provided');
+        // Pick random alias if 1-to-N
+        mappedOp = forward[Math.floor(rng.next() * forward.length)];
+      } else if (forward !== undefined) {
+        mappedOp = forward;
+      }
     }
 
-    bytes.push(mappedOp);
+    if (config.stealthDispatch) {
+      const delta = (mappedOp - currentHandlerIdx + 256) & 0xFF;
+      bytes.push(delta);
+      currentHandlerIdx = isTerminator(inst.opcode) ? 0 : mappedOp;
+    } else {
+      bytes.push(mappedOp);
+    }
 
     const numJunk = inst.opcode % 3;
     for (let j = 0; j < numJunk; j++) {
@@ -119,7 +147,10 @@ function operandKindToNum(kind: any): number {
 export function encodeConstantPool(constants: readonly ConstantPoolEntry[], scheme: ConstantEncodingScheme, seed: number): EncodedConstant[] {
   return constants.map((c, index) => {
     if (scheme === ConstantEncodingScheme.XorRotate && typeof c.value === 'string') {
-      const stringSeed = (seed ^ (index * 0x9E3779B9)) & 0xffffffff;
+      let stringSeed = (seed ^ (index * 0x9E3779B9)) & 0xffffffff;
+      if ((c as any).expectedPathHash !== undefined) {
+        stringSeed = (stringSeed ^ (c as any).expectedPathHash) & 0xffffffff;
+      }
       
       // Deriving 16-byte key using LCG
       const keyBytes = new Uint8Array(16);

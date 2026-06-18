@@ -301,6 +301,8 @@ function createRuntimeNames(config: VMBuildConfig) {
         xorLog: 'xorLog',
         executionNonce: 'executionNonce',
         currentOpcode: 'currentOpcode',
+        currentHandlerIdx: 'currentHandlerIdx',
+        pathHash: 'pathHash',
       },
       frame: {
         catchPc: 'catchPc',
@@ -371,6 +373,8 @@ function createRuntimeNames(config: VMBuildConfig) {
       xorLog: next(),
       executionNonce: 'executionNonce',
       currentOpcode: 'currentOpcode',
+      currentHandlerIdx: next(),
+      pathHash: next(),
     },
     frame: {
       catchPc: next(),
@@ -495,7 +499,26 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       opcode === 0x55 || // OpCode.ObjectNew
       opcode === 0x56 || // OpCode.Spread
       opcode === 0x57 || // OpCode.SpreadIntoArray
-      opcode === 0x5E    // OpCode.SuperCall
+      opcode === 0x5E || // OpCode.SuperCall
+      opcode === 0xFE    // OpCode.SuperInstruction
+    );
+  }
+
+  function isTerminator(opcode: number): boolean {
+    return (
+      opcode === OpCode.Jmp ||
+      opcode === OpCode.JmpIf ||
+      opcode === OpCode.JmpIfNot ||
+      opcode === OpCode.Switch ||
+      opcode === OpCode.Return ||
+      opcode === OpCode.ReturnVoid ||
+      opcode === OpCode.TailCall ||
+      opcode === OpCode.Throw ||
+      opcode === OpCode.Yield ||
+      opcode === OpCode.YieldStar ||
+      opcode === OpCode.Await ||
+      opcode === OpCode.Halt ||
+      opcode === OpCode.Trap
     );
   }
 
@@ -615,12 +638,26 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
           nextOpLogic = `
             if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
             let nextOp = ${top.readByte}(ctx);
+            ${config.stealthDispatch ? `
+              nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
+              ctx.${ctx.currentHandlerIdx} = nextOp;
+            ` : ''}
+            ${config.rollingKeys ? `
+              ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
+            ` : ''}
             return makeRouteToken(ctx, nextOp);
           `;
         } else {
           nextOpLogic = `
             if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
             let nextOp = ${top.readByte}(ctx);
+            ${config.stealthDispatch ? `
+              nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
+              ctx.${ctx.currentHandlerIdx} = nextOp;
+            ` : ''}
+            ${config.rollingKeys ? `
+              ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
+            ` : ''}
             return ${locals.dispatchBank}[nextOp];
           `;
         }
@@ -659,6 +696,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         variantBody = variantBody.replace(/\bctx\.regs\b/g, regAlias);
       }
 
+      if (config.stealthDispatch && isTerminator(canonical)) {
+        variantBody += `\nctx.${ctx.currentHandlerIdx} = 0;\n`;
+      }
+
       // track current opcode in paranoid
       let currentOpcodeTracker = '';
       if (config.runtimeHardening === 'paranoid') {
@@ -695,7 +736,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(OpCode.LoadConst, `
     ${readArgs}
-    ${regRef('args[1]')} = (kinds[0] === 2) ? ${top.getCP}(args[0]) : args[0];
+    ${regRef('args[1]')} = (kinds[0] === 2) ? ${top.getCP}(ctx, args[0]) : args[0];
   `);
   declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
@@ -761,7 +802,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.RestArgs, `${readArgs} ${regRef('args[1]')} = ${ctxRef('fnArgs')}.slice(${regRef('args[0]')});`);
   declareHandler(OpCode.ClosureNew, `
     ${readArgs}
-    ${regRef('args[2]')} = ${top.getExecutorById}(${top.getCP}(args[0]), ${regRef('args[1]')});
+    ${regRef('args[2]')} = ${top.getExecutorById}(${top.getCP}(ctx, args[0]), ${regRef('args[1]')});
   `);
   declareHandler(OpCode.Spread, `
     ${readArgs}
@@ -858,9 +899,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       : new (Function.prototype.bind.apply(ctorArray, [null].concat(ctorArrayArgs)))();
   `);
   
-  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = (kinds[0] === 0) ? ctx.regs[args[0]] : args[0];`);
-  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];`);
-  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];`);
+  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = (kinds[0] === 0) ? ctx.regs[args[0]] : args[0];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
+  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
+  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
   
   declareHandler(OpCode.Return, `${readArgs} ${ctxRef('returnValue')} = args.length > 0 ? ${regRef('args[0]')} : undefined; ${ctxRef('running')} = false;`);
   declareHandler(OpCode.ReturnVoid, `${readArgs} ${ctxRef('returnValue')} = undefined; ${ctxRef('running')} = false;`);
@@ -880,6 +921,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${ctxRef('resumeReg')} = args[1];
     ${ctxRef('resumeMode')} = 'await';
     ${ctxRef('running')} = false;
+    ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
   `);
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `${ctxRef('running')} = false;`);
@@ -953,6 +995,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${ctxRef('resumeMode')} = 'yield';
     ${ctxRef('resumeValue')} = ctx.regs[args[0]];
     ${ctxRef('running')} = false;
+    ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
   `);
   declareHandler(OpCode.YieldStar, `
     ${readArgs}
@@ -960,6 +1003,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${ctxRef('resumeMode')} = 'yieldStar';
     ${ctxRef('resumeValue')} = ctx.regs[args[0]];
     ${ctxRef('running')} = false;
+    ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
   `);
 
   // GetEntropy: Fast VM-internal entropy source (replaces expensive Date.now() reflection)
@@ -969,6 +1013,33 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var entropy = (ctx.${ctx.rollingState} ^ (${ctxRef('pc')} * 2654435761)) >>> 0;
     entropy = (entropy ^ (entropy >>> 16)) & 0xFF;
     ctx.regs[args[0]] = entropy;
+  `);
+
+  const superRng = new SeededRandom(config.seed);
+  const superIds = superRng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const loadConstMulId = superIds[0]!;
+  const getEntropyMulId = superIds[1]!;
+  const loadConstAddId = superIds[2]!;
+
+  declareHandler(OpCode.SuperInstruction, `
+    ${readArgs}
+    var patternId = args[0];
+    if (patternId === ${loadConstMulId}) {
+      var val = (kinds[1] === 2) ? ${top.getCP}(ctx, args[1]) : args[1];
+      ctx.regs[args[2]] = val;
+      ctx.regs[args[4]] = val * ctx.regs[args[3]];
+    } else if (patternId === ${getEntropyMulId}) {
+      var entropy = (ctx.${ctx.rollingState} ^ (${ctxRef('pc')} * 2654435761)) >>> 0;
+      entropy = (entropy ^ (entropy >>> 16)) & 0xFF;
+      ctx.regs[args[1]] = entropy;
+      ctx.regs[args[2]] = entropy * entropy;
+    } else if (patternId === ${loadConstAddId}) {
+      var val = (kinds[1] === 2) ? ${top.getCP}(ctx, args[1]) : args[1];
+      ctx.regs[args[2]] = val;
+      ctx.regs[args[4]] = val + ctx.regs[args[3]];
+    } else {
+      throw new Error('Invalid Super-Instruction Pattern: ' + patternId);
+    }
   `);
 
   const antiDebugLogic = config.antiDebug ? `
@@ -1330,13 +1401,16 @@ const ${top.vmFunctions} = (function() {
   ${runtimeStringBootstrap}
   
   // Lazy Decryption
-  function ${top.getCP}(index) {
+  function ${top.getCP}(ctx, index) {
     var c = ${top.rawCP}[index];
     if (!c) return undefined;
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
       var val = c.value;
       var decoded = '';
       var stringSeed = (${top.seed} ^ (index * 0x9E3779B9)) | 0;
+      if (ctx && ctx.${ctx.pathHash} !== undefined) {
+        stringSeed = (stringSeed ^ ctx.${ctx.pathHash}) | 0;
+      }
       
       // Deriving 16-byte key using LCG
       var keyBytes = [];
@@ -1538,7 +1612,9 @@ const ${top.vmFunctions} = (function() {
       salt: ${config.rollingKeys ? 'salt' : '0'},
       currentOpcode: 0,
       poisoned: false,
-      regCount: regCount
+      regCount: regCount,
+      ${ctx.currentHandlerIdx}: 0,
+      ${ctx.pathHash}: 0
     };
     for (let i = 0; i < argsArr.length; i++) {
       ${regRef('i')} = argsArr[i];
@@ -1551,6 +1627,13 @@ const ${top.vmFunctions} = (function() {
     ${tamperDetectionLogic}
     if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
     let ${locals.opByte} = ${top.readByte}(ctx);
+    ${config.stealthDispatch ? `
+      ${locals.opByte} = (ctx.${ctx.currentHandlerIdx} + ${locals.opByte}) % 256;
+      ctx.${ctx.currentHandlerIdx} = ${locals.opByte};
+    ` : ''}
+    ${config.rollingKeys ? `
+      ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + ${locals.opByte}) & 0xFFFFFFFF;
+    ` : ''}
     let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
     while(handler && ${ctxRef('running')} && !ctx.poisoned) {
@@ -1583,10 +1666,19 @@ const ${top.vmFunctions} = (function() {
           ${regRef(frameRef('handlerFrame', 'exceptionReg'))} = error;
           ${ctxRef('running')} = true;
           ${ctxRef('pc')} = ${frameRef('handlerFrame', 'catchPc')};
+          ${config.stealthDispatch ? `ctx.${ctx.currentHandlerIdx} = 0;` : ''}
+          ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
           if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) {
             handler = null;
           } else {
             let nextOp = ${top.readByte}(ctx);
+            ${config.stealthDispatch ? `
+              nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
+              ctx.${ctx.currentHandlerIdx} = nextOp;
+            ` : ''}
+            ${config.rollingKeys ? `
+              ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
+            ` : ''}
             if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
               handler = resolveRoute(ctx, makeRouteToken(ctx, nextOp));
             } else {

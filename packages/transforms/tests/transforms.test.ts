@@ -231,28 +231,50 @@ const mockProfile: ObfuscationProfile = {
     expect(rewrittenEntry.terminator.targets).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.successors).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.instructions.map(inst => inst.opcode)).toEqual([
-      OpCode.GetEntropy,
-      OpCode.Mul,
       OpCode.LoadConst,
-      OpCode.Mul,
+      OpCode.LoadGlobal,
+      OpCode.TypeOf,
+      OpCode.LoadConst,
+      OpCode.PropGet,
+      OpCode.LoadConst,
+      OpCode.LoadGlobal,
+      OpCode.TypeOf,
+      OpCode.PropGet,
       OpCode.LoadConst,
       OpCode.Mul,
       OpCode.Add,
+      OpCode.LoadConst,
+      OpCode.BitAnd,
+      OpCode.Mul,
       OpCode.LoadConst,
       OpCode.Add,
       OpCode.LoadConst,
       OpCode.Mod,
       OpCode.LoadConst,
       OpCode.StrictEq,
-      OpCode.Not
+      OpCode.Not,
+      OpCode.LoadConst,
+      OpCode.LoadGlobal,
+      OpCode.New,
+      OpCode.LoadConst,
+      OpCode.PropGet,
+      OpCode.TypeOf,
+      OpCode.LoadConst,
+      OpCode.StrictEq,
+      OpCode.StrictEq
     ]);
     const lastOp = fakeBlock.instructions.at(-1)?.opcode;
     expect([OpCode.Trap, OpCode.LoadConst, OpCode.Move]).toContain(lastOp);
     expect(result.module.constantPool).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: ConstantKind.Number, value: 3 }),
-      expect.objectContaining({ kind: ConstantKind.Number, value: 5 }),
-      expect.objectContaining({ kind: ConstantKind.Number, value: 7 }),
-      expect.objectContaining({ kind: ConstantKind.Number, value: 4 })
+      expect.objectContaining({ kind: ConstantKind.String, value: 'process' }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'window' }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'length' }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 31 }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 15 }),
+      expect.objectContaining({ kind: ConstantKind.Number, value: 8 }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'Error' }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'stack' }),
+      expect.objectContaining({ kind: ConstantKind.String, value: 'string' })
     ]));
     expect(rewrittenEntry.instructions.at(-1)?.operands[0]).toEqual({
       kind: OperandKind.Register,

@@ -161,7 +161,7 @@ describe('VM Runtime', () => {
 
     expect(bundle.fullSource).toContain('function getExecutorById(functionId, env)');
     expect(bundle.fullSource).toContain('Unknown VM function id: ');
-    expect(bundle.fullSource).toContain('ctx.regs[args[2]] = getExecutorById(getCP(args[0]), ctx.regs[args[1]]);');
+    expect(bundle.fullSource).toContain('ctx.regs[args[2]] = getExecutorById(getCP(ctx, args[0]), ctx.regs[args[1]]);');
     expect(bundle.fullSource).toContain('ctx.regs[args[1]] = ctx.env[args[0]];');
     expect(bundle.fullSource).toContain('ctx.regs[args[1]] = { v: ctx.regs[args[0]] };');
   });
