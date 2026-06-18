@@ -1,5 +1,5 @@
-import type { Diagnostic, IRFunction, ReactComponentInfo } from '@tsvm/shared';
-import { DiagnosticSeverity, FunctionAttribute, ReactZoneSafety } from '@tsvm/shared';
+import type { Diagnostic, IRFunction, ReactComponentInfo, ConstantPoolEntry } from '@tsvm/shared';
+import { DiagnosticSeverity, FunctionAttribute, ReactZoneSafety, OpCode, OperandKind } from '@tsvm/shared';
 
 function isHookLikeFunction(fn: IRFunction): boolean {
   return fn.attributes.includes(FunctionAttribute.ReactHook) || fn.name.startsWith('use');
@@ -53,13 +53,62 @@ export function createReactSafetyDiagnostics(
     }));
 }
 
-export function enforceReactProfile(functions: readonly IRFunction[]) {
+export function enforceReactProfile(functions: readonly IRFunction[], constantPool?: readonly ConstantPoolEntry[]) {
   let disabledCount = 0;
+  const disabledIds = new Set<string>();
+
   for (const fn of functions) {
-    if (!checkReactSafety(fn) && fn.isVirtualized) {
-      (fn as { isVirtualized: boolean }).isVirtualized = false;
-      disabledCount++;
+    if (!checkReactSafety(fn)) {
+      if (fn.isVirtualized) {
+        (fn as { isVirtualized: boolean }).isVirtualized = false;
+        disabledCount++;
+      }
+      disabledIds.add(fn.id);
+      console.log(`[DEBUG] Initial disabled: name=${fn.name} id=${fn.id}`);
     }
   }
+
+  if (constantPool) {
+    const childToParent = new Map<string, string>();
+    for (const fn of functions) {
+      for (const block of fn.blocks) {
+        for (const inst of block.instructions) {
+          if (inst.opcode === OpCode.ClosureNew && inst.operands[0]?.kind === OperandKind.ConstantIndex) {
+            const constIdx = inst.operands[0].value as number;
+            const entry = constantPool[constIdx];
+            console.log(`[DEBUG] Found ClosureNew inside fn=${fn.name} (id=${fn.id}) referring to constIdx=${constIdx} value=${entry?.value}`);
+            if (entry && typeof entry.value === 'string') {
+              childToParent.set(entry.value, fn.id);
+            }
+          }
+        }
+      }
+    }
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const fn of functions) {
+        if (!fn.isVirtualized) {
+          continue;
+        }
+        let hasDisabledChild = false;
+        for (const [childId, parentId] of childToParent.entries()) {
+          if (parentId === fn.id && disabledIds.has(childId)) {
+            hasDisabledChild = true;
+            break;
+          }
+        }
+        if (hasDisabledChild) {
+          (fn as { isVirtualized: boolean }).isVirtualized = false;
+          disabledIds.add(fn.id);
+          disabledCount++;
+          changed = true;
+          console.log(`[DEBUG] Propagating disablement to parent: name=${fn.name} id=${fn.id}`);
+        }
+      }
+    }
+  }
+
   return disabledCount;
 }

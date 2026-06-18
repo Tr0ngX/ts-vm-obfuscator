@@ -382,7 +382,7 @@ export class ObfuscationPipeline {
         for (const irModule of irModules) {
           reactComponents.push(...collectReactComponentInfo(irModule.functions, irModule.sourceFile));
           this.diagnostics.push(...createReactSafetyDiagnostics(irModule.functions, irModule.sourceFile));
-          enforceReactProfile(irModule.functions);
+          enforceReactProfile(irModule.functions, irModule.constantPool);
         }
         this.emit(
           'transform_execution' as PipelineStage,

@@ -12,6 +12,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
     const newFunctions = ctx.module.functions.map(func => {
       if (!func.isVirtualized || func.blocks.length < 3) return func;
 
+      const hasTryCatch = func.blocks.some(block =>
+        block.instructions.some(inst =>
+          inst.opcode === OpCode.TryCatchBegin ||
+          inst.opcode === OpCode.TryCatchEnd ||
+          inst.opcode === OpCode.FinallyBegin
+        )
+      );
+      if (hasTryCatch) return func;
+
       // 50% chance to apply per function (avoid predictability)
       if (ctx.rng.nextFloat() < 0.4) return func;
 

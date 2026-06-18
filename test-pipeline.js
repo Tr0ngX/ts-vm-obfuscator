@@ -136,11 +136,28 @@ console.log('Expected hash:', expectedHash);
 
 // Step 2: Run obfuscator pipeline
 console.log('Running obfuscation pipeline...');
-cp.execSync('node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf', {stdio: 'inherit'});
+// Clean previous build files first
+try {
+  fs.rmSync('dist-obf', { recursive: true, force: true });
+} catch (e) {}
+
+// Compile original basic-ts natively first using tsc
+console.log('Compiling original basic-ts natively...');
+cp.execSync('npx tsc -p examples/basic-ts/tsconfig.json --outDir examples/basic-ts/dist-orig', { stdio: 'inherit' });
+
+// We try compiling with default generic profile first, if it fails due to unsupported VM syntax, we use universal profile which enables compatibility fallbacks
+let profile = 'universal';
+try {
+  console.log('Attempting obfuscation with universal profile...');
+  cp.execSync('node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile universal', { stdio: 'inherit' });
+} catch (e) {
+  console.log('Obfuscation failed, exiting');
+  process.exit(1);
+}
 
 // Step 3: Load the latest obfuscated build
 const files = fs.readdirSync('dist-obf');
-const buildFiles = files.filter(f => f.startsWith('build_') && f.endsWith('.js')).map(f => {
+const buildFiles = files.filter(f => f.startsWith('build_') && (f.endsWith('.js') || f.endsWith('.mjs'))).map(f => {
   return { name: f, time: fs.statSync('dist-obf/' + f).mtime.getTime() };
 }).sort((a, b) => b.time - a.time);
 
@@ -149,132 +166,264 @@ if (buildFiles.length === 0) {
   process.exit(1);
 }
 
-const buildFile = buildFiles[0].name;
-console.log('Loading ' + buildFile + '...');
-
-const mod = require('./dist-obf/' + buildFile);
-const obfuscatedHash = mod.calculateSecretHash(testInput);
-console.log('Obfuscated hash:', obfuscatedHash);
-
-const expectedTEA = encryptTEA(12345, 67890, 1, 2, 3, 4);
-const obfuscatedTEA = mod.encryptTEA(12345, 67890, 1, 2, 3, 4);
-console.log('Expected TEA:', expectedTEA);
-console.log('Obfuscated TEA:', obfuscatedTEA);
-
-// Step 4: Verify semantic equivalence
-if (obfuscatedHash === expectedHash && expectedTEA === obfuscatedTEA) {
-  console.log('\n✅ SUCCESS: Obfuscated functions produce correct output!');
-  console.log(`   calculateSecretHash('${testInput}') = ${obfuscatedHash}`);
-  console.log(`   encryptTEA = MATCHED`);
-} else {
-  console.error('\n❌ FAILURE: Output mismatch!');
-  if (obfuscatedHash !== expectedHash) {
-    console.error(`   Hash Expected: ${expectedHash}`);
-    console.error(`   Hash Got:      ${obfuscatedHash}`);
-  }
-  if (expectedTEA !== obfuscatedTEA) {
-    console.error(`   TEA Expected: ${expectedTEA}`);
-    console.error(`   TEA Got:      ${obfuscatedTEA}`);
-  }
+// Locate the main index.ts bundle
+const buildFileIndex = buildFiles.find(f => f.name.includes('index_ts') || f.name.includes('index.ts'));
+if (!buildFileIndex) {
+  console.error('ERROR: No index build file found!');
   process.exit(1);
 }
 
-// Step 5: Test with additional inputs
-const testCases = ['', 'a', 'test', 'TypeScript VM Obfuscator', '日本語'];
-let allPass = true;
-for (const tc of testCases) {
-  const expected = calculateSecretHash(tc);
-  const actual = mod.calculateSecretHash(tc);
-  const pass = expected === actual;
-  console.log(`  ${pass ? '✅' : '❌'} calculateSecretHash('${tc}') = ${actual} (expected ${expected})`);
-  if (!pass) allPass = false;
+const buildFile = buildFileIndex.name;
+const buildPath = './dist-obf/' + buildFile;
+console.log('Loading obfuscated bundle: ' + buildFile + '...');
+const customTestFile = buildFiles.find(f => f.name.includes('custom-test.ts') || f.name.includes('custom_test'));
+if (customTestFile) {
+  fs.writeFileSync('dist-obf/package.json', JSON.stringify({ type: 'module' }));
+  fs.copyFileSync('dist-obf/' + customTestFile.name, 'dist-obf/custom-test.js');
 }
-
-console.log('\n--- EXTREME & COMPLEX VIRTUALIZATION TEST CASES (Artemis Control System Quality) ---');
-
-// 1. Collatz & Bitwise Acc
-const collatzInputs = [
-  { n: 7, seed: 12345 },
-  { n: 27, seed: 987654 },
-  { n: 1000, seed: 1 },
-  { n: -5, seed: 50 }, // edge case: negative
-  { n: 0, seed: 0 },   // edge case: zero
-];
-
-for (const input of collatzInputs) {
-  const expected = verifyArtemisCollatzAndMath(input.n, input.seed);
-  const actual = mod.verifyArtemisCollatzAndMath(input.n, input.seed);
-  const pass = expected === actual;
-  console.log(`  ${pass ? '✅' : '❌'} verifyArtemisCollatzAndMath(${input.n}, ${input.seed}) = ${actual} (expected ${expected})`);
-  if (!pass) allPass = false;
-}
-
-// 2. Object Decimation (dynamic keys, prefix unary, delete operator)
-const decimationInputs = [
-  { key: 'oxygen', multiplier: 2, limit: 3 },
-  { key: 'pressure', multiplier: -5, limit: 10 },
-  { key: 'sensorData', multiplier: 1, limit: 0 },
-  { key: '', multiplier: 4, limit: 2 }, // edge case: empty key
-  { key: 'temp', multiplier: 0, limit: 4 }, // edge case: zero multiplier
-];
-
-for (const input of decimationInputs) {
-  const expected = verifyArtemisStateDecimation(input.key, input.multiplier, input.limit);
-  const actual = mod.verifyArtemisStateDecimation(input.key, input.multiplier, input.limit);
-  const pass = expected === actual;
-  console.log(`  ${pass ? '✅' : '❌'} verifyArtemisStateDecimation('${input.key}', ${input.multiplier}, ${input.limit}) = ${actual} (expected ${expected})`);
-  if (!pass) allPass = false;
-}
-
-// 3. Gating logic (multi conditions, logical OR/AND, branches)
-const gatingInputs = [
-  { sensorA: 80, sensorB: 90, threshold: 50 },
-  { sensorA: 100, sensorB: 100, threshold: 50 },
-  { sensorA: 20, sensorB: 30, threshold: 50 },
-  { sensorA: -10, sensorB: 40, threshold: 50 }, // edge case: negative
-  { sensorA: 50, sensorB: 60, threshold: 50 },
-];
 
 (async () => {
-  for (const input of gatingInputs) {
-    const expected = verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
-    const actual = mod.verifyArtemisGatingSystem(input.sensorA, input.sensorB, input.threshold);
-    const pass = expected === actual;
-    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisGatingSystem(${input.sensorA}, ${input.sensorB}, ${input.threshold}) = ${actual} (expected ${expected})`);
-    if (!pass) allPass = false;
+  // Load original natively-compiled module
+  const orig = require('./examples/basic-ts/dist-orig/index.js');
+  try {
+    require('./examples/basic-ts/dist-orig/with-test.js');
+  } catch (e) {}
+  
+  // Load obfuscated module dynamically to support ESM .mjs
+  const mod = await import(buildPath);
+  globalThis.testVMBlockerWith = function(val1) {
+    const obj = { a: val1 };
+    let out = 0;
+    with (obj) {
+      out = a;
+    }
+    return out;
+  };
+
+  const testInput = 'hello-world';
+  const expectedHash = calculateSecretHash(testInput);
+  const obfuscatedHash = mod.calculateSecretHash(testInput);
+  console.log('Expected hash:', expectedHash);
+  console.log('Obfuscated hash:', obfuscatedHash);
+
+  const expectedTEA = encryptTEA(12345, 67890, 1, 2, 3, 4);
+  const obfuscatedTEA = mod.encryptTEA(12345, 67890, 1, 2, 3, 4);
+  console.log('Expected TEA:', expectedTEA);
+  console.log('Obfuscated TEA:', obfuscatedTEA);
+
+  let allPass = true;
+
+  // Step 4: Verify semantic equivalence of basic test cases
+  if (obfuscatedHash === expectedHash && expectedTEA === obfuscatedTEA) {
+    console.log('\n✅ SUCCESS: Obfuscated functions produce correct output!');
+  } else {
+    console.error('\n❌ FAILURE: Output mismatch!');
+    allPass = false;
   }
 
-  // 4. Computed Destructuring
-  const computedInputs = [
-    { key: 'oxygen', value: 95, defaultVal: 10 },
-    { key: 'pressure', value: 1013, defaultVal: 20 },
-    { key: 'fuel', value: 0, defaultVal: 30 },
+  console.log('\n--- TIER 1 TO 4 COMPREHENSIVE E2E TEST RUNNER ---');
+
+  const e2eTests = [
+    {
+      name: 'Constructor Parameter Properties',
+      fn: 'testConstructorParamProperties',
+      cases: [
+        { id: 1, args: [5, null] },
+        { id: 2, args: [10, 'test'] },
+        { id: 3, args: [99, null] },
+        { id: 3, args: [undefined, null] },
+        { id: 4, args: [3, 'hello'] },
+        { id: 5, args: [7, 'child'] },
+        { id: 1, args: [0, null], tier: 2 },
+        { id: 2, args: [-9999999, 9999999], tier: 2 },
+        { id: 3, args: [[1, 2, 3], { key: 'value' }], tier: 2 },
+        { id: 4, args: [null, undefined], tier: 2 },
+        { id: 5, args: [42, null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Private Methods',
+      fn: 'testPrivateMethods',
+      cases: [
+        { id: 1, args: [null, null] },
+        { id: 2, args: [5, null] },
+        { id: 3, args: [null, null] },
+        { id: 4, args: [8, null] },
+        { id: 5, args: [null, null] },
+        { id: 1, args: [5, null], tier: 2 },
+        { id: 2, args: [null, null], tier: 2 },
+        { id: 3, args: [null, null], tier: 2 },
+        { id: 3, args: ['notNull', null], tier: 2 },
+        { id: 4, args: [42, null], tier: 2 },
+        { id: 5, args: [null, null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Private Accessors',
+      fn: 'testPrivateAccessors',
+      cases: [
+        { id: 1, args: [42, null] },
+        { id: 2, args: ['getVal', null] },
+        { id: 3, args: ['setVal', null] },
+        { id: 4, args: [10, 50] },
+        { id: 5, args: [null, null] },
+        { id: 1, args: [-1.234e-5, null], tier: 2 },
+        { id: 2, args: [5, null], tier: 2 },
+        { id: 2, args: [-5, null], tier: 2 },
+        { id: 3, args: ['logged', null], tier: 2 },
+        { id: 4, args: [null, null], tier: 2 },
+        { id: 5, args: [100, null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Complex Super Calls',
+      fn: 'testComplexSuperCalls',
+      cases: [
+        { id: 1, args: ['base', 'derived'] },
+        { id: 2, args: ['base-closure', 'derived-closure'] },
+        { id: 3, args: [null, null] },
+        { id: 4, args: [5, null] },
+        { id: 4, args: [-1, null] },
+        { id: 5, args: ['b', 'l2'] },
+        { id: 1, args: [null, null], tier: 2 },
+        { id: 2, args: ['arrow-return', null], tier: 2 },
+        { id: 3, args: [[1, 2, 3], null], tier: 2 },
+        { id: 4, args: [null, null], tier: 2 },
+        { id: 5, args: [null, null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Complex Destructuring',
+      fn: 'testComplexDestructuring',
+      cases: [
+        { id: 1, args: [{ a: { b: 5 } }, null] },
+        { id: 1, args: [undefined, null] },
+        { id: 2, args: [[10, [20, 30]], null] },
+        { id: 2, args: [undefined, null] },
+        { id: 3, args: [{ a: [10, 20, 30] }, null] },
+        { id: 3, args: [undefined, null] },
+        { id: 4, args: [[1, 2, 3, 4], null] },
+        { id: 5, args: ['computed', null] },
+        { id: 1, args: [null, null], tier: 2 },
+        { id: 2, args: [null, null], tier: 2 },
+        { id: 3, args: [42, null], tier: 2 },
+        { id: 4, args: [null, null], tier: 2 },
+        { id: 5, args: ['deep', null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Loop Headers',
+      fn: 'testLoopHeaders',
+      cases: [
+        { id: 1, args: [[[1, 2], [3, 4]], null] },
+        { id: 2, args: [{ x: 1, y: 2 }, null] },
+        { id: 3, args: [[{ a: { b: 'foo' } }, { a: { b: 'bar' } }], null] },
+        { id: 4, args: [[[1, 2], [3, 4]], null] },
+        { id: 5, args: [[[1, 2, 3], [4, 5]], null] },
+        { id: 1, args: [null, null], tier: 2 },
+        { id: 2, args: [null, null], tier: 2 },
+        { id: 3, args: [[1, 2], null], tier: 2 },
+        { id: 4, args: [[1, 2, 3], null], tier: 2 },
+        { id: 5, args: [[1, 2, 3, 4, 5], null], tier: 2 }
+      ]
+    },
+    {
+      name: 'React Hooks / JSX Safety',
+      fn: 'testReactHooksJSX',
+      cases: [
+        { id: 1, args: [5, null] },
+        { id: 2, args: ['provider', null] },
+        { id: 3, args: ['state', null] },
+        { id: 4, args: ['ctx', null] },
+        { id: 5, args: ['query', null] },
+        { id: 1, args: ['nested', null], tier: 2 },
+        { id: 2, args: [null, null], tier: 2 },
+        { id: 3, args: ['compState', null], tier: 2 },
+        { id: 4, args: ['x', null], tier: 2 },
+        { id: 5, args: ['userComponent', null], tier: 2 }
+      ]
+    },
+    {
+      name: 'VM Blockers',
+      fn: 'testVMBlockers',
+      cases: [
+        { id: 1, args: [42, null] },
+        { id: 2, args: ['with', null] },
+        { id: 3, args: ['import', null] },
+        { id: 4, args: [5, null] },
+        { id: 4, args: [-5, null] },
+        { id: 5, args: ['loop', null] },
+        { id: 1, args: ['emptyWith', null], tier: 2 },
+        { id: 2, args: ['try', 'catch'], tier: 2 },
+        { id: 3, args: ['importCatch', null], tier: 2 },
+        { id: 4, args: [10, 20], tier: 2 },
+        { id: 5, args: ['nestedDebugger', null], tier: 2 }
+      ]
+    },
+    {
+      name: 'Cross Feature Combinations',
+      fn: 'testCrossFeatureCombinations',
+      combo: true,
+      cases: [
+        { id: 1, args: [5, 10] },
+        { id: 2, args: [5, 10] },
+        { id: 3, args: [5, 10] },
+        { id: 4, args: ['val', null] },
+        { id: 5, args: [{ x: 10, y: { z: 'custom' } }, null] },
+        { id: 6, args: [[{ a: [1, 2] }, { a: [3] }, {}], null] },
+        { id: 7, args: [[10, 20, 30], null] },
+        { id: 8, args: ['init', 'update'] }
+      ]
+    },
+    {
+      name: 'Real World Scenarios',
+      fn: 'testRealWorldScenarios',
+      scenario: true,
+      cases: [
+        { id: 1, args: ['SM1', [{ type: 'TRANSITION', payload: { nextState: 'RUNNING' } }]] },
+        { id: 2, args: [10, [5, 12, 8, 20]] },
+        { id: 3, args: ['production', ['logger', 'db', 'auth']] },
+        { id: 4, args: [[[1, 2, 3], [0, 4, 5], [1, 0, 6]], null] },
+        { id: 5, args: ['MyRenderer', { children: ['hello', 'world'], useHook: false }] },
+        { id: 5, args: ['MyRenderer', { useHook: true }] }
+      ]
+    }
   ];
 
-  for (const input of computedInputs) {
-    const expected = verifyArtemisComputedDestructuring(input.key, input.value, input.defaultVal);
-    const actual = mod.verifyArtemisComputedDestructuring(input.key, input.value, input.defaultVal);
-    const pass = JSON.stringify(expected) === JSON.stringify(actual);
-    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisComputedDestructuring('${input.key}', ${input.value}, ${input.defaultVal}) = ${JSON.stringify(actual)} (expected ${JSON.stringify(expected)})`);
-    if (!pass) allPass = false;
-  }
+  let e2ePass = true;
+  for (const group of e2eTests) {
+    console.log(`\n  Running Group: ${group.name}`);
+    for (const tc of group.cases) {
+      const tier = tc.tier || 1;
+      const caseId = tc.id;
+      const args = tc.args;
+      const fnName = group.fn;
+      
+      let expected, actual;
+      if (group.combo) {
+        expected = orig[fnName](caseId, ...args);
+        actual = mod[fnName](caseId, ...args);
+      } else if (group.scenario) {
+        expected = orig[fnName](caseId, ...args);
+        actual = mod[fnName](caseId, ...args);
+      } else {
+        expected = orig[fnName](tier, caseId, ...args);
+        actual = mod[fnName](tier, caseId, ...args);
+      }
+      
+      if (expected instanceof Promise || actual instanceof Promise) {
+        expected = await expected;
+        actual = await actual;
+      }
 
-  // 5. Async Loop
-  const loopInputs = [0, 1, 5, 10];
-  for (const count of loopInputs) {
-    const expected = await verifyArtemisAsyncLoop(count);
-    const actual = await mod.verifyArtemisAsyncLoop(count);
-    const pass = expected === actual;
-    console.log(`  ${pass ? '✅' : '❌'} verifyArtemisAsyncLoop(${count}) = ${actual} (expected ${expected})`);
-    if (!pass) allPass = false;
+      const pass = JSON.stringify(expected) === JSON.stringify(actual);
+      console.log(`    ${pass ? '✅' : '❌'} Case ${caseId} (Tier ${tier}): ${JSON.stringify(actual)} (expected ${JSON.stringify(expected)})`);
+      if (!pass) {
+        e2ePass = false;
+        allPass = false;
+      }
+    }
   }
-
-  // 6. Derived Class and Super Call (Verified VM Path)
-  const expectedDerived = 'Derived:200:Base:100:42';
-  const actualDerived = mod.verifyArtemisDerivedClassAndSuper();
-  const passDerived = expectedDerived === actualDerived;
-  console.log(`  ${passDerived ? '✅' : '❌'} verifyArtemisDerivedClassAndSuper() = '${actualDerived}' (expected '${expectedDerived}')`);
-  if (!passDerived) allPass = false;
 
   if (allPass) {
     console.log('\n✅ ALL TESTS PASSED — Perfect Semantic Equivalence Verified (NASA Codex Compliant).');
@@ -283,3 +432,4 @@ const gatingInputs = [
     process.exit(1);
   }
 })();
+

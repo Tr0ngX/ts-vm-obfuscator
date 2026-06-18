@@ -11,8 +11,11 @@ export function calculateFibonacci(n: number): number {
   return b;
 }
 
+export const testVal = 42;
+
 export function run() {
   console.log("Fibonacci of 10 is:", calculateFibonacci(10));
 }
 
 run();
+
