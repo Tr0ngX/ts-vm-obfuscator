@@ -98,6 +98,8 @@ export class NamespaceVirtualizationPass implements TransformPass {
       'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'apply', 'call', 'bind',
       // Promise & Async / Iterator
       'then', 'catch', 'finally', 'resolve', 'reject', 'next', 'throw', 'return', 'value', 'done',
+      // Error standard properties
+      'message', 'stack', 'cause',
       // Console & System
       'log', 'error', 'warn', 'info', 'dir', 'clear',
       // NodeJS/Browser standard & VM
@@ -174,6 +176,11 @@ export class NamespaceVirtualizationPass implements TransformPass {
               const isSrcReg = srcOp && srcOp.kind === OperandKind.Register && typeof srcOp.value === 'string';
               
               if ((inst.opcode === OpCode.PropGet || inst.opcode === OpCode.ComputedGet) && isSrcReg && paramRegs.has(srcOp.value)) {
+                paramRegs.add(inst.result);
+              } else if (inst.opcode === OpCode.Call ||
+                         inst.opcode === OpCode.CallMethod ||
+                         inst.opcode === OpCode.CallWithArray ||
+                         inst.opcode === OpCode.CallMethodWithArray) {
                 paramRegs.add(inst.result);
               } else if (inst.opcode === OpCode.RestArgs) {
                 paramRegs.add(inst.result);
