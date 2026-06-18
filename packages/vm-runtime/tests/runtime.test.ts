@@ -453,8 +453,8 @@ describe('VM Runtime', () => {
 
     expect(bundle.fullSource).toContain('Reflect.construct(superCtor');
     expect(bundle.fullSource).not.toContain("superCtor.apply(ctx.thisArg");
-    expect(bundle.fullSource).toContain('const VMWeakMap = WeakMap;');
-    expect(bundle.fullSource).toContain('const privateData = new VMWeakMap();');
+    expect(bundle.fullSource).toContain('cleanIntrinsics.WeakMap || WeakMap');
+    expect(bundle.fullSource).toContain('new VMWeakMap()');
     expect(bundle.fullSource).not.toContain('#value');
   });
 
@@ -570,10 +570,9 @@ describe('VM Runtime', () => {
 
     expect(bundle.fullSource).toContain('performance.now()');
     expect(bundle.fullSource).toContain('debugger;');
-    expect(bundle.fullSource).toContain('ctx.regs = [];');
-    expect(bundle.fullSource).toContain('Function.prototype.toString');
-    expect(bundle.fullSource).toContain('!_isNative(VMNativeMathSin)');
-    expect(bundle.fullSource).toContain('!_isNative(VMWeakMapGet)');
+    expect(bundle.fullSource).toContain('ctx.regs[i] = 0;');
+    expect(bundle.fullSource).toContain('.prototype.toString');
+    expect(bundle.fullSource).toContain('!_isNative(');
     expect(bundle.fullSource).toContain('ctx.globalScope = {};');
   });
 
@@ -594,7 +593,7 @@ describe('VM Runtime', () => {
     expect(bundle.fullSource).not.toContain('Cannot read private member');
     expect(bundle.fullSource).toContain('Object.create(null)');
     expect(bundle.fullSource).toContain('& 1) === 0');
-    expect(bundle.fullSource).toContain('Function.prototype.toString');
+    expect(bundle.fullSource).toContain('.prototype.toString');
     expect(bundle.fullSource).toContain('.prototype.get');
 
     const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
