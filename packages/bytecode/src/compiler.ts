@@ -1,4 +1,4 @@
-import type { IRModule, IRFunction, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, ConstantPoolEntry } from '@tsvm/shared';
+import type { IRModule, IRFunction, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, Operand, ConstantPoolEntry } from '@tsvm/shared';
 import { FunctionAttribute, OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
@@ -320,13 +320,13 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         } else if (forward !== undefined) {
           mappedOp = forward as OpCode;
         }
-        (inst as any).mappedOp = mappedOp;
+        inst.mappedOp = mappedOp;
       }
 
       // Duplicate constant pool entries, mapping expected path hash values
       let expectedPathHash = 0;
       for (const inst of flatInsts) {
-        expectedPathHash = (Math.imul(expectedPathHash, 31) + (inst as any).mappedOp) & 0xFFFFFFFF;
+        expectedPathHash = (Math.imul(expectedPathHash, 31) + inst.mappedOp!) & 0xFFFFFFFF;
         for (const op of inst.operands) {
           if (op.kind === OperandKind.ConstantIndex) {
             const origIdx = op.value as number;
@@ -336,8 +336,8 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               ...origEntry,
               index: newIdx,
               expectedPathHash: config.rollingKeys ? expectedPathHash : undefined
-            } as any);
-            (op as any).value = newIdx;
+            });
+            (op as unknown as { value: number }).value = newIdx;
           }
         }
         if (isTerminator(inst.opcode)) {
@@ -381,7 +381,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       for (const op of inst.operands) {
         if (op.kind === OperandKind.ConstantIndex) {
           const dupIdx = op.value as number;
-          (op as any).value = duplicatedToShuffled.get(dupIdx) ?? dupIdx;
+          (op as unknown as { value: number }).value = duplicatedToShuffled.get(dupIdx) ?? dupIdx;
         }
       }
     }
@@ -402,20 +402,22 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
         const inst = flatInsts[i]!;
         
-        let mappedOp = (inst as any).mappedOp !== undefined ? (inst as any).mappedOp : inst.opcode;
+        let mappedOp = inst.mappedOp !== undefined ? inst.mappedOp : inst.opcode;
         const forward = mapping.forward.get(inst.opcode);
-        if ((inst as any).mappedOp === undefined) {
+        if (inst.mappedOp === undefined) {
           if (Array.isArray(forward)) mappedOp = forward[0]!;
           else if (forward !== undefined) mappedOp = forward as number;
         }
 
         let size = 1; // opcode
-        const numJunk = inst.opcode % 3;
-        size += numJunk; // junk bytes
+        if (config.junkInsertion) {
+          const numJunk = (inst.opcode * 7 + config.seed) % 4;
+          size += numJunk; // junk bytes
+        }
 
-        const ops = [...(inst.operands || [])];
+        const ops: Operand[] = [...(inst.operands || [])];
         if (inst.result) {
-          ops.push({ kind: OperandKind.Register, value: inst.result } as any);
+          ops.push({ kind: OperandKind.Register, value: inst.result });
         }
 
         const isVarLength = isVariableLengthOpcode(inst.opcode);
@@ -428,7 +430,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
           size += 1; // kindNum
 
           let val = 0;
-          if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
+          if (op.kind === OperandKind.BlockLabel) {
             const targetIdx = blockInstIndices.get(op.value as string)!;
             val = instByteOffset[targetIdx] || 0;
           } else if (typeof op.value === 'string' && op.value.startsWith('r')) {
@@ -458,23 +460,23 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         if (inst.opcode === OpCode.Jmp) {
            if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
              const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-             (ops[0] as any).value = instByteOffset[targetIdx]!;
-             (ops[0] as any).kind = OperandKind.Immediate;
+             (ops[0] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
+             (ops[0] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
            }
         } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
             const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
             const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
-            (ops[1] as any).value = instByteOffset[targetTrueIdx]!;
-            (ops[1] as any).kind = OperandKind.Immediate;
-            (ops[2] as any).value = instByteOffset[targetFalseIdx]!;
-            (ops[2] as any).kind = OperandKind.Immediate;
+            (ops[1] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetTrueIdx]!;
+            (ops[1] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+            (ops[2] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetFalseIdx]!;
+            (ops[2] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
         }
       } else {
         for (const op of inst.operands) {
-          if (op.kind === OperandKind.BlockLabel || op.kind === 'block_label' as any) {
+          if (op.kind === OperandKind.BlockLabel) {
             const targetIdx = blockInstIndices.get(op.value as string)!;
-            (op as any).value = instByteOffset[targetIdx]!;
-            (op as any).kind = OperandKind.Immediate;
+            (op as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
+            (op as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
           }
         }
       }
@@ -512,7 +514,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       buildTimestamp: Date.now(),
       buildId: `build_${config.seed}`,
       sourceHash: computeSourceHash(irModule),
-      profile: (config as any).profile ?? 'generic',
+      profile: config.profile ?? 'generic',
       deterministicSeed: config.seed
     }
   };

@@ -10,6 +10,8 @@ import { FunctionVirtualizationPass } from './passes/function-virtualization.js'
 import { DeadCodeInjectionPass } from './passes/dead-code-injection.js';
 import { ControlFlowFlatteningPass } from './passes/control-flow-flattening.js';
 import { StripDebugPass } from './passes/strip-debug.js';
+import { IRValidationPass } from './passes/ir-validation.js';
+import { RegisterCompactingPass } from './passes/register-compacting.js';
 
 export class TransformRegistry {
   private passes: Map<string, TransformPass> = new Map();
@@ -27,6 +29,8 @@ export class TransformRegistry {
       'DeadCodeInjectionPass': DeadCodeInjectionPass,
       'ControlFlowFlatteningPass': ControlFlowFlatteningPass,
       'StripDebugPass': StripDebugPass,
+      'IRValidationPass': IRValidationPass,
+      'RegisterCompactingPass': RegisterCompactingPass,
     };
 
     for (const passConfig of profile.transforms) {

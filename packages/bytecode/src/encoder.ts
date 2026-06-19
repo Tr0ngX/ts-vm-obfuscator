@@ -1,4 +1,4 @@
-import type { Instruction, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
+import type { Instruction, Operand, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
 import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, SeededRandom, OpCode } from '@tsvm/shared';
 
 import type { VMBuildConfig } from '@tsvm/shared';
@@ -35,20 +35,19 @@ function isTerminator(opcode: number): boolean {
   );
 }
 
-export function encodeBytecode(instructions: Instruction[], mapping: any, config: VMBuildConfig, rng?: SeededRandom): Uint8Array {
+export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMapping, config: VMBuildConfig, rng?: SeededRandom): Uint8Array {
   const bytes: number[] = [];
   let currentHandlerIdx = 0;
 
   for (const inst of instructions) {
-    let mappedOp = (inst as any).mappedOp !== undefined ? (inst as any).mappedOp : inst.opcode;
-    if ((inst as any).mappedOp === undefined) {
+    let mappedOp = (inst as { mappedOp?: number }).mappedOp ?? inst.opcode;
+    if ((inst as { mappedOp?: number }).mappedOp === undefined) {
       const forward = mapping.forward.get(inst.opcode);
       if (Array.isArray(forward)) {
         if (!rng) throw new Error('SeededRandom required when opcodeMap is provided');
-        // Pick random alias if 1-to-N
         mappedOp = forward[Math.floor(rng.next() * forward.length)];
       } else if (forward !== undefined) {
-        mappedOp = forward;
+        mappedOp = forward as number;
       }
     }
 
@@ -60,16 +59,18 @@ export function encodeBytecode(instructions: Instruction[], mapping: any, config
       bytes.push(mappedOp);
     }
 
-    const numJunk = inst.opcode % 3;
-    for (let j = 0; j < numJunk; j++) {
-      if (!rng) throw new Error('SeededRandom required for junk byte injection');
-      const junk = Math.floor(rng.next() * 256);
-      bytes.push(junk);
+    if (config.junkInsertion) {
+      const numJunk = (inst.opcode * 7 + config.seed) % 4;
+      for (let j = 0; j < numJunk; j++) {
+        if (!rng) throw new Error('SeededRandom required for junk byte injection');
+        const junk = Math.floor(rng.next() * 256);
+        bytes.push(junk);
+      }
     }
 
-    const ops = [...(inst.operands || [])];
+    const ops: Operand[] = [...(inst.operands || [])];
     if (inst.result) {
-      ops.push({ kind: OperandKind.Register, value: inst.result } as any);
+      ops.push({ kind: OperandKind.Register, value: inst.result });
     }
 
     const isVarLength = isVariableLengthOpcode(inst.opcode);
@@ -111,17 +112,16 @@ export function encodeBytecode(instructions: Instruction[], mapping: any, config
   const resultBytes = new Uint8Array(bytes);
   if (config.rollingKeys) {
     for (let pc = 0; pc < resultBytes.length; pc++) {
-      // Apply position-dependent dynamic offset: offset real value by PC
-      const rawVal = resultBytes[pc] || 0;
+      const rawVal = resultBytes[pc]!;
       const offsetVal = (rawVal + pc) & 0xFF;
-      const rollingKey = (config.seed ^ pc) & 0xFF;
+      const rollingKey = ((config.seed ^ (pc * 0x9E3779B9)) >>> 8) & 0xFF;
       resultBytes[pc] = offsetVal ^ rollingKey;
     }
   }
   return resultBytes;
 }
 
-function operandKindToNum(kind: any): number {
+function operandKindToNum(kind: OperandKind | number): number {
   if (typeof kind === 'number') return kind;
   switch (kind) {
     case OperandKind.Register:
@@ -140,7 +140,7 @@ function operandKindToNum(kind: any): number {
     case 'function_ref':
       return 4;
     default:
-      return 0;
+      throw new Error(`Unrecognized operand kind: ${kind}`);
   }
 }
 
@@ -148,8 +148,8 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
   return constants.map((c, index) => {
     if (scheme === ConstantEncodingScheme.XorRotate && typeof c.value === 'string') {
       let stringSeed = (seed ^ (index * 0x9E3779B9)) & 0xffffffff;
-      if ((c as any).expectedPathHash !== undefined) {
-        stringSeed = (stringSeed ^ (c as any).expectedPathHash) & 0xffffffff;
+      if (c.expectedPathHash !== undefined) {
+        stringSeed = (stringSeed ^ c.expectedPathHash) & 0xffffffff;
       }
       
       // Deriving 16-byte key using LCG
@@ -193,8 +193,8 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
         encoded += String.fromCharCode(c.value.charCodeAt(i) ^ keystreamByte);
       }
       
-      return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: 0 } as EncodedConstant;
+      return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: 0 };
     }
-    return { index, kind: c.kind, value: c.value, encodedBytes: new Uint8Array(), decodingKey: 0 } as EncodedConstant;
+    return { index, kind: c.kind, value: c.value, encodedBytes: new Uint8Array(), decodingKey: 0 };
   });
 }

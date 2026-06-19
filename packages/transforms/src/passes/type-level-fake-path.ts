@@ -1,12 +1,10 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, BasicBlock, Register } from '@tsvm/shared';
 import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 /**
- * 1) Invariant dau vao: Cac ham thuc thi logic binh thuong.
- * 2) Invariant dau ra: Tao ra cac block ma chet (dead code) chua logic phuc tap (fake path)
- *    nhung duoc ket noi qua opaque predicates (dieu kien luon sai nhung kho phan tich tinh).
- * 3) Node kinds dung toi: BasicBlock, Instruction (JmpIf).
- * 4) Edge cases: Can can than khong lam tang overhead qua muc, hoac pha vo register allocation.
+ * Type-level fake path pass: injects dead branches with opaque predicates
+ * that are always false but hard to statically analyze.
  */
 export class TypeLevelFakePathPass implements TransformPass {
   readonly name = 'TypeLevelFakePathPass';
@@ -15,45 +13,6 @@ export class TypeLevelFakePathPass implements TransformPass {
   execute(ctx: TransformContext): TransformResult {
     let nodesTransformed = 0;
     const newCP = [...ctx.module.constantPool];
-
-    function getMaxRegister(func: IRFunction): number {
-      let maxReg = 0;
-      const consider = (value: string | undefined) => {
-        if (!value) return;
-        const m = /^r(\d+)$/.exec(value);
-        if (m) {
-          maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-        }
-      };
-
-      for (const param of func.params) {
-        consider(param.register);
-      }
-      for (const local of func.locals) {
-        consider(local.register);
-      }
-      for (const block of func.blocks) {
-        if (block.phiNodes) {
-          for (const phi of block.phiNodes) {
-            consider(phi.result);
-            for (const incoming of phi.incoming) {
-              consider(incoming.register);
-            }
-          }
-        }
-        for (const inst of block.instructions) {
-          consider(inst.result);
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
-              consider(op.value);
-            }
-          }
-        }
-        consider(block.terminator.condition);
-        consider(block.terminator.returnValue);
-      }
-      return maxReg;
-    }
 
     /**
      * Collect 2-3 plausible decoy instructions from random real blocks.
@@ -199,22 +158,19 @@ export class TypeLevelFakePathPass implements TransformPass {
 
         nodesTransformed++;
 
-        const maxReg = getMaxRegister(currentFunc);
-        // Streamlined register allocation — GetEntropy replaces Date.now() reflection
-        // Old: 20 registers for Date global lookup + CallMethod + BitOr/BitAnd masking
-        // New: 10 registers — GetEntropy loads entropy directly into a register
-        const tempA = `r${maxReg + 1}` as Register; // x = GetEntropy result (0-255)
-        const tempB = `r${maxReg + 2}` as Register; // x^2 or intermediate computation
-        const tempC = `r${maxReg + 3}` as Register; // constant loader / multiplied result
-        const tempD = `r${maxReg + 4}` as Register; // constant loader / comparison target
-        const tempE = `r${maxReg + 5}` as Register; // intermediate result
-        const tempF = `r${maxReg + 6}` as Register; // intermediate result
-        const tempG = `r${maxReg + 7}` as Register; // modulo / final math result
-        const tempP = `r${maxReg + 8}` as Register;  // predicate equality check
-        const tempQ = `r${maxReg + 9}` as Register;  // final condition (always true!)
-        const junkTemp1 = `r${maxReg + 10}` as Register;
-        const junkTemp2 = `r${maxReg + 11}` as Register;
-        const junkTemp3 = `r${maxReg + 12}` as Register;
+        const nextReg = getMaxRegister(currentFunc);
+        const tempA = `r${nextReg}` as Register;
+        const tempB = `r${nextReg + 1}` as Register;
+        const tempC = `r${nextReg + 2}` as Register;
+        const tempD = `r${nextReg + 3}` as Register;
+        const tempE = `r${nextReg + 4}` as Register;
+        const tempF = `r${nextReg + 5}` as Register;
+        const tempG = `r${nextReg + 6}` as Register;
+        const tempP = `r${nextReg + 7}` as Register;
+        const tempQ = `r${nextReg + 8}` as Register;
+        const junkTemp1 = `r${nextReg + 9}` as Register;
+        const junkTemp2 = `r${nextReg + 10}` as Register;
+        const junkTemp3 = `r${nextReg + 11}` as Register;
 
         const regX = currentFunc.params.length > 0 ? currentFunc.params[0]!.register : ('r0' as Register);
 

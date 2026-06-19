@@ -1,5 +1,6 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, ConstantPoolEntry, IRFunction, Instruction, BasicBlock, IRLocal, Register } from '@tsvm/shared';
 import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 export class StringPoolEncodingPass implements TransformPass {
   readonly name = 'StringPoolEncodingPass';
@@ -55,35 +56,7 @@ export class StringPoolEncodingPass implements TransformPass {
     let nodesTransformed = 0;
 
     const newFunctions = ctx.module.functions.map(fn => {
-      // Find maximum register ID in function
-      let maxRegId = 0;
-      const regPattern = /^r(\d+)$/;
-      const checkReg = (r: string | undefined) => {
-        if (!r) return;
-        const match = regPattern.exec(r);
-        if (match) {
-          const id = parseInt(match[1]!, 10);
-          if (id > maxRegId) maxRegId = id;
-        }
-      };
-
-      fn.params.forEach(p => checkReg(p.register));
-      fn.locals.forEach(l => checkReg(l.register));
-
-      fn.blocks.forEach(block => {
-        block.instructions.forEach(inst => {
-          checkReg(inst.result);
-          inst.operands.forEach(op => {
-            if (op.kind === OperandKind.Register) {
-              checkReg(op.value as string);
-            }
-          });
-        });
-        if (block.terminator.condition) checkReg(block.terminator.condition);
-        if (block.terminator.returnValue) checkReg(block.terminator.returnValue);
-      });
-
-      let nextTempRegId = maxRegId + 1;
+      let nextTempRegId = getMaxRegister(fn);
       const addedLocals: IRLocal[] = [];
 
       const newBlocks = fn.blocks.map(block => {

@@ -1,5 +1,6 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction, BasicBlock, Register } from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 export class DeadCodeInjectionPass implements TransformPass {
   readonly name = 'DeadCodeInjectionPass';
@@ -18,30 +19,7 @@ export class DeadCodeInjectionPass implements TransformPass {
       let changed = false;
       const newBlocks: BasicBlock[] = [];
 
-      // Find max register to allocate junk registers beyond current usage
-      let maxReg = 0;
-      for (const block of func.blocks) {
-        for (const inst of block.instructions) {
-          if (inst.result) {
-            const m = /^r(\d+)$/.exec(inst.result);
-            if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-          }
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
-              const m = /^r(\d+)$/.exec(op.value);
-              if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-            }
-          }
-        }
-      }
-      for (const param of func.params) {
-        const m = /^r(\d+)$/.exec(param.register);
-        if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-      }
-      for (const local of func.locals) {
-        const m = /^r(\d+)$/.exec(local.register);
-        if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-      }
+      const maxReg = getMaxRegister(func) - 1;
 
       for (const block of func.blocks) {
         let currentBlockId = block.id;

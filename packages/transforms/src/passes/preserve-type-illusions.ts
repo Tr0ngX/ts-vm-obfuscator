@@ -1,5 +1,6 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, BasicBlock, Instruction, Register } from '@tsvm/shared';
 import { OpCode, IRType, OperandKind, ConstantKind } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 /**
  * 1) Invariant đầu vào: IR module có chứa các functions với type signatures rõ ràng (từ TypeScript).
@@ -16,45 +17,6 @@ export class PreserveTypeIllusionsPass implements TransformPass {
     let nodesTransformed = 0;
     const newCP = [...ctx.module.constantPool];
 
-    function getMaxRegister(func: IRFunction): number {
-      let maxReg = 0;
-      const consider = (value: string | undefined) => {
-        if (!value) return;
-        const m = /^r(\d+)$/.exec(value);
-        if (m) {
-          maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-        }
-      };
-
-      for (const param of func.params) {
-        consider(param.register);
-      }
-      for (const local of func.locals) {
-        consider(local.register);
-      }
-      for (const block of func.blocks) {
-        if (block.phiNodes) {
-          for (const phi of block.phiNodes) {
-            consider(phi.result);
-            for (const incoming of phi.incoming) {
-              consider(incoming.register);
-            }
-          }
-        }
-        for (const inst of block.instructions) {
-          consider(inst.result);
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
-              consider(op.value);
-            }
-          }
-        }
-        consider(block.terminator.condition);
-        consider(block.terminator.returnValue);
-      }
-      return maxReg;
-    }
-
     const newFunctions = ctx.module.functions.map(func => {
       if (!func.isVirtualized) return func;
       if (func.params.length === 0) return func;
@@ -67,10 +29,10 @@ export class PreserveTypeIllusionsPass implements TransformPass {
 
       nodesTransformed++;
 
-      const maxReg = getMaxRegister(func);
-      const tempReg1 = `r${maxReg + 1}` as Register;
-      const tempReg2 = `r${maxReg + 2}` as Register;
-      const tempReg3 = `r${maxReg + 3}` as Register;
+      const nextReg = getMaxRegister(func);
+      const tempReg1 = `r${nextReg}` as Register;
+      const tempReg2 = `r${nextReg + 1}` as Register;
+      const tempReg3 = `r${nextReg + 2}` as Register;
 
       let functionConstIdx = newCP.findIndex(cp => cp.kind === ConstantKind.String && cp.value === 'function');
       if (functionConstIdx === -1) {

@@ -1,5 +1,6 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, Register } from '@tsvm/shared';
 import { OpCode, OperandKind, IRType } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 /**
  * 1) Invariant đầu vào: IRModule chứa hàm có gọi tới generic functions hoặc có type parameters (qua semantic graph).
@@ -19,49 +20,10 @@ export class GenericConfusionPass implements TransformPass {
   execute(ctx: TransformContext): TransformResult {
     let nodesTransformed = 0;
 
-    function getMaxRegister(func: IRFunction): number {
-      let maxReg = 0;
-      const consider = (value: string | undefined) => {
-        if (!value) return;
-        const m = /^r(\d+)$/.exec(value);
-        if (m) {
-          maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-        }
-      };
-
-      for (const param of func.params) {
-        consider(param.register);
-      }
-      for (const local of func.locals) {
-        consider(local.register);
-      }
-      for (const block of func.blocks) {
-        if (block.phiNodes) {
-          for (const phi of block.phiNodes) {
-            consider(phi.result);
-            for (const incoming of phi.incoming) {
-              consider(incoming.register);
-            }
-          }
-        }
-        for (const inst of block.instructions) {
-          consider(inst.result);
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
-              consider(op.value);
-            }
-          }
-        }
-        consider(block.terminator.condition);
-        consider(block.terminator.returnValue);
-      }
-      return maxReg;
-    }
-    
     const newFunctions = ctx.module.functions.map(func => {
       let changed = false;
-      const maxReg = getMaxRegister(func);
-      let tempIndex = 1;
+      const nextReg = getMaxRegister(func);
+      let tempIndex = 0;
       const addedLocals: any[] = [];
 
       const newBlocks = func.blocks.map(block => {
@@ -77,9 +39,9 @@ export class GenericConfusionPass implements TransformPass {
               nodesTransformed++;
               
               // Inject a confusion preamble before the call using dynamic registers
-              const tempReg1 = `r${maxReg + tempIndex++}` as Register;
-              const tempReg2 = `r${maxReg + tempIndex++}` as Register;
-              const tempReg3 = `r${maxReg + tempIndex++}` as Register;
+              const tempReg1 = `r${nextReg + tempIndex++}` as Register;
+              const tempReg2 = `r${nextReg + tempIndex++}` as Register;
+              const tempReg3 = `r${nextReg + tempIndex++}` as Register;
 
               addedLocals.push(
                 { name: `generic_conf_temp_${tempReg1}`, register: tempReg1, type: IRType.Any, isCaptured: false },

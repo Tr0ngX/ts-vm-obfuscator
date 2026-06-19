@@ -5,17 +5,26 @@ import { VMRuntime } from './runtime.js';
 export type DispatchHandler = (vm: VMRuntime, bytecode: Uint8Array) => void;
 export type DispatchTable = DispatchHandler[];
 
+function checkBounds(vm: VMRuntime, bytecode: Uint8Array, bytesNeeded: number): void {
+  if (vm.pc < 0 || vm.pc + bytesNeeded > bytecode.length) {
+    throw new Error(
+      `VM: PC ${vm.pc} out of bounds [0, ${bytecode.length}) ` +
+      `reading ${bytesNeeded} byte(s) in function "${vm.functionName || 'anonymous'}"`
+    );
+  }
+}
+
 // Helper to decode a register index or immediate value from the bytecode stream
 function readOperand(vm: VMRuntime, bytecode: Uint8Array): { kind: number; value: number } {
-  const kind = bytecode[vm.pc++] as number;
+  checkBounds(vm, bytecode, 1);
+  const kind = bytecode[vm.pc++]!;
   let val = 0;
-  
-  // Decodes LEB128 / Variable-length or Fallback fixed 4-byte integers based on encoding scheme
-  // By default, supporting dynamic decoding matching bytecode/encoder logic
+
   let shift = 0;
   let b = 0;
   do {
-    b = bytecode[vm.pc++] as number;
+    checkBounds(vm, bytecode, 1);
+    b = bytecode[vm.pc++]!;
     val |= (b & 0x7F) << shift;
     shift += 7;
   } while (b & 0x80);
@@ -172,7 +181,7 @@ export function createDispatchTable(mapping: OpcodeMapping): DispatchTable {
   table.fill(trapHandler);
 
   // Map each decoded virtual opcode to its canonical execution handler
-  for (const [canonical, mapped] of (mapping.forward as Map<number, number | number[]>).entries()) {
+  for (const [canonical, mapped] of mapping.forward.entries()) {
     const handler = canonicalHandlers[canonical];
     if (!handler) continue;
     
@@ -188,14 +197,17 @@ export function createDispatchTable(mapping: OpcodeMapping): DispatchTable {
 }
 
 export function dispatchLoop(vm: VMRuntime, bytecode: Uint8Array, table: DispatchTable) {
-  while (!vm.halted && vm.pc < bytecode.length) {
-    const opcode = bytecode[vm.pc++] as number;
+  while (!vm.halted) {
+    checkBounds(vm, bytecode, 1);
+    const opcode = bytecode[vm.pc++]!;
     const handler = table[opcode];
     if (handler) {
-      // Direct array-indexed function call (switchless direct threaded dispatch)
       handler(vm, bytecode);
     } else {
-      throw new Error(`VM Integrity Violation: Unmapped instruction opcode ${opcode} at PC ${vm.pc - 1}`);
+      throw new Error(
+        `VM Integrity Violation: Unmapped opcode ${opcode} at PC ${vm.pc - 1} ` +
+        `in function "${vm.functionName || 'anonymous'}"`
+      );
     }
   }
 }

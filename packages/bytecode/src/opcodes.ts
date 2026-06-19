@@ -1,18 +1,9 @@
 import type { OpcodeMapping } from '@tsvm/shared';
 import { OpCode, SeededRandom } from '@tsvm/shared';
 
-export class OpcodeRegistry {
-  getOpcodeDescriptor(opcode: OpCode) {
-    return { name: OpCode[opcode] || 'Unknown', operandCount: 0 };
-  }
-}
-
 export function generateRemappedOpcodes(seed: number): OpcodeMapping {
-  const mapping: OpcodeMapping = {
-    seed,
-    forward: new Map(),
-    reverse: new Map()
-  };
+  const forward = new Map<OpCode, number[]>();
+  const reverse = new Map<number, OpCode>();
 
   const rng = new SeededRandom(seed);
   
@@ -35,18 +26,18 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
     const canonical = opcodes[i]!;
     const slot = availableSlots.pop()!;
     const mapped = [slot];
-    (mapping.reverse as Map<number, OpCode>).set(slot, canonical);
-    (mapping.forward as Map<OpCode, number[]>).set(canonical, mapped);
+    reverse.set(slot, canonical);
+    forward.set(canonical, mapped);
   }
 
   // 2. Distribute any remaining slots as additional aliases
   while (availableSlots.length > 0) {
     const slot = availableSlots.pop()!;
     const randomOpcode = opcodes[rng.nextRange(0, opcodes.length - 1)]!;
-    const mapped = mapping.forward.get(randomOpcode) as number[];
+    const mapped = forward.get(randomOpcode)!;
     mapped.push(slot);
-    (mapping.reverse as Map<number, OpCode>).set(slot, randomOpcode);
+    reverse.set(slot, randomOpcode);
   }
 
-  return mapping;
+  return { seed, forward, reverse };
 }

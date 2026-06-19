@@ -1,5 +1,6 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction, BasicBlock, TerminatorInstruction, Operand, Register } from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
+import { getMaxRegister } from '../utils.js';
 
 export class ControlFlowFlatteningPass implements TransformPass {
   readonly name = 'ControlFlowFlatteningPass';
@@ -34,21 +35,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       }
 
       // 2. Find max register to allocate state register beyond current usage
-      let maxReg = 0;
-      for (const block of func.blocks) {
-        for (const inst of block.instructions) {
-          if (inst.result) {
-            const m = /^r(\d+)$/.exec(inst.result);
-            if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-          }
-          for (const op of inst.operands) {
-            if (op.kind === OperandKind.Register && typeof op.value === 'string') {
-              const m = /^r(\d+)$/.exec(op.value);
-              if (m) maxReg = Math.max(maxReg, parseInt(m[1]!, 10));
-            }
-          }
-        }
-      }
+      const maxReg = getMaxRegister(func) - 1;
       const stateReg = `r${maxReg + 1}` as Register;
       const tempReg = `r${maxReg + 2}` as Register;
       const tableReg = `r${maxReg + 3}` as Register;

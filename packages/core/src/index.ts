@@ -23,6 +23,8 @@
 
 import {
   DiagnosticSeverity,
+  ImmediateEncodingScheme,
+  ConstantEncodingScheme,
 } from '@tsvm/shared';
 import type {
   ObfuscationProfile,
@@ -116,6 +118,8 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
     { name: 'GenericConfusionPass', enabled: true, options: {} },
     { name: 'NamespaceVirtualizationPass', enabled: true, options: {} },
     { name: 'StripDebugPass', enabled: true, options: {} },
+    { name: 'RegisterCompactingPass', enabled: true, options: {} },
+    { name: 'IRValidationPass', enabled: true, options: {} },
   ] as const;
 
   switch (target) {
@@ -237,10 +241,10 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
 function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConfig {
   return {
     opcodeRemapping: true,
-    immediateEncoding: 2, // ImmediateEncodingScheme.XorMasked
+    immediateEncoding: ImmediateEncodingScheme.XorMasked,
     superInstructions: true,
     handlerLayoutRandom: true,
-    constantPoolEncoding: 1, // ConstantEncodingScheme.XorRotate
+    constantPoolEncoding: ConstantEncodingScheme.XorRotate,
     traceMode: false,
     deterministicReplay: false,
     seed,
@@ -356,7 +360,7 @@ export class ObfuscationPipeline {
           });
         }
         const irModule = lowerToIR(moduleInfo, semanticGraph, filePath, {
-          forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program' && this.options.profile.target !== 'universal',
+          forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program',
           forceVirtualizeFunctionNames: forcedVmSafeFunctionNames,
           skipTopLevelFunctionNames: skippedJsLoweredFunctionNames,
           compatibilityFallback: this.options.profile.target === 'universal'

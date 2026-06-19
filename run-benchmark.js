@@ -113,7 +113,7 @@ try {
 // Step 2: Run obfuscator CLI to get the latest VM build
 console.log('\n🔒 Step 2: Running obfuscation pipeline...');
 try {
-  cp.execSync('node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf', { stdio: 'inherit' });
+  cp.execSync('node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile universal', { stdio: 'inherit' });
   console.log('✅ Obfuscation pipeline completed successfully!');
 } catch (err) {
   console.error('❌ Obfuscation failed!', err);
@@ -128,32 +128,27 @@ if (!fs.existsSync(originalPath)) {
 }
 
 const files = fs.readdirSync('dist-obf');
-const buildFiles = files.filter(f => f.startsWith('build_') && f.endsWith('.js')).map(f => {
+const buildFiles = files.filter(f => f.startsWith('build_') && (f.endsWith('.js') || f.endsWith('.mjs'))).map(f => {
   return { name: f, time: fs.statSync('dist-obf/' + f).mtime.getTime(), size: fs.statSync('dist-obf/' + f).size };
 }).sort((a, b) => b.time - a.time);
 
-if (buildFiles.length === 0) {
-  console.error('❌ No obfuscated build file found under dist-obf!');
+const buildFileIndex = buildFiles.find(f => f.name.includes('index_ts') || f.name.includes('index.ts'));
+
+if (!buildFileIndex) {
+  console.error('❌ No index build file found under dist-obf!');
   process.exit(1);
 }
 
-const latestBuild = buildFiles[0];
+const latestBuild = buildFileIndex;
 const obfuscatedPath = path.resolve(__dirname, 'dist-obf', latestBuild.name);
 
-console.log(`\n📂 Loading files for benchmark (bypassing Node.js module cache):`);
+console.log(`\n📂 Loading files for benchmark:`);
 console.log(`   - Original:  ${originalPath} (${fs.statSync(originalPath).size} bytes)`);
 console.log(`   - Obfuscated: ${obfuscatedPath} (${latestBuild.size} bytes)`);
 
-// Bypass Node.js module loading cache to ensure fresh module instances for both runs
-try {
-  delete require.cache[require.resolve(originalPath)];
-} catch (e) {}
-const originalMod = require(originalPath);
-
-try {
-  delete require.cache[require.resolve(obfuscatedPath)];
-} catch (e) {}
-const obfuscatedMod = require(obfuscatedPath);
+(async () => {
+  const originalMod = require(originalPath);
+  const obfuscatedMod = await import('file:///' + obfuscatedPath.replace(/\\/g, '/'));
 
 // Step 4: Configure high-precision performance iterations
 const testSuites = [
@@ -339,6 +334,7 @@ Bản báo cáo này cung cấp cái nhìn khoa học, khách quan và thực t�
 3. **Mô hình hiểm họa (Threat Model)**: Định hình rõ ràng ranh giới bảo mật. Máy ảo giúp **tăng đáng kể chi phí phân tích ngược của nhà nghiên cứu**, ngăn chặn các công cụ giải mã tự động (AST Deobfuscator), nhưng không thể ngăn chặn tuyệt đối các cuộc tấn công dịch ngược động (Dynamic Emulation) được thực hiện bởi các chuyên gia bảo mật có tài nguyên lớn.
 `;
 
-fs.writeFileSync('BENCHMARK.md', markdownReport, 'utf8');
-console.log('\n✨ BENCHMARK.md has been generated with scientific standard!');
-console.log('======================================================================');
+  fs.writeFileSync('BENCHMARK.md', markdownReport, 'utf8');
+  console.log('\n✨ BENCHMARK.md has been generated with scientific standard!');
+  console.log('======================================================================');
+})();

@@ -181,6 +181,7 @@ export interface VMBuildConfig {
   readonly seed: number;
   readonly runtimeBackend?: 'js' | 'wasm_hybrid';
   readonly runtimeHardening?: 'off' | 'stealth' | 'paranoid';
+  readonly profile?: string;
 
   // New polymorphic engine features
   readonly threadedDispatch?: boolean;
@@ -362,6 +363,7 @@ export interface PhiNode {
 
 export interface Instruction {
   readonly opcode: OpCode;
+  mappedOp?: number;
   readonly operands: readonly Operand[];
   readonly result?: Register;
   readonly sourceLocation?: SourceLocation;
@@ -473,6 +475,7 @@ export interface ConstantPoolEntry {
   readonly index: number;
   readonly kind: ConstantKind;
   readonly value: string | number | boolean | null;
+  readonly expectedPathHash?: number;
   readonly encoding?: number;
 }
 
@@ -540,6 +543,7 @@ export interface OpcodeMapping {
 export interface EncodedConstant {
   readonly index: number;
   readonly kind: ConstantKind;
+  readonly value: string | number | boolean | null;
   readonly encodedBytes: Uint8Array;
   readonly decodingKey: number;
 }

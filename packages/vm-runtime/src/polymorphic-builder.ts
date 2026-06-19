@@ -554,12 +554,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       // Randomize junk skip & junk statements per variant
       const mySeed = config.seed ^ canonical ^ vIdx;
       const myRng = new SeededRandom(mySeed);
-      const numJunk = canonical % 3;
       let junkSkip = '';
-      for (let i = 0; i < numJunk; i++) {
-        junkSkip += config.rollingKeys
-          ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`
-          : `  ctx.pc++;\n`;
+      if (config.junkInsertion) {
+        const numJunk = (canonical * 7 + config.seed) % 4;
+        for (let i = 0; i < numJunk; i++) {
+          junkSkip += config.rollingKeys
+            ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`
+            : `  ctx.pc++;\n`;
+        }
       }
 
       // Read args
@@ -1356,7 +1358,7 @@ ${casesStr}
 
   const arenaArray = allBytecodes.join(',');
   const fnTableStr = Object.entries(functionTable).map(([id, info]) => {
-    return `'${id}': { o: ${info.o}, l: ${info.l}, a: ${JSON.stringify(info.a)}, r: ${info.r}, s: ${info.s} }`;
+    return `${JSON.stringify(id)}: { o: ${info.o}, l: ${info.l}, a: ${JSON.stringify(info.a)}, r: ${info.r}, s: ${info.s} }`;
   }).join(',\n    ');
 
   const handlerVariantsEntries = Array.from(allHandlerVariants.entries()).map(([canonical, names]) => {
@@ -1568,7 +1570,7 @@ const ${top.vmFunctions} = (function() {
       rev = ((rev & 0xCC) >>> 2) | ((rev & 0x33) << 2);
       rev = ((rev & 0xAA) >>> 1) | ((rev & 0x55) << 1);
       byte ^= rev;
-      var rawDecoded = byte ^ ((${top.seed} ^ pos) & 0xFF);
+      var rawDecoded = byte ^ (((${top.seed} ^ (pos * 0x9E3779B9)) >>> 8) & 0xFF);
       var decoded = (rawDecoded - pos) & 0xFF;
       if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
         mixRollingState(ctx, pos, decoded);
@@ -2030,7 +2032,7 @@ const ${top.vmFunctions} = (function() {
   }
 
   var ${top.result} = {};
-${exportedFunctions.map(fn => `  ${top.result}['${fn.name}'] = ${top.getExecutorById}('${fn.id}');`).join('\n')}
+${exportedFunctions.map(fn => `  ${top.result}[${JSON.stringify(fn.name)}] = ${top.getExecutorById}(${JSON.stringify(fn.id)});`).join('\n')}
   if (typeof Object.freeze === 'function') {
     Object.freeze(${top.result});
   }
@@ -2038,7 +2040,7 @@ ${exportedFunctions.map(fn => `  ${top.result}['${fn.name}'] = ${top.getExecutor
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
-${exportedFunctions.map(fn => `  module.exports.${fn.name} = ${top.vmFunctions}['${fn.name}'];`).join('\n')}
+${exportedFunctions.map(fn => `  module.exports[${JSON.stringify(fn.name)}] = ${top.vmFunctions}[${JSON.stringify(fn.name)}];`).join('\n')}
 }
   `.trim();
 

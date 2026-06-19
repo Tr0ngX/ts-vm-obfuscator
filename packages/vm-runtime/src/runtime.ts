@@ -14,7 +14,8 @@ export class VMRuntime {
   pc: number = 0;
   halted: boolean = false;
   traceLog: string[] = [];
-  
+  functionName: string = '';
+
   constructor(public config: { trace: boolean }) {}
 
   execute(bytecode: Uint8Array, table: DispatchTable): unknown {
