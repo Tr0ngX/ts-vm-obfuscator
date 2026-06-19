@@ -145,8 +145,7 @@ try {
 console.log('Compiling original basic-ts natively...');
 cp.execSync('npx tsc -p examples/basic-ts/tsconfig.json --outDir examples/basic-ts/dist-orig', { stdio: 'inherit' });
 
-// We try compiling with default generic profile first, if it fails due to unsupported VM syntax, we use universal profile which enables compatibility fallbacks
-let profile = 'universal';
+// Use universal profile which enables whole-program virtualization with compatibility fallbacks
 try {
   console.log('Attempting obfuscation with universal profile...');
   cp.execSync('node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf --profile universal', { stdio: 'inherit' });
