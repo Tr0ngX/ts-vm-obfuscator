@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-06-19T02:52:59.106Z",
+  "timestamp": "2026-06-19T04:05:38.974Z",
   "system": {
     "platform": "Windows_NT 10.0.19045 (x64)",
     "cpuModel": "12th Gen Intel(R) Core(TM) i5-12400F",
     "cpuCores": 12,
     "cpuSpeed": 2496,
     "cpuLoad": {
-      "user": 17.74,
-      "sys": 5.74,
-      "idle": 74.99
+      "user": 17.61,
+      "sys": 12.26,
+      "idle": 67.94
     },
     "linuxCpuFreqMHz": null,
     "linuxCpuGovernor": null,
     "linuxCacheInfo": null,
     "totalMemGB": 16,
-    "freeMemGB": 8.07,
+    "freeMemGB": 4.36,
     "loadAvg": [
       0,
       0,
@@ -22,7 +22,7 @@
     ],
     "nodeVersion": "v24.16.0",
     "v8Version": "13.6.233.17-node.49",
-    "uptimeSec": 2321,
+    "uptimeSec": 6595,
     "nodeFlags": [
       "--expose-gc"
     ],
@@ -34,18 +34,18 @@
       "size": 37909
     },
     "obfuscated": {
-      "path": "D:\\ts-vm-obfuscator\\dist-obf\\build_567923_1781837494068_D__ts-vm-obfuscator_examples_basic-ts_src_index.ts.mjs",
-      "size": 3392679
+      "path": "D:\\ts-vm-obfuscator\\dist-obf\\build_546030_1781841767956_D__ts-vm-obfuscator_examples_basic-ts_src_index.ts.mjs",
+      "size": 2872728
     }
   },
   "entropy": {
     "original": 3.8097071540172873,
-    "obfuscated": 4.628152044639682
+    "obfuscated": 4.6563137827873335
   },
   "aggregate": {
-    "geomMeanSlowdown": 6386.584105128641,
-    "harmMeanSlowdown": 1681.0338989129327,
-    "sizeRatio": 89.49534411353504
+    "geomMeanSlowdown": 325.23463118519726,
+    "harmMeanSlowdown": 1.7196166047676764,
+    "sizeRatio": 75.77957740905853
   },
   "results": [
     {
@@ -61,68 +61,68 @@
         "error": null
       },
       "native": {
-        "avg": 0.12621685129237464,
-        "stdDev": 0.04679974597860463,
-        "median": 0.1,
+        "avg": 0.22466870540264253,
+        "stdDev": 0.07348990040483075,
+        "median": 0.2,
         "mad": 0,
-        "skewness": 1.4500321506988485,
-        "kurtosis": 0.9676269310120396,
-        "p95": 0.2,
-        "p99": 0.3,
-        "ciLower": 0.12443773078214347,
-        "ciUpper": 0.12789526686807834,
+        "skewness": 0.38386831551969997,
+        "kurtosis": 0.05509705420667066,
+        "p95": 0.4,
+        "p99": 0.4,
+        "ciLower": 0.22188243289160878,
+        "ciUpper": 0.22718314644920304,
         "min": 0.1,
-        "max": 1.9,
-        "validRuns": 2979,
-        "outliersRemoved": 21,
-        "warmupRan": 2321,
-        "warmupConverged": true,
-        "thermalDriftPct": 52.41610738255209,
-        "heapDeltaKB": 29.4296875
+        "max": 40.6,
+        "validRuns": 2943,
+        "outliersRemoved": 57,
+        "warmupRan": 3000,
+        "warmupConverged": false,
+        "thermalDriftPct": 56.3715869227971,
+        "heapDeltaKB": 34.4765625
       },
       "obfuscated": {
-        "avg": 10835.955061636165,
-        "stdDev": 243.09307470304051,
-        "median": 10788.7,
-        "mad": 137.6999999999989,
-        "skewness": 1.0021324842127552,
-        "kurtosis": 0.8223604451575222,
-        "p95": 11350.74,
-        "p99": 11555.615999999998,
-        "ciLower": 10827.216324243538,
-        "ciUpper": 10845.374598431068,
-        "min": 10396.5,
-        "max": 23790,
-        "validRuns": 2677,
-        "outliersRemoved": 323,
-        "warmupRan": 348,
-        "warmupConverged": true,
-        "thermalDriftPct": 3.4451568385496345,
-        "heapDeltaKB": 38.78125
+        "avg": 6385.547415886201,
+        "stdDev": 755.051144286688,
+        "median": 6232,
+        "mad": 473.8000000000002,
+        "skewness": 0.8292065569770543,
+        "kurtosis": 0.1282512592076328,
+        "p95": 7916.25,
+        "p99": 8461.15,
+        "ciLower": 6358.962920568856,
+        "ciUpper": 6414.090496011091,
+        "min": 5063.3,
+        "max": 10886.4,
+        "validRuns": 2883,
+        "outliersRemoved": 117,
+        "warmupRan": 3000,
+        "warmupConverged": false,
+        "thermalDriftPct": 20.436417380945734,
+        "heapDeltaKB": 24.453125
       },
       "comparison": {
-        "ratio": 85851.88863993486,
+        "ratio": 28422.059959095197,
         "ratioCI": {
-          "lower": 52388,
-          "upper": 132781,
-          "median": 107292.99999999999
+          "lower": 14463.25,
+          "upper": 71491,
+          "median": 29586.5
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 9000000,
-          "z": -70.97100966763853,
+          "z": -68.67794701783066,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 719.3341145877869,
-          "df": 2999.0000678596452,
+          "t": 387.4965929897275,
+          "df": 2999.0040735452376,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 18.573126974382376,
+          "d": 10.005119009075521,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -146,68 +146,68 @@
         "error": null
       },
       "native": {
-        "avg": 5.409267241379307,
-        "stdDev": 0.9729052380853362,
-        "median": 5.6,
+        "avg": 5.611889596602971,
+        "stdDev": 1.0322186580361346,
+        "median": 5.8,
         "mad": 0.5,
-        "skewness": -0.08467905269345342,
-        "kurtosis": -0.47292788320260293,
-        "p95": 6.9,
-        "p99": 7.7,
-        "ciLower": 5.318965517241384,
-        "ciUpper": 5.496551724137931,
+        "skewness": -0.42353095473376423,
+        "kurtosis": -0.5688993911200817,
+        "p95": 7.2,
+        "p99": 7.6,
+        "ciLower": 5.51847133757962,
+        "ciUpper": 5.7104033970276005,
         "min": 3.6,
-        "max": 618.2,
-        "validRuns": 464,
-        "outliersRemoved": 36,
-        "warmupRan": 1954,
-        "warmupConverged": true,
-        "thermalDriftPct": 32.312106627175375,
+        "max": 1278.7,
+        "validRuns": 471,
+        "outliersRemoved": 29,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 32.60439218688316,
         "heapDeltaKB": 6.4375
       },
       "obfuscated": {
-        "avg": 13715.44599542333,
-        "stdDev": 240.31183165756664,
-        "median": 13673.4,
-        "mad": 144.10000000000036,
-        "skewness": 1.11445036384858,
-        "kurtosis": 1.5817918109612044,
-        "p95": 14145.119999999999,
-        "p99": 14541.512,
-        "ciLower": 13694.070709382135,
-        "ciUpper": 13740.036613272308,
-        "min": 13316.2,
-        "max": 25847.7,
-        "validRuns": 437,
-        "outliersRemoved": 63,
-        "warmupRan": 101,
-        "warmupConverged": true,
-        "thermalDriftPct": 2.672033891473543,
-        "heapDeltaKB": 17.7265625
+        "avg": 14534.444693877558,
+        "stdDev": 1415.2095543929167,
+        "median": 14341.55,
+        "mad": 929.5500000000011,
+        "skewness": 0.5647743566157024,
+        "kurtosis": -0.24255831539923056,
+        "p95": 17207.074999999997,
+        "p99": 18104.031,
+        "ciLower": 14408.895714285723,
+        "ciUpper": 14657.056938775504,
+        "min": 11714.4,
+        "max": 20432.6,
+        "validRuns": 490,
+        "outliersRemoved": 10,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 17.00806563518733,
+        "heapDeltaKB": 4.78125
       },
       "comparison": {
-        "ratio": 2535.546014533021,
+        "ratio": 2589.937746222886,
         "ratioCI": {
-          "lower": 492.173285198556,
-          "upper": 3840.525,
-          "median": 2459.714285714286
+          "lower": 371.74585635359114,
+          "upper": 4261.051282051282,
+          "median": 2491.3283582089553
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 250000,
-          "z": -27.37886577286361,
+          "z": -27.378867743096833,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 301.5972435215529,
-          "df": 499.7523916396166,
+          "t": 207.53952061408836,
+          "df": 500.8669800639881,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 19.074684511131384,
+          "d": 13.125951792799729,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -227,68 +227,68 @@
         "error": null
       },
       "native": {
-        "avg": 0.5537610619468996,
-        "stdDev": 0.0499135881834221,
-        "median": 0.6,
-        "mad": 0,
-        "skewness": -0.1513727189434125,
-        "kurtosis": -1.9858931462580147,
-        "p95": 0.6,
-        "p99": 0.6,
-        "ciLower": 0.5488938053097326,
-        "ciUpper": 0.5581858407079623,
-        "min": 0.5,
-        "max": 28.8,
-        "validRuns": 452,
-        "outliersRemoved": 48,
-        "warmupRan": 136,
-        "warmupConverged": true,
-        "thermalDriftPct": 18.221447253704902,
-        "heapDeltaKB": 14.21875
+        "avg": 0.3674620390455548,
+        "stdDev": 0.07535323462782986,
+        "median": 0.4,
+        "mad": 0.09999999999999998,
+        "skewness": 0.24923752725227918,
+        "kurtosis": -0.6527592344890643,
+        "p95": 0.5,
+        "p99": 0.5,
+        "ciLower": 0.3603036876355767,
+        "ciUpper": 0.3744034707158369,
+        "min": 0.2,
+        "max": 2.5,
+        "validRuns": 461,
+        "outliersRemoved": 39,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 40.698807365474096,
+        "heapDeltaKB": 5.28125
       },
       "obfuscated": {
-        "avg": 33512.61374999998,
-        "stdDev": 1138.2834637194464,
-        "median": 33139.5,
-        "mad": 612.1500000000015,
-        "skewness": 1.0357510275969508,
-        "kurtosis": 0.24184848929388236,
-        "p95": 35869.325,
-        "p99": 36741.117,
-        "ciLower": 33415.95499999998,
-        "ciUpper": 33622.613124999974,
-        "min": 32019.7,
-        "max": 63102.4,
-        "validRuns": 480,
-        "outliersRemoved": 20,
-        "warmupRan": 101,
-        "warmupConverged": true,
-        "thermalDriftPct": 5.3265608559834785,
-        "heapDeltaKB": 7.390625
+        "avg": 24012.094605809132,
+        "stdDev": 2019.917125029508,
+        "median": 23815.6,
+        "mad": 1393.5499999999993,
+        "skewness": 0.5547096331396661,
+        "kurtosis": -0.21749739787117583,
+        "p95": 27848.755,
+        "p99": 29118.918999999998,
+        "ciLower": 23837.82033195019,
+        "ciUpper": 24196.112240663904,
+        "min": 19783.9,
+        "max": 39669.4,
+        "validRuns": 482,
+        "outliersRemoved": 18,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 14.480663766458997,
+        "heapDeltaKB": 17.5
       },
       "comparison": {
-        "ratio": 60518.18383939304,
+        "ratio": 65345.78284107414,
         "ratioCI": {
-          "lower": 8868.368421052633,
-          "upper": 73734,
-          "median": 58167
+          "lower": 34275.375,
+          "upper": 108774,
+          "median": 63256.8
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 250000,
-          "z": -28.03800750956989,
+          "z": -27.768251530509286,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 324.6948487995236,
-          "df": 499.0004630178894,
+          "t": 212.57112264709048,
+          "df": 499.0000049113721,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 20.535505334609663,
+          "d": 13.444178246876136,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -309,68 +309,68 @@
         "error": null
       },
       "native": {
-        "avg": 0.8145299145299142,
-        "stdDev": 0.15948578184962148,
-        "median": 0.8,
-        "mad": 0.10000000000000009,
-        "skewness": 0.4904978735633861,
-        "kurtosis": -0.3527513780868681,
-        "p95": 1.1,
-        "p99": 1.2,
-        "ciLower": 0.8047008547008551,
-        "ciUpper": 0.8251068376068369,
-        "min": 0.5,
-        "max": 11.9,
-        "validRuns": 936,
-        "outliersRemoved": 64,
+        "avg": 0.5356923076923077,
+        "stdDev": 0.212344659231677,
+        "median": 0.5,
+        "mad": 0.19999999999999996,
+        "skewness": 0.6800625470218952,
+        "kurtosis": -0.10803596829529116,
+        "p95": 0.9,
+        "p99": 1.1,
+        "ciLower": 0.522564102564104,
+        "ciUpper": 0.549025641025642,
+        "min": 0.3,
+        "max": 10.7,
+        "validRuns": 975,
+        "outliersRemoved": 25,
         "warmupRan": 2000,
         "warmupConverged": false,
-        "thermalDriftPct": 36.1833952912027,
-        "heapDeltaKB": 8.015625
+        "thermalDriftPct": 100.45244862884206,
+        "heapDeltaKB": 8.046875
       },
       "obfuscated": {
-        "avg": 2105.2187219730963,
-        "stdDev": 114.02673194241314,
-        "median": 2062.1499999999996,
-        "mad": 52.649999999999636,
-        "skewness": 1.3642796764476175,
-        "kurtosis": 1.3317788726567494,
-        "p95": 2360.29,
-        "p99": 2470.014,
-        "ciLower": 2098.2510089686116,
-        "ciUpper": 2113.021748878926,
-        "min": 1980.9,
-        "max": 6424.3,
-        "validRuns": 892,
-        "outliersRemoved": 108,
-        "warmupRan": 1260,
-        "warmupConverged": true,
-        "thermalDriftPct": 8.29154147966953,
-        "heapDeltaKB": 8.3984375
+        "avg": 2543.693776824037,
+        "stdDev": 322.64566442656655,
+        "median": 2471.6,
+        "mad": 194.85000000000014,
+        "skewness": 0.9567325540469193,
+        "kurtosis": 0.4932008861797583,
+        "p95": 3241.8549999999987,
+        "p99": 3471.258,
+        "ciLower": 2522.691845493563,
+        "ciUpper": 2564.527253218887,
+        "min": 1938.2,
+        "max": 4470.9,
+        "validRuns": 932,
+        "outliersRemoved": 68,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 21.68484863446332,
+        "heapDeltaKB": 8.046875
       },
       "comparison": {
-        "ratio": 2584.5812221495526,
+        "ratio": 4748.423190510121,
         "ratioCI": {
-          "lower": 1434.7857142857144,
-          "upper": 4817.25,
-          "median": 2616.444444444445
+          "lower": 1989.1666666666667,
+          "upper": 11239,
+          "median": 5082.8
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 1000000,
-          "z": -38.86318729668068,
+          "z": -38.87599815405807,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 160.96439477537436,
-          "df": 999.0035198644381,
+          "t": 181.61847786800578,
+          "df": 999.0019195943911,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 7.198546573496982,
+          "d": 8.12222524965804,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -391,68 +391,68 @@
         "error": null
       },
       "native": {
-        "avg": 0.03968968968968958,
-        "stdDev": 0.049039893663828805,
-        "median": 0,
+        "avg": 0.09999999999999684,
+        "stdDev": 3.1650650182396838e-15,
+        "median": 0.1,
         "mad": 0,
-        "skewness": 0.43453496451728263,
-        "kurtosis": -1.778461734113151,
+        "skewness": 1.000881791051493,
+        "kurtosis": -2.002352941176457,
         "p95": 0.1,
         "p99": 0.1,
-        "ciLower": 0.03763763763763764,
-        "ciUpper": 0.0419419419419417,
+        "ciLower": 0.09999999999999684,
+        "ciUpper": 0.09999999999999684,
         "min": 0,
-        "max": 1.3,
-        "validRuns": 1998,
-        "outliersRemoved": 2,
+        "max": 1.8,
+        "validRuns": 1703,
+        "outliersRemoved": 297,
         "warmupRan": 3000,
         "warmupConverged": false,
-        "thermalDriftPct": null,
+        "thermalDriftPct": 0,
         "heapDeltaKB": 15.859375
       },
       "obfuscated": {
-        "avg": 706.9292755344409,
-        "stdDev": 30.90385091883978,
-        "median": 695.9,
-        "mad": 11.050000000000011,
-        "skewness": 1.9199221302984528,
-        "kurtosis": 3.3607057035189536,
-        "p95": 780.655,
-        "p99": 818.368,
-        "ciLower": 705.435213776722,
-        "ciUpper": 708.3720902612816,
-        "min": 673.7,
-        "max": 1735,
-        "validRuns": 1684,
-        "outliersRemoved": 316,
+        "avg": 1033.1463083604785,
+        "stdDev": 175.53649833787216,
+        "median": 973.2,
+        "mad": 89.65000000000003,
+        "skewness": 1.2348647766914058,
+        "kurtosis": 0.8527073832868903,
+        "p95": 1416.5649999999998,
+        "p99": 1560.018,
+        "ciLower": 1025.6780673181331,
+        "ciUpper": 1041.416720955486,
+        "min": 812.9,
+        "max": 2417,
+        "validRuns": 1842,
+        "outliersRemoved": 158,
         "warmupRan": 3000,
         "warmupConverged": false,
-        "thermalDriftPct": 5.780695831764745,
-        "heapDeltaKB": 33.53125
+        "thermalDriftPct": 29.00843323329312,
+        "heapDeltaKB": 15.859375
       },
       "comparison": {
-        "ratio": 17811.408480678645,
+        "ratio": 10331.463083605111,
         "ratioCI": {
-          "lower": 6808.999999999999,
-          "upper": 1360500000000,
-          "median": 684100000000
+          "lower": 4638.5,
+          "upper": 1111700000000,
+          "median": 9887.999999999998
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 4000000,
-          "z": -56.79713799298795,
+          "z": -59.55958292472648,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 184.4460614597818,
-          "df": 1999.0003787728554,
+          "t": 188.11183740001684,
+          "df": 1999.0001758539713,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 5.832696596603118,
+          "d": 5.948618610232999,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -485,68 +485,68 @@
         "error": null
       },
       "native": {
-        "avg": 0.30000000000000404,
-        "stdDev": 4.054907521132833e-15,
-        "median": 0.3,
+        "avg": 0.5859574468085185,
+        "stdDev": 0.07040608135426737,
+        "median": 0.6,
         "mad": 0,
-        "skewness": -1.0019228718604811,
-        "kurtosis": -2.005134788189998,
-        "p95": 0.3,
-        "p99": 0.3,
-        "ciLower": 0.30000000000000404,
-        "ciUpper": 0.30000000000000404,
-        "min": 0.2,
-        "max": 2.5,
-        "validRuns": 782,
-        "outliersRemoved": 218,
-        "warmupRan": 2000,
-        "warmupConverged": false,
-        "thermalDriftPct": 0,
+        "skewness": -0.199708013777173,
+        "kurtosis": -0.14877561031925435,
+        "p95": 0.7,
+        "p99": 0.7,
+        "ciLower": 0.5813829787234086,
+        "ciUpper": 0.5905319148936221,
+        "min": 0.4,
+        "max": 12.5,
+        "validRuns": 940,
+        "outliersRemoved": 60,
+        "warmupRan": 1550,
+        "warmupConverged": true,
+        "thermalDriftPct": 17.363851617994687,
         "heapDeltaKB": 8.046875
       },
       "obfuscated": {
-        "avg": 599.9628537735849,
-        "stdDev": 32.1218367558412,
-        "median": 587.3,
-        "mad": 8.249999999999943,
-        "skewness": 1.9751960348749455,
-        "kurtosis": 3.4889505822637257,
-        "p95": 680.385,
-        "p99": 712.953,
-        "ciLower": 597.969575471698,
-        "ciUpper": 602.2560141509439,
-        "min": 547.3,
-        "max": 1616.5,
-        "validRuns": 848,
-        "outliersRemoved": 152,
-        "warmupRan": 376,
-        "warmupConverged": true,
-        "thermalDriftPct": 6.744271004555674,
-        "heapDeltaKB": 11.1328125
+        "avg": 695.9132291666663,
+        "stdDev": 154.91008008310865,
+        "median": 630.8,
+        "mad": 64.29999999999995,
+        "skewness": 1.1972191809117163,
+        "kurtosis": 0.30861112849588856,
+        "p95": 1050.115,
+        "p99": 1094.7459999999999,
+        "ciLower": 686.2402083333328,
+        "ciUpper": 705.6995833333317,
+        "min": 520.7,
+        "max": 1422.2,
+        "validRuns": 960,
+        "outliersRemoved": 40,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 39.320458081278495,
+        "heapDeltaKB": 9.6640625
       },
       "comparison": {
-        "ratio": 1999.8761792452563,
+        "ratio": 1187.6514804223993,
         "ratioCI": {
-          "lower": 1825.3333333333335,
-          "upper": 4189,
-          "median": 2001.6666666666667
+          "lower": 646.9999999999999,
+          "upper": 2113,
+          "median": 1111.2
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 1000000,
-          "z": -41.30359277217864,
+          "z": -39.518615359106946,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 127.07250847312264,
-          "df": 999.0007243326397,
+          "t": 125.67645945101418,
+          "df": 999.0112486553393,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 5.6828553403464035,
+          "d": 5.620422130079272,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"
@@ -563,68 +563,660 @@
         "error": null
       },
       "native": {
-        "avg": 6.074917127071803,
-        "stdDev": 0.35589320944851055,
-        "median": 6,
-        "mad": 0.20000000000000018,
-        "skewness": 0.9746029530633377,
-        "kurtosis": 0.44388035380797675,
-        "p95": 6.8,
-        "p99": 7.1,
-        "ciLower": 6.0527071823204475,
-        "ciUpper": 6.100110497237569,
-        "min": 5.6,
-        "max": 96.5,
-        "validRuns": 905,
-        "outliersRemoved": 95,
-        "warmupRan": 234,
-        "warmupConverged": true,
-        "thermalDriftPct": 9.901339809537872,
-        "heapDeltaKB": 28.984375
+        "avg": 8.342538071065999,
+        "stdDev": 2.723916890517305,
+        "median": 6.9,
+        "mad": 1,
+        "skewness": 0.8847561985099994,
+        "kurtosis": -0.2298763683803129,
+        "p95": 13.3,
+        "p99": 15.8,
+        "ciLower": 8.181421319796957,
+        "ciUpper": 8.518781725888331,
+        "min": 5.7,
+        "max": 117.3,
+        "validRuns": 985,
+        "outliersRemoved": 15,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 72.28179685296556,
+        "heapDeltaKB": 8.109375
       },
       "obfuscated": {
-        "avg": 2170.8110122358175,
-        "stdDev": 95.33078129862051,
-        "median": 2131.9,
-        "mad": 39,
-        "skewness": 1.4211631302229981,
-        "kurtosis": 1.34555524076907,
-        "p95": 2379.8599999999997,
-        "p99": 2467.822,
-        "ciLower": 2164.8061179087863,
-        "ciUpper": 2177.223915461623,
-        "min": 2069.6,
-        "max": 8287.6,
-        "validRuns": 899,
-        "outliersRemoved": 101,
-        "warmupRan": 1678,
-        "warmupConverged": true,
-        "thermalDriftPct": 6.500709609738086,
-        "heapDeltaKB": 23.5390625
+        "avg": 2751.086603375525,
+        "stdDev": 384.58720450218226,
+        "median": 2668.6000000000004,
+        "mad": 238.10000000000036,
+        "skewness": 0.8659920921112584,
+        "kurtosis": 0.3082326263358186,
+        "p95": 3536.09,
+        "p99": 3853.3289999999997,
+        "ciLower": 2726.383227848104,
+        "ciUpper": 2777.1463080168787,
+        "min": 2047.3,
+        "max": 4647.3,
+        "validRuns": 948,
+        "outliersRemoved": 52,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 24.407984495376965,
+        "heapDeltaKB": 15.6875
       },
       "comparison": {
-        "ratio": 357.34002074892163,
+        "ratio": 329.76614310181924,
         "ratioCI": {
-          "lower": 191.2,
-          "upper": 546.7460317460318,
-          "median": 360.2903225806452
+          "lower": 168.8823529411765,
+          "upper": 644.876923076923,
+          "median": 374.08
         },
         "mannWhitney": {
           "U": 0,
           "U1": 0,
           "U2": 1000000,
-          "z": -38.77715994957037,
+          "z": -38.73103923619122,
           "p": 0,
           "significant": true
         },
         "welchT": {
-          "t": 152.81646643731307,
-          "df": 999.1266426124245,
+          "t": 178.70571587745565,
+          "df": 999.2432812648811,
           "p": 0,
           "significant": true
         },
         "cohenD": {
-          "d": 6.834160140702942,
+          "d": 7.991962573395086,
+          "magnitude": "very large"
+        },
+        "verdict": "Extreme overhead (stat. significant)"
+      }
+    },
+    {
+      "name": "testConstructorParamProperties",
+      "desc": "OOP Class Constructor Parameter Properties",
+      "args": [
+        1,
+        2,
+        10,
+        "test"
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": "10:test:true",
+        "obfResult": "10:test:true",
+        "error": null
+      },
+      "native": {
+        "avg": 5.406834170854261,
+        "stdDev": 1.8785385195558064,
+        "median": 4.2,
+        "mad": 0.30000000000000027,
+        "skewness": 1.0299573929792427,
+        "kurtosis": 0.010586191197227812,
+        "p95": 8.5,
+        "p99": 11.029999999999973,
+        "ciLower": 5.295979899497488,
+        "ciUpper": 5.52381909547739,
+        "min": 3.8,
+        "max": 39.1,
+        "validRuns": 995,
+        "outliersRemoved": 5,
+        "warmupRan": 787,
+        "warmupConverged": true,
+        "thermalDriftPct": 70.57028597823738,
+        "heapDeltaKB": 8.046875
+      },
+      "obfuscated": {
+        "avg": 2.811664899257687,
+        "stdDev": 0.9149337138567819,
+        "median": 2.3,
+        "mad": 0.09999999999999964,
+        "skewness": 1.4410394989344317,
+        "kurtosis": 0.700934071689908,
+        "p95": 4.9,
+        "p99": 5.3,
+        "ciLower": 2.7557794273594904,
+        "ciUpper": 2.8706256627783615,
+        "min": 2,
+        "max": 99.7,
+        "validRuns": 943,
+        "outliersRemoved": 57,
+        "warmupRan": 1418,
+        "warmupConverged": true,
+        "thermalDriftPct": 52.768434387559594,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 0.5200205536937068,
+        "ratioCI": {
+          "lower": 0.25,
+          "upper": 1.575,
+          "median": 0.55
+        },
+        "mannWhitney": {
+          "U": 130128.5,
+          "U1": 869871.5,
+          "U2": 130128.5,
+          "z": -28.808671020640336,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": -13.974300703630941,
+          "df": 1575.2885341653391,
+          "p": 0,
+          "significant": true
+        },
+        "cohenD": {
+          "d": -0.6249497262268384,
+          "magnitude": "medium"
+        },
+        "verdict": "No statistically significant difference detected"
+      }
+    },
+    {
+      "name": "testPrivateMethods",
+      "desc": "Private Class Methods (#private)",
+      "args": [
+        1,
+        2,
+        5,
+        null
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": 15,
+        "obfResult": 15,
+        "error": null
+      },
+      "native": {
+        "avg": 1.9525052192066863,
+        "stdDev": 0.5014388778790435,
+        "median": 1.7,
+        "mad": 0.19999999999999996,
+        "skewness": 1.2125979639312081,
+        "kurtosis": 0.3356274461785347,
+        "p95": 3,
+        "p99": 3.3429999999999946,
+        "ciLower": 1.9227557411273468,
+        "ciUpper": 1.9852818371607444,
+        "min": 1.5,
+        "max": 114.1,
+        "validRuns": 958,
+        "outliersRemoved": 42,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 46.086041310352414,
+        "heapDeltaKB": 11.765625
+      },
+      "obfuscated": {
+        "avg": 1.2964430894308925,
+        "stdDev": 0.46864835710531094,
+        "median": 1,
+        "mad": 0.09999999999999998,
+        "skewness": 1.0279323036814743,
+        "kurtosis": -0.005563169507999621,
+        "p95": 2.2,
+        "p99": 2.516999999999996,
+        "ciLower": 1.2674796747967474,
+        "ciUpper": 1.3262195121951241,
+        "min": 0.9,
+        "max": 37.7,
+        "validRuns": 984,
+        "outliersRemoved": 16,
+        "warmupRan": 1705,
+        "warmupConverged": true,
+        "thermalDriftPct": 76.66449793970925,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 0.6639895641137618,
+        "ratioCI": {
+          "lower": 0.271604938271605,
+          "upper": 1.4999999999999998,
+          "median": 0.6
+        },
+        "mannWhitney": {
+          "U": 189752,
+          "U1": 810248,
+          "U2": 189752,
+          "z": -24.25043121256965,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": -5.6100844407488735,
+          "df": 1342.3709514927466,
+          "p": 2.0277235890375778e-8,
+          "significant": true
+        },
+        "cohenD": {
+          "d": -0.25089060338056746,
+          "magnitude": "small"
+        },
+        "verdict": "No statistically significant difference detected"
+      }
+    },
+    {
+      "name": "testPrivateAccessors",
+      "desc": "Private Class Accessors (Getter/Setter)",
+      "args": [
+        1,
+        4,
+        10,
+        50
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": "20:25",
+        "obfResult": "20:25",
+        "error": null
+      },
+      "native": {
+        "avg": 4.993592436974794,
+        "stdDev": 1.7758903259805212,
+        "median": 5.1,
+        "mad": 1.4999999999999996,
+        "skewness": 0.5741005251512526,
+        "kurtosis": -0.1543382621159215,
+        "p95": 8.044999999999993,
+        "p99": 9.998000000000001,
+        "ciLower": 4.8852941176470654,
+        "ciUpper": 5.1067226890756325,
+        "min": 2.7,
+        "max": 144.2,
+        "validRuns": 952,
+        "outliersRemoved": 48,
+        "warmupRan": 460,
+        "warmupConverged": true,
+        "thermalDriftPct": 85.1769646070784,
+        "heapDeltaKB": 15.65625
+      },
+      "obfuscated": {
+        "avg": 1.456677181913767,
+        "stdDev": 0.419542482504639,
+        "median": 1.2,
+        "mad": 0.09999999999999987,
+        "skewness": 1.2323178566475794,
+        "kurtosis": 0.399260384993799,
+        "p95": 2.4,
+        "p99": 2.6500000000000004,
+        "ciLower": 1.4297581493165117,
+        "ciUpper": 1.4849631966351227,
+        "min": 1.1,
+        "max": 53.4,
+        "validRuns": 951,
+        "outliersRemoved": 49,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 52.93215092252704,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 0.2917092654834778,
+        "ratioCI": {
+          "lower": 0.09756097560975609,
+          "upper": 0.8928571428571429,
+          "median": 0.30952380952380953
+        },
+        "mannWhitney": {
+          "U": 16563,
+          "U1": 983437,
+          "U2": 16563,
+          "z": -37.57900217747914,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": -17.534452806176258,
+          "df": 1155.1555285297177,
+          "p": 0,
+          "significant": true
+        },
+        "cohenD": {
+          "d": -0.7841645684574411,
+          "magnitude": "medium"
+        },
+        "verdict": "No statistically significant difference detected"
+      }
+    },
+    {
+      "name": "testComplexSuperCalls",
+      "desc": "Complex Class Super Calls & Closures",
+      "args": [
+        1,
+        2,
+        "base-closure",
+        "derived-closure"
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": "base-closure:derived-closure:base-closure",
+        "obfResult": "base-closure:derived-closure:base-closure",
+        "error": null
+      },
+      "native": {
+        "avg": 8.45215605749486,
+        "stdDev": 2.7381118302477514,
+        "median": 9,
+        "mad": 2.3500000000000005,
+        "skewness": 0.3385655479251211,
+        "kurtosis": -0.5819310981326153,
+        "p95": 12.8,
+        "p99": 15.553999999999997,
+        "ciLower": 8.27802874743327,
+        "ciUpper": 8.62505133470227,
+        "min": 4.8,
+        "max": 88.3,
+        "validRuns": 974,
+        "outliersRemoved": 26,
+        "warmupRan": 768,
+        "warmupConverged": true,
+        "thermalDriftPct": 76.78445348485332,
+        "heapDeltaKB": 8.109375
+      },
+      "obfuscated": {
+        "avg": 6.61132530120481,
+        "stdDev": 0.9505845716966699,
+        "median": 6.5,
+        "mad": 0.5,
+        "skewness": 0.1578178947780166,
+        "kurtosis": 0.9329846038130678,
+        "p95": 8.354999999999995,
+        "p99": 9.2,
+        "ciLower": 6.54686746987952,
+        "ciUpper": 6.676987951807223,
+        "min": 3.2,
+        "max": 96.6,
+        "validRuns": 830,
+        "outliersRemoved": 170,
+        "warmupRan": 1988,
+        "warmupConverged": true,
+        "thermalDriftPct": 24.140184625439044,
+        "heapDeltaKB": 11.8515625
+      },
+      "comparison": {
+        "ratio": 0.7822057775829029,
+        "ratioCI": {
+          "lower": 0.3055555555555555,
+          "upper": 2.1052631578947367,
+          "median": 0.7532467532467532
+        },
+        "mannWhitney": {
+          "U": 346082.5,
+          "U1": 653917.5,
+          "U2": 346082.5,
+          "z": -11.923338300208007,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": -7.606766518783077,
+          "df": 1977.1237422804006,
+          "p": 2.842170943040401e-14,
+          "significant": true
+        },
+        "cohenD": {
+          "d": -0.34018494049936787,
+          "magnitude": "small"
+        },
+        "verdict": "No statistically significant difference detected"
+      }
+    },
+    {
+      "name": "testComplexDestructuring",
+      "desc": "Complex Array/Object Destructuring",
+      "args": [
+        1,
+        2,
+        [
+          1,
+          [
+            2
+          ]
+        ],
+        null
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": "1:2:3",
+        "obfResult": "1:2:3",
+        "error": null
+      },
+      "native": {
+        "avg": 0.14346330275229469,
+        "stdDev": 0.06642192680242735,
+        "median": 0.1,
+        "mad": 0,
+        "skewness": 1.030210146662942,
+        "kurtosis": 0.18628416181304885,
+        "p95": 0.3,
+        "p99": 0.3,
+        "ciLower": 0.13956422018348516,
+        "ciUpper": 0.1487385321100905,
+        "min": 0,
+        "max": 32.7,
+        "validRuns": 872,
+        "outliersRemoved": 128,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 92.97423887587686,
+        "heapDeltaKB": 17.0546875
+      },
+      "obfuscated": {
+        "avg": 677.7933035714284,
+        "stdDev": 111.5977631372181,
+        "median": 643.7,
+        "mad": 56.900000000000034,
+        "skewness": 1.3160116606639052,
+        "kurtosis": 1.2278837634883444,
+        "p95": 924.525,
+        "p99": 1021.22,
+        "ciLower": 670.5141741071438,
+        "ciUpper": 685.5916294642851,
+        "min": 527.8,
+        "max": 1834.6,
+        "validRuns": 896,
+        "outliersRemoved": 104,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 27.3832920291158,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 4724.506480529824,
+        "ratioCI": {
+          "lower": 740.625,
+          "upper": 11670.999999999998,
+          "median": 5801
+        },
+        "mannWhitney": {
+          "U": 0,
+          "U1": 0,
+          "U2": 1000000,
+          "z": -39.62708720558308,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": 125.98347348298056,
+          "df": 999.081872392083,
+          "p": 0,
+          "significant": true
+        },
+        "cohenD": {
+          "d": 5.634152214989735,
+          "magnitude": "very large"
+        },
+        "verdict": "Extreme overhead (stat. significant)"
+      }
+    },
+    {
+      "name": "testLoopHeaders",
+      "desc": "Loop Header Destructuring",
+      "args": [
+        1,
+        5,
+        [
+          [
+            "1",
+            "2",
+            "3"
+          ]
+        ],
+        null
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": "1-2,3;",
+        "obfResult": "1-2,3;",
+        "error": null
+      },
+      "native": {
+        "avg": 0.34146341463414637,
+        "stdDev": 0.05968162193103048,
+        "median": 0.3,
+        "mad": 0,
+        "skewness": 0.7561088802018002,
+        "kurtosis": 0.04264788982911005,
+        "p95": 0.4,
+        "p99": 0.5,
+        "ciLower": 0.3373614190687398,
+        "ciUpper": 0.3454545454545482,
+        "min": 0.2,
+        "max": 22.6,
+        "validRuns": 902,
+        "outliersRemoved": 98,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 29.67934377330501,
+        "heapDeltaKB": 19.0078125
+      },
+      "obfuscated": {
+        "avg": 687.7405241935473,
+        "stdDev": 156.77060790355273,
+        "median": 626.45,
+        "mad": 74.44999999999999,
+        "skewness": 0.9923584487002736,
+        "kurtosis": -0.14474628483941654,
+        "p95": 1008.5699999999999,
+        "p99": 1088.271,
+        "ciLower": 678.0396169354839,
+        "ciUpper": 697.7973790322579,
+        "min": 489.1,
+        "max": 1505.7,
+        "validRuns": 992,
+        "outliersRemoved": 8,
+        "warmupRan": 2000,
+        "warmupConverged": false,
+        "thermalDriftPct": 42.52284854021725,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 2014.09724942396,
+        "ratioCI": {
+          "lower": 533.2,
+          "upper": 3487,
+          "median": 1895.666666666667
+        },
+        "mannWhitney": {
+          "U": 0,
+          "U1": 0,
+          "U2": 1000000,
+          "z": -39.670246678068054,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": 132.8288865374845,
+          "df": 999.0422849314394,
+          "p": 0,
+          "significant": true
+        },
+        "cohenD": {
+          "d": 5.94028839346844,
+          "magnitude": "very large"
+        },
+        "verdict": "Extreme overhead (stat. significant)"
+      }
+    },
+    {
+      "name": "testReactHooksJSX",
+      "desc": "React JSX and Hooks Safety",
+      "args": [
+        1,
+        1,
+        5,
+        null
+      ],
+      "correctness": {
+        "passed": true,
+        "nativeResult": 15,
+        "obfResult": 15,
+        "error": null
+      },
+      "native": {
+        "avg": 0.16804853387259855,
+        "stdDev": 0.05100541439837046,
+        "median": 0.2,
+        "mad": 0,
+        "skewness": -0.285563189377849,
+        "kurtosis": -0.865118569756889,
+        "p95": 0.2,
+        "p99": 0.3,
+        "ciLower": 0.16501516683518544,
+        "ciUpper": 0.1714863498483299,
+        "min": 0.1,
+        "max": 45.4,
+        "validRuns": 989,
+        "outliersRemoved": 11,
+        "warmupRan": 201,
+        "warmupConverged": true,
+        "thermalDriftPct": 54.9858027277378,
+        "heapDeltaKB": 8.1484375
+      },
+      "obfuscated": {
+        "avg": 359.3610772357722,
+        "stdDev": 90.83594906859508,
+        "median": 323.25,
+        "mad": 44.900000000000006,
+        "skewness": 0.996672894989108,
+        "kurtosis": -0.1957561604543323,
+        "p95": 546.4499999999997,
+        "p99": 586.385,
+        "ciLower": 353.84105691056914,
+        "ciUpper": 364.83770325203267,
+        "min": 259.5,
+        "max": 930.4,
+        "validRuns": 984,
+        "outliersRemoved": 16,
+        "warmupRan": 1652,
+        "warmupConverged": true,
+        "thermalDriftPct": 48.68719020586366,
+        "heapDeltaKB": 8.046875
+      },
+      "comparison": {
+        "ratio": 2138.4362538277906,
+        "ratioCI": {
+          "lower": 1059.3333333333335,
+          "upper": 5382,
+          "median": 2118.5
+        },
+        "mannWhitney": {
+          "U": 0,
+          "U1": 0,
+          "U2": 1000000,
+          "z": -40.201635343305995,
+          "p": 0,
+          "significant": true
+        },
+        "welchT": {
+          "t": 113.0769683724128,
+          "df": 999.5407688862064,
+          "p": 0,
+          "significant": true
+        },
+        "cohenD": {
+          "d": 5.056955759406176,
           "magnitude": "very large"
         },
         "verdict": "Extreme overhead (stat. significant)"

@@ -591,9 +591,18 @@ if (!latestBuild) {
 }
 
 const obfuscatedPath = path.resolve(__dirname, 'dist-obf', latestBuild.name);
+
+// Cache original and obfuscated file metadata early to prevent dynamic deletion/ENOENT issues during long runs
+const originalSize = fs.statSync(originalPath).size;
+const obfSize = latestBuild.size;
+const originalContent = fs.readFileSync(originalPath, 'utf8');
+const obfContent = fs.readFileSync(obfuscatedPath, 'utf8');
+const origEntropy = calculateShannonEntropy(originalContent);
+const fileEntropy = calculateShannonEntropy(obfContent);
+
 console.log(`\n📂 Loading files:`);
-console.log(`   Original:   ${originalPath} (${fs.statSync(originalPath).size} bytes)`);
-console.log(`   Obfuscated: ${obfuscatedPath} (${latestBuild.size} bytes)`);
+console.log(`   Original:   ${originalPath} (${originalSize} bytes)`);
+console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
 
 (async () => {
   const originalMod = require(originalPath);
@@ -606,7 +615,14 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${latestBuild.size} bytes)`);
     { name: 'verifyArtemisStateDecimation', desc: 'Object Mutation & Array Manipulations', args: ['oxygen', 2, 3], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
     { name: 'verifyArtemisGatingSystem', desc: 'Nested Ternary Branches & Logical Conditions', args: [80, 90, 50], iterations: 2000, minWarmup: 300, maxWarmup: 3000 },
     { name: 'verifyArtemisComputedDestructuring', desc: 'Computed Properties & Dynamic Destructuring', args: ['oxygen', 95, 10], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
-    { name: 'verifyArtemisDerivedClassAndSuper', desc: 'Class Inheritance & Super Constructors', args: [], iterations: 1000, minWarmup: 200, maxWarmup: 2000 }
+    { name: 'verifyArtemisDerivedClassAndSuper', desc: 'Class Inheritance & Super Constructors', args: [], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testConstructorParamProperties', desc: 'OOP Class Constructor Parameter Properties', args: [1, 2, 10, 'test'], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testPrivateMethods', desc: 'Private Class Methods (#private)', args: [1, 2, 5, null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testPrivateAccessors', desc: 'Private Class Accessors (Getter/Setter)', args: [1, 4, 10, 50], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testComplexSuperCalls', desc: 'Complex Class Super Calls & Closures', args: [1, 2, 'base-closure', 'derived-closure'], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testComplexDestructuring', desc: 'Complex Array/Object Destructuring', args: [1, 2, [1, [2]], null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testLoopHeaders', desc: 'Loop Header Destructuring', args: [1, 5, [['1', '2', '3']], null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
+    { name: 'testReactHooksJSX', desc: 'React JSX and Hooks Safety', args: [1, 1, 5, null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 }
   ];
 
   const results = [];
@@ -661,13 +677,7 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${latestBuild.size} bytes)`);
   const harmMeanSlowdown = results.length / results.reduce((acc, r) => acc + 1 / r.comparison.ratio, 0);
 
   // === RESOURCE & ENTROPY ===
-  const originalSize = fs.statSync(originalPath).size;
-  const obfSize = latestBuild.size;
   const sizeRatio = obfSize / originalSize;
-  const originalContent = fs.readFileSync(originalPath, 'utf8');
-  const obfContent = fs.readFileSync(obfuscatedPath, 'utf8');
-  const fileEntropy = calculateShannonEntropy(obfContent);
-  const origEntropy = calculateShannonEntropy(originalContent);
 
   console.log('\n📊 Resource & Entropy summary:');
   console.log(`   Size: ${(originalSize / 1024).toFixed(2)} KB → ${(obfSize / 1024).toFixed(2)} KB (${sizeRatio.toFixed(2)}x)`);
@@ -919,7 +929,14 @@ function getWorkloadFocus(name) {
     verifyArtemisStateDecimation: 'Dynamic property assignment, delete, array mutation',
     verifyArtemisGatingSystem: 'Nested ternary branches, boolean logic evaluation',
     verifyArtemisComputedDestructuring: 'Pattern matching, default params, computed property',
-    verifyArtemisDerivedClassAndSuper: 'Constructor chains, super calls, static initializers'
+    verifyArtemisDerivedClassAndSuper: 'Constructor chains, super calls, static initializers',
+    testConstructorParamProperties: 'OOP Class parameter properties initialization and tracking',
+    testPrivateMethods: 'Private method invocation, recursive private calls and context scope',
+    testPrivateAccessors: 'Private property accessors, inline validations and side effects',
+    testComplexSuperCalls: 'Inherited class constructor chains, static initializers and super methods',
+    testComplexDestructuring: 'Nested array/object pattern matching and fallback defaults',
+    testLoopHeaders: 'Loop initialization destructuring and head/tail iterator unpack',
+    testReactHooksJSX: 'React components JSX safety guards and custom hook checks'
   };
   return map[name] || 'General execution pattern';
 }
