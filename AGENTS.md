@@ -2,10 +2,9 @@
 
 ## Purpose
 
-This repository is `TSXobf` (`ts-vm-obfuscator`): a TypeScript semantic-aware obfuscation pipeline that turns selected functions into custom bytecode and executes them inside a polymorphic JavaScript VM runtime.
+This repository is `TSXobf` (`ts-vm-obfuscator`): a TypeScript semantic-aware obfuscation pipeline that turns selected functions into custom bytecode and executes them inside a custom polymorphic JavaScript VM runtime.
 
 The main end-to-end flow is:
-
 1. TypeScript project analysis
 2. Semantic graph construction
 3. IR lowering
@@ -38,7 +37,6 @@ The main end-to-end flow is:
 - Example validation script: `test-pipeline.js`
 
 If you need to understand what the repo "does", read these in order:
-
 1. `README.md`
 2. `packages/core/src/index.ts`
 3. `packages/cli/src/cli.ts`
@@ -53,6 +51,7 @@ If you need to understand what the repo "does", read these in order:
 - Start visualizer: `pnpm visualizer`
 - Run CLI against sample project: `node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf`
 - Validate semantic equivalence: `node test-pipeline.js`
+- Run high-fidelity timing benchmark: `node --expose-gc run-benchmark.js`
 
 `pnpm test` was passing in this workspace on 2026-05-30 after the threaded VM hardening upgrade. That command runs Vitest, builds the workspace, then runs `node test-pipeline.js`.
 
@@ -91,3 +90,33 @@ If you need to understand what the repo "does", read these in order:
 - **Note:** The IR builder has received a major upgrade ("CỰC NÂNG CẤP") and now fully supports complex statements and expressions including `if`/`while` loops, array/object literals, element access, prefix unary expressions, and `delete` operators. Ensure to use targeted regression testing when modifying these lowering handlers.
 - **Hardening note:** The VM runtime now uses indirect threaded dispatch (`handler = handler(ctx)`), per-execution bytecode cloning, Shadow XOR Mask Buffer recovery, and LCG rolling self-modification when `rollingKeys` is enabled.
 - **Fake-path note:** `TypeLevelFakePathPass` now injects a VM-level congruence predicate based on `(3 * x^2 + 5 * x + 7) % 4 !== 0` with `x` reduced via `& 3`, then routes the true branch to the real target and the false branch to a `Trap` fake block.
+
+---
+
+## Agent Skills & Guidelines
+
+To ensure coding excellence, performance, and robustness, the following specialized agent skills are installed globally and should be triggered in appropriate situations:
+
+### 1. Systematic Debugging
+* **Path**: `C:\Users\PC-Trong\.agents\skills\systematic-debugging`
+* **Trigger condition**: When any test suite fails, when compiling/building raises errors, when virtualized/native outputs mismatch, or when JIT/Junk-byte runtime crashes occur.
+* **Usage**:
+  * Apply [root-cause-tracing.md](file:///C:/Users/PC-Trong/.agents/skills/systematic-debugging/root-cause-tracing.md) strategies (e.g. differential debugging between native and virtualized state).
+  * Use [condition-based-waiting.md](file:///C:/Users/PC-Trong/.agents/skills/systematic-debugging/condition-based-waiting.md) when debugging concurrency or multi-threaded runtime/timing behaviors.
+  * Check [defense-in-depth.md](file:///C:/Users/PC-Trong/.agents/skills/systematic-debugging/defense-in-depth.md) to ensure boundary checks, LCG corruption recoveries, and VM congruence predicates are structurally sound.
+
+### 2. TypeScript Advanced Types & Expert Coding
+* **Paths**: 
+  * `C:\Users\PC-Trong\.agents\skills\typescript-advanced-types`
+  * `C:\Users\PC-Trong\.agents\skills\typescript-expert`
+* **Trigger condition**: When implementing new compiler features, updating the IR lowering handlers, or enhancing static type propagation passes (e.g., `InstructionSubstitutionPass`).
+* **Usage**:
+  * Utilize advanced mapped types, conditional types, and generics to keep AST parsing type-safe.
+  * Avoid raw `any` casting. Prefer sound type assertions (`unknown` narrowings) and robust interfaces aligned with TS compiler API patterns.
+
+### 3. E2E Testing Patterns
+* **Path**: `C:\Users\PC-Trong\.agents\skills\e2e-testing-patterns`
+* **Trigger condition**: When adding/editing test cases in the test suite runner (`test-pipeline.js`), modifying testing hooks, or setting up benchmark timing suites.
+* **Usage**:
+  * Structure integration tests with clear pre-conditions, execution assertions, and post-execution environment cleanup.
+  * Keep E2E tests deterministic; verify output equivalence under multi-round executions (especially with rolling bytecode keys active).
