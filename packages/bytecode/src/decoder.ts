@@ -33,10 +33,8 @@ function isTerminator(opcode: number): boolean {
     opcode === OpCode.Jmp ||
     opcode === OpCode.JmpIf ||
     opcode === OpCode.JmpIfNot ||
-    opcode === OpCode.Switch ||
     opcode === OpCode.Return ||
     opcode === OpCode.ReturnVoid ||
-    opcode === OpCode.TailCall ||
     opcode === OpCode.Throw ||
     opcode === OpCode.Yield ||
     opcode === OpCode.YieldStar ||
@@ -89,8 +87,6 @@ const opcodeLayout: Partial<Record<OpCode, { inputCount: number; hasResult: bool
   [OpCode.Move]: { inputCount: 2, hasResult: false },
   [OpCode.LoadGlobal]: { inputCount: 1, hasResult: true },
   [OpCode.StoreGlobal]: { inputCount: 2, hasResult: false },
-  [OpCode.LoadCapture]: { inputCount: 0, hasResult: true },
-  [OpCode.StoreCapture]: { inputCount: 1, hasResult: false },
   [OpCode.LoadThis]: { inputCount: 0, hasResult: true },
   [OpCode.LoadNewTarget]: { inputCount: 0, hasResult: true },
   [OpCode.Add]: { inputCount: 2, hasResult: true },
@@ -118,13 +114,11 @@ const opcodeLayout: Partial<Record<OpCode, { inputCount: number; hasResult: bool
   [OpCode.Jmp]: { inputCount: 1, hasResult: false },
   [OpCode.JmpIf]: { inputCount: 3, hasResult: false },
   [OpCode.JmpIfNot]: { inputCount: 3, hasResult: false },
-  [OpCode.Switch]: { inputCount: 1, hasResult: false },
   [OpCode.Call]: { inputCount: 1, hasResult: true },
   [OpCode.CallMethod]: { inputCount: 2, hasResult: true },
   [OpCode.New]: { inputCount: 1, hasResult: true },
   [OpCode.Return]: { inputCount: 1, hasResult: false },
   [OpCode.ReturnVoid]: { inputCount: 0, hasResult: false },
-  [OpCode.TailCall]: { inputCount: 1, hasResult: false },
   [OpCode.ClosureNew]: { inputCount: 1, hasResult: true },
   [OpCode.CellNew]: { inputCount: 0, hasResult: true },
   [OpCode.CellGet]: { inputCount: 1, hasResult: true },
@@ -150,17 +144,12 @@ const opcodeLayout: Partial<Record<OpCode, { inputCount: number; hasResult: bool
   [OpCode.SuperPropSet]: { inputCount: 3, hasResult: false },
   [OpCode.SuperCall]: { inputCount: 1, hasResult: true },
   [OpCode.SuperCallWithArray]: { inputCount: 1, hasResult: true },
-  [OpCode.Phi]: { inputCount: 1, hasResult: true },
   [OpCode.Throw]: { inputCount: 1, hasResult: false },
   [OpCode.TryCatchBegin]: { inputCount: 0, hasResult: false },
   [OpCode.TryCatchEnd]: { inputCount: 0, hasResult: false },
-  [OpCode.FinallyBegin]: { inputCount: 0, hasResult: false },
-  [OpCode.FinallyEnd]: { inputCount: 0, hasResult: false },
   [OpCode.Yield]: { inputCount: 0, hasResult: true },
   [OpCode.Await]: { inputCount: 0, hasResult: true },
-  [OpCode.Debugger]: { inputCount: 0, hasResult: false },
   [OpCode.YieldStar]: { inputCount: 0, hasResult: true },
-  [OpCode.GeneratorNew]: { inputCount: 1, hasResult: true },
   [OpCode.GetEntropy]: { inputCount: 0, hasResult: true },
   [OpCode.SuperInstruction]: { inputCount: 1, hasResult: true },
 };
@@ -309,8 +298,6 @@ const opcodeNames: Record<number, string> = {
   [OpCode.Move]: 'Move',
   [OpCode.LoadGlobal]: 'LoadGlobal',
   [OpCode.StoreGlobal]: 'StoreGlobal',
-  [OpCode.LoadCapture]: 'LoadCapture',
-  [OpCode.StoreCapture]: 'StoreCapture',
   [OpCode.LoadThis]: 'LoadThis',
   [OpCode.LoadNewTarget]: 'LoadNewTarget',
   [OpCode.Add]: 'Add',
@@ -338,13 +325,11 @@ const opcodeNames: Record<number, string> = {
   [OpCode.Jmp]: 'Jmp',
   [OpCode.JmpIf]: 'JmpIf',
   [OpCode.JmpIfNot]: 'JmpIfNot',
-  [OpCode.Switch]: 'Switch',
   [OpCode.Call]: 'Call',
   [OpCode.CallMethod]: 'CallMethod',
   [OpCode.New]: 'New',
   [OpCode.Return]: 'Return',
   [OpCode.ReturnVoid]: 'ReturnVoid',
-  [OpCode.TailCall]: 'TailCall',
   [OpCode.ClosureNew]: 'ClosureNew',
   [OpCode.CellNew]: 'CellNew',
   [OpCode.CellGet]: 'CellGet',
@@ -370,17 +355,12 @@ const opcodeNames: Record<number, string> = {
   [OpCode.SuperPropSet]: 'SuperPropSet',
   [OpCode.SuperCall]: 'SuperCall',
   [OpCode.SuperCallWithArray]: 'SuperCallWithArray',
-  [OpCode.Phi]: 'Phi',
   [OpCode.Throw]: 'Throw',
   [OpCode.TryCatchBegin]: 'TryCatchBegin',
   [OpCode.TryCatchEnd]: 'TryCatchEnd',
-  [OpCode.FinallyBegin]: 'FinallyBegin',
-  [OpCode.FinallyEnd]: 'FinallyEnd',
   [OpCode.Yield]: 'Yield',
   [OpCode.Await]: 'Await',
-  [OpCode.Debugger]: 'Debugger',
   [OpCode.YieldStar]: 'YieldStar',
-  [OpCode.GeneratorNew]: 'GeneratorNew',
   [OpCode.Nop]: 'Nop',
   [OpCode.Halt]: 'Halt',
   [OpCode.Trap]: 'Trap',

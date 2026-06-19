@@ -16,8 +16,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const hasTryCatch = func.blocks.some(block =>
         block.instructions.some(inst =>
           inst.opcode === OpCode.TryCatchBegin ||
-          inst.opcode === OpCode.TryCatchEnd ||
-          inst.opcode === OpCode.FinallyBegin
+          inst.opcode === OpCode.TryCatchEnd
         )
       );
       if (hasTryCatch) return func;

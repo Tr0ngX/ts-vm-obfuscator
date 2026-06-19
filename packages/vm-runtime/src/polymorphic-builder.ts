@@ -1072,10 +1072,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const antiDebugLogic = config.antiDebug ? `
     // Anti-Debug DevTools & Trace Protection (Self-Destruct Trap)
+    // ⚠️ WARNING: Contains literal \`debugger;\` statement. This will trigger
+    // breakpoints in DevTools. Remove this entire block if distributing to production.
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugger;
-    var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'} && _dbg_end - _dbg_start > 100) { 
        selfDestruct(ctx);
     }
     // Opaque getter trap to detect automated inspect / DevTools formatting
@@ -1391,6 +1391,9 @@ const ${top.vmFunctions} = (function() {
   const ${top.rawCP} = ${cp};
 
   // Grab clean intrinsics from isolated context (iframe or node vm fallback)
+  // SECURITY WARNING: require('vm') has known sandbox escape vulnerabilities (CVE-2023-37903, etc.)
+  // SECURITY WARNING: In browser contexts, iframe injection has CSP implications and may be blocked.
+  // Consider providing pre-sealed intrinsics via config instead of runtime extraction.
   var cleanIntrinsics = (function() {
     var win;
     try {

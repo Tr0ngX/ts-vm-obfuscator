@@ -22,10 +22,8 @@ function isTerminator(opcode: number): boolean {
     opcode === OpCode.Jmp ||
     opcode === OpCode.JmpIf ||
     opcode === OpCode.JmpIfNot ||
-    opcode === OpCode.Switch ||
     opcode === OpCode.Return ||
     opcode === OpCode.ReturnVoid ||
-    opcode === OpCode.TailCall ||
     opcode === OpCode.Throw ||
     opcode === OpCode.Yield ||
     opcode === OpCode.YieldStar ||

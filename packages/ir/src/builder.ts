@@ -1096,7 +1096,7 @@ export class ASTLowering {
   }
 
   private declareScopedIdentifier(name: string): LocalBinding {
-    const existing = (this.scope as any).map.get(name);
+    const existing = this.scope.get(name);
     if (existing) {
       return existing;
     }
@@ -1108,7 +1108,7 @@ export class ASTLowering {
   }
 
   private declareForcedBoxedIdentifier(name: string): LocalBinding {
-    const existing = (this.scope as any).map.get(name);
+    const existing = this.scope.get(name);
     if (existing) {
       return existing;
     }
@@ -2164,6 +2164,11 @@ export class ASTLowering {
       this.scope = new ScopeMap(this.scope);
       try {
         const sourceReg = this.visitExpression(stmt.expression);
+        // ⚠️ SEMANTIC WARNING: Object.keys() only captures own enumerable properties.
+        // True JS for...in iterates ALL enumerable properties (own + inherited) from
+        // the prototype chain. Implementing correct semantics requires a dedicated
+        // OpCode.EnumerateKeys or a runtime helper. This approximation handles the
+        // common case of plain object literals but will miss inherited properties.
         const objectReg = this.resolveVar('Object');
         const keysReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(

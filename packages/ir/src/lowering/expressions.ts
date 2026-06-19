@@ -1,8 +1,10 @@
-// @ts-nocheck - Extracted functions operate on ASTLowering's private members via `self` parameter.
-// These are effectively internal class methods, not a public API. Converting every used private
-// member to public would pollute the class interface across the entire workspace.
+// TODO: Refactor ASTLowering to expose a public interface for these extracted functions.
+// Currently, they access private members of ASTLowering via the `self` parameter,
+// which forces the use of @ts-nocheck. A proper solution would extract shared state
+// into a separate accessible context object or define a public interface for the
+// operations these functions need.
+// @ts-nocheck
 import type { ASTLowering } from '../builder.js';
-import type { Register, Operand } from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
 import ts from 'typescript';
 import { LEXICAL_THIS_CAPTURE, LEXICAL_NEW_TARGET_CAPTURE } from './types.js';

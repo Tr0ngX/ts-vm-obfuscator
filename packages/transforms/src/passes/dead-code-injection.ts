@@ -30,7 +30,7 @@ export class DeadCodeInjectionPass implements TransformPass {
         
         for (const inst of block.instructions) {
           // Inject junk 20% of the time before non-terminator instructions
-          if (ctx.rng.nextFloat() < 0.20 && inst.opcode !== OpCode.Phi) {
+          if (ctx.rng.nextFloat() < 0.20) {
             changed = true;
             nodesTransformed++;
             

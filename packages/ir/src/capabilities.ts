@@ -244,9 +244,9 @@ function tryGetTopLevelVariableFunctionBinding(statement: ts.Statement): Array<{
   return bindings;
 }
 
-export function analyzeFunctionCapabilities(filePath: string): FunctionCapabilityReport[] {
-  const sourceText = ts.sys.readFile(filePath) || '';
-  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.ESNext, true);
+export function analyzeFunctionCapabilities(filePath: string, sourceText?: string): FunctionCapabilityReport[] {
+  const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
+  const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
   const reports: FunctionCapabilityReport[] = [];
 
   const visit = (node: ts.Node) => {
@@ -260,9 +260,9 @@ export function analyzeFunctionCapabilities(filePath: string): FunctionCapabilit
   return reports;
 }
 
-export function analyzeTopLevelFunctionCapabilities(filePath: string): FunctionCapabilityReport[] {
-  const sourceText = ts.sys.readFile(filePath) || '';
-  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.ESNext, true);
+export function analyzeTopLevelFunctionCapabilities(filePath: string, sourceText?: string): FunctionCapabilityReport[] {
+  const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
+  const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
   const reports: FunctionCapabilityReport[] = [];
 
   for (const statement of sourceFile.statements) {
