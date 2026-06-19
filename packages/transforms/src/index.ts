@@ -10,3 +10,4 @@ export * from './passes/function-virtualization.js';
 export * from './passes/dead-code-injection.js';
 export * from './passes/control-flow-flattening.js';
 export * from './passes/strip-debug.js';
+export * from './passes/instruction-substitution.js';

@@ -12,6 +12,7 @@ import { ControlFlowFlatteningPass } from './passes/control-flow-flattening.js';
 import { StripDebugPass } from './passes/strip-debug.js';
 import { IRValidationPass } from './passes/ir-validation.js';
 import { RegisterCompactingPass } from './passes/register-compacting.js';
+import { InstructionSubstitutionPass } from './passes/instruction-substitution.js';
 
 export class TransformRegistry {
   private passes: Map<string, TransformPass> = new Map();
@@ -31,6 +32,7 @@ export class TransformRegistry {
       'StripDebugPass': StripDebugPass,
       'IRValidationPass': IRValidationPass,
       'RegisterCompactingPass': RegisterCompactingPass,
+      'InstructionSubstitutionPass': InstructionSubstitutionPass,
     };
 
     for (const passConfig of profile.transforms) {
