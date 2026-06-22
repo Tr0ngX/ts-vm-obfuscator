@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ControlFlowFlatteningPass } from '../src/passes/control-flow-flattening.js';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
 import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
-import { ConstantKind, IRModule, IRType, OperandKind, OpCode, ProjectSemanticGraph, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
+import { ConstantKind, type IRModule, IRType, OperandKind, OpCode, type ProjectSemanticGraph, SeededRandom, type TransformContext, type ObfuscationProfile } from '@tsvm/shared';
 import { createTransformRegistry } from '../src/registry.js';
 
 const mockProfile: ObfuscationProfile = {

@@ -11,7 +11,11 @@
   "scripts": {
     "build": "turbo run build",
     "test": "pnpm exec vitest run --config vitest.config.mjs && pnpm build && node test-pipeline.js",
-    "lint": "turbo run lint",
+    "test:watch": "vitest watch --config vitest.config.mjs",
+    "test:coverage": "vitest run --config vitest.config.mjs --coverage",
+    "lint": "biome check --write .",
+    "lint:ci": "biome ci .",
+    "format": "biome format --write .",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
     "typecheck": "turbo run typecheck",
@@ -20,6 +24,7 @@
     "benchmark": "node --expose-gc run-benchmark.js"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
     "turbo": "^2.4.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0",

@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import type { ModuleInfo, ProjectSemanticGraph, IRModule, Operand, Register } from '@tsvm/shared';
 import { DiagnosticSeverity, IRType, OpCode, OperandKind, ConstantKind, FunctionAttribute } from '@tsvm/shared';
-import { IRModuleBuilder, IRFunctionBuilder, BasicBlockBuilder } from './ir.js';
+import { IRModuleBuilder, IRFunctionBuilder, type BasicBlockBuilder } from './ir.js';
 import { LEXICAL_THIS_CAPTURE, LEXICAL_NEW_TARGET_CAPTURE } from './lowering/types.js';
 import type {
   LowerToIROptions, SupportedFunctionNode, ClosureAnalysis, LocalBinding,
@@ -415,7 +415,7 @@ export class ASTLowering {
   private normalizeClassLike(node: ts.ClassDeclaration | ts.ClassExpression): NormalizedClass {
     let extendsExpression: ts.Expression | undefined;
     const extendsClause = node.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword);
-    if (extendsClause && extendsClause.types && extendsClause.types.length > 0) {
+    if (extendsClause?.types && extendsClause.types.length > 0) {
       extendsExpression = extendsClause.types[0]?.expression;
     }
 
@@ -2411,7 +2411,7 @@ export class ASTLowering {
 
       this.enterBreakTarget(endBlock.id);
 
-      let checkBlock = this.currentBlock;
+      const checkBlock = this.currentBlock;
       const caseClauses = stmt.caseBlock.clauses
         .map((clause, index) => ({ clause, index }))
         .filter((entry) => ts.isCaseClause(entry.clause));

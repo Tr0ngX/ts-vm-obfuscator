@@ -5,14 +5,13 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "inputs": ["src/**", "tsconfig.json", "package.json", "tsup.config.ts"]
+      "inputs": ["src/**", "tsconfig.json", "package.json"]
     },
     "test": {
       "outputs": ["coverage/**"],
       "inputs": ["src/**", "tests/**", "vitest.config.mjs"]
     },
     "typecheck": {
-      "dependsOn": ["^build"],
       "outputs": []
     },
     "lint": {

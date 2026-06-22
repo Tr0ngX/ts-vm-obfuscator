@@ -3,7 +3,7 @@ import { buildVMRuntime } from '../src/polymorphic-builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import { decodeBytecode } from '../../bytecode/src/decoder.js';
 import { generateRemappedOpcodes } from '../../bytecode/src/opcodes.js';
-import { OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, FunctionAttribute, IRType, ConstantKind, type IRModule, type Instruction, type VMBuildConfig } from '@tsvm/shared';
+import { OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, FunctionAttribute, IRType, type ConstantKind, type IRModule, type Instruction, type VMBuildConfig } from '@tsvm/shared';
 
 function makeModuleWithPool(constantPoolValues: { index: number; value: unknown; kind: string }[]): IRModule {
   const insts: Instruction[] = constantPoolValues.map((entry, i) => ({

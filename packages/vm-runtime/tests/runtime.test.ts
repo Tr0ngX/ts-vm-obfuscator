@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildVMRuntime } from '../src/polymorphic-builder.js';
-import { BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
+import { type BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
 import { lowerToIR } from '../../ir/src/builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import path from 'path';

@@ -1,5 +1,5 @@
 import type { Instruction, Operand, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
-import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, SeededRandom, OpCode } from '@tsvm/shared';
+import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, type SeededRandom, OpCode } from '@tsvm/shared';
 
 import type { VMBuildConfig } from '@tsvm/shared';
 
@@ -82,7 +82,7 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
 
       let val = 0;
       if (typeof op.value === 'string' && op.value.startsWith('r')) {
-        val = parseInt(op.value.substring(1), 10);
+        val = Number.parseInt(op.value.substring(1), 10);
       } else if (typeof op.value === 'number') {
         val = op.value;
       }

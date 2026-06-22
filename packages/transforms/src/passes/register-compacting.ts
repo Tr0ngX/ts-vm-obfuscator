@@ -6,7 +6,7 @@ function collectUsedRegisters(func: IRFunction): Set<number> {
   const add = (val: string | undefined) => {
     if (!val) return;
     const m = /^r(\d+)$/.exec(val);
-    if (m) regs.add(parseInt(m[1]!, 10));
+    if (m) regs.add(Number.parseInt(m[1]!, 10));
   };
 
   for (const param of func.params) add(param.register);

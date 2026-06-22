@@ -75,7 +75,7 @@ export class IRValidationPass implements TransformPass {
       for (const phi of block.phiNodes ?? []) {
         const regPhi = registerValue(phi.result);
         if (regPhi) {
-          const idx = parseInt(regPhi.substring(1), 10);
+          const idx = Number.parseInt(regPhi.substring(1), 10);
           if (idx >= maxReg) {
             diagnostics.push({
               severity: DiagnosticSeverity.Warning,
@@ -94,7 +94,7 @@ export class IRValidationPass implements TransformPass {
           }
           const regInc = registerValue(inc.register);
           if (regInc) {
-            const idx = parseInt(regInc.substring(1), 10);
+            const idx = Number.parseInt(regInc.substring(1), 10);
             if (idx >= maxReg) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Warning,
@@ -110,7 +110,7 @@ export class IRValidationPass implements TransformPass {
       for (const inst of block.instructions) {
         const regResult = registerValue(inst.result);
         if (regResult) {
-          const idx = parseInt(regResult.substring(1), 10);
+          const idx = Number.parseInt(regResult.substring(1), 10);
           if (idx >= maxReg) {
             diagnostics.push({
               severity: DiagnosticSeverity.Warning,
@@ -124,7 +124,7 @@ export class IRValidationPass implements TransformPass {
           if (op.kind === OperandKind.Register) {
             const regVal = registerValue(op.value);
             if (regVal) {
-              const idx = parseInt(regVal.substring(1), 10);
+              const idx = Number.parseInt(regVal.substring(1), 10);
               if (idx >= maxReg) {
                 diagnostics.push({
                   severity: DiagnosticSeverity.Warning,
@@ -140,7 +140,7 @@ export class IRValidationPass implements TransformPass {
       // 6. Check terminator condition/returnValue
       const regCond = registerValue(block.terminator.condition);
       if (regCond) {
-        const idx = parseInt(regCond.substring(1), 10);
+        const idx = Number.parseInt(regCond.substring(1), 10);
         if (idx >= maxReg) {
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,
@@ -152,7 +152,7 @@ export class IRValidationPass implements TransformPass {
 
       const regRet = registerValue(block.terminator.returnValue);
       if (regRet) {
-        const idx = parseInt(regRet.substring(1), 10);
+        const idx = Number.parseInt(regRet.substring(1), 10);
         if (idx >= maxReg) {
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,

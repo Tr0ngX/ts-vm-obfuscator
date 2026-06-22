@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
-import { IRModule, IRType, OperandKind, OpCode, SeededRandom, TransformContext, ObfuscationProfile, ConstantKind, ProjectSemanticGraph } from '@tsvm/shared';
+import { type IRModule, IRType, OperandKind, OpCode, SeededRandom, type TransformContext, type ObfuscationProfile, ConstantKind, type ProjectSemanticGraph } from '@tsvm/shared';
 
 const mockProfile: ObfuscationProfile = {
   name: 'generic',

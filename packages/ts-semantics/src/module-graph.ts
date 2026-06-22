@@ -112,7 +112,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
           });
         }
       } else if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
-        let isDefault = ts.getModifiers(node)!.some(m => m.kind === ts.SyntaxKind.DefaultKeyword);
+        const isDefault = ts.getModifiers(node)!.some(m => m.kind === ts.SyntaxKind.DefaultKeyword);
         let name = 'default';
         if (!isDefault && (node as ts.NamedDeclaration).name && ts.isIdentifier((node as ts.NamedDeclaration).name!)) {
           name = ((node as ts.NamedDeclaration).name as ts.Identifier).text;

@@ -86,7 +86,7 @@ export class TypeLevelFakePathPass implements TransformPass {
           instructions: [{ opcode: OpCode.Trap, operands: [] }],
           terminatorKind: 'unreachable'
         };
-      } else if (endingType === 1) {
+      }if (endingType === 1) {
         // Return(undefined) — looks like a normal early return
         return {
           instructions: [
@@ -98,7 +98,7 @@ export class TypeLevelFakePathPass implements TransformPass {
           ],
           terminatorKind: 'return'
         };
-      } else {
+      }
         // Decoy real-code sequence: LoadConst + Add + Move + ReturnVoid
         return {
           instructions: [
@@ -125,7 +125,6 @@ export class TypeLevelFakePathPass implements TransformPass {
           ],
           terminatorKind: 'return'
         };
-      }
     }
 
     const newFunctions = ctx.module.functions.map(func => {

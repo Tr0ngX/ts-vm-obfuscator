@@ -3,7 +3,7 @@ import type {
   ConstantPoolEntry, BasicBlock, Instruction, TerminatorInstruction,
   Operand, IRParam, IRLocal, Register
 } from '@tsvm/shared';
-import { OpCode, IRType, ConstantKind, FunctionAttribute } from '@tsvm/shared';
+import type { OpCode, IRType, ConstantKind, FunctionAttribute } from '@tsvm/shared';
 
 export class IRModuleBuilder {
   private functions: IRFunction[] = [];

@@ -127,7 +127,7 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
   // Local variable name to avoid collisions
   const pVar = `_op${rng.nextRange(100, 999)}`;
   // Use a runtime value that's always available (pc is always a non-negative integer)
-  const runtimeVal = `ctx.pc`;
+  const runtimeVal = 'ctx.pc';
 
   switch (choice) {
     case 0:
@@ -180,7 +180,7 @@ function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, 
     code += `    var ${trapVar} = ${regAlias}[${fakeReg1}];\n`;
     code += `    ${regAlias}[${fakeReg2}] = ${trapVar} ^ ${fakeConst};\n`;
     code += `    ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ ${trapVar}) | 0;\n`;
-    code += `  }\n`;
+    code += '  }\n';
   }
 
   return code;
@@ -217,7 +217,7 @@ function generateSignaturePollution(seed: number, varIdx: number): string {
   return code;
 }
 
-function generateJunkStatements(seed: number, id: number, names: any, mulConst: string = '1664525', addConst: string = '1013904223'): string {
+function generateJunkStatements(seed: number, id: number, names: any, mulConst = '1664525', addConst = '1013904223'): string {
   const rng = new SeededRandom(seed ^ id ^ 0x7c2a11);
   const numJunk = rng.nextRange(1, 3);
   let junk = '';
@@ -560,7 +560,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         for (let i = 0; i < numJunk; i++) {
           junkSkip += config.rollingKeys
             ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`
-            : `  ctx.pc++;\n`;
+            : '  ctx.pc++;\n';
         }
       }
 
@@ -612,7 +612,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
       if (isVarLength) {
         myReadArgs = `
-          let argCount = ${config.rollingKeys ? `${top.readByte}(ctx)` : `ctx.bytecode[ctx.pc++]`};
+          let argCount = ${config.rollingKeys ? `${top.readByte}(ctx)` : 'ctx.bytecode[ctx.pc++]'};
           const ${argsVar} = [];
           const kinds = [];
           for (let i = 0; i < argCount; i++) {
@@ -626,7 +626,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         let operandCount = 0;
         if (matches) {
           for (const m of matches) {
-            const idx = parseInt(m.match(/\d+/)![0], 10);
+            const idx = Number.parseInt(m.match(/\d+/)![0], 10);
             if (idx + 1 > operandCount) {
               operandCount = idx + 1;
             }
@@ -676,7 +676,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
           `;
         }
       } else {
-        nextOpLogic = `return null;`;
+        nextOpLogic = 'return null;';
       }
 
       // Replace args and evaluate semantic cloning markers
@@ -1200,7 +1200,7 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      } else if (dispatchArch === 1) {
+      }if (dispatchArch === 1) {
         // Architecture 1: Bijective Nibble-Swap Permutation Table
         const saltByte = (config.seed ^ 0xA5F3) & 0xFF;
         const saltByte2 = ((config.seed >>> 8) ^ 0xC2B1) & 0xFF;
@@ -1227,7 +1227,7 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      } else if (dispatchArch === 2) {
+      }if (dispatchArch === 2) {
         // Architecture 2: XOR-Scrambled Index Table (bijective XOR permutation)
         const xorScramble = (config.seed ^ 0x7E3D9F2C) & 0xFF;
         const scrambledTable = new Array(256).fill(`[${trapFnName}]`);
@@ -1251,7 +1251,7 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      } else if (dispatchArch === 3) {
+      }if (dispatchArch === 3) {
         // Architecture 3: Bit-Reversal Permutation Table
         // reverse8(x) reverses the 8 bits of x — bijective on [0,255]
         const bitRevSalt = (config.seed ^ 0x4B7D) & 0xFF;
@@ -1286,7 +1286,7 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      } else {
+      }
         // Architecture 4: Affine Transform (multiply by odd constant + add, mod 256)
         // f(x) = (x * oddMul + addConst) & 0xFF — bijective since oddMul is coprime to 256
         const oddMul = ((config.seed & 0x7F) | 1) | 2;  // ensure odd and >= 3
@@ -1312,8 +1312,7 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      }
-    } else {
+    }
       return {
         declarations: `
   const ${locals.dispatchBank} = [\n    ${vOpToHandlerName.join(',\n    ')}\n  ];
@@ -1325,7 +1324,6 @@ ${casesStr}
         `,
         invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
       };
-    }
   })();
 
   const allBytecodes: number[] = [];
@@ -1658,8 +1656,8 @@ const ${top.vmFunctions} = (function() {
       ${ctx.returnValue}: undefined,
       ${ctx.tryFrames}: [],
       ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'},
-      ${ctx.xorLog}: ${config.rollingKeys ? `new Uint8Array(bytecodeArr.length)` : 'null'},
-      ${ctx.executionNonce}: ${config.rollingKeys ? `(++executionCounter)` : '0'},
+      ${ctx.xorLog}: ${config.rollingKeys ? 'new Uint8Array(bytecodeArr.length)' : 'null'},
+      ${ctx.executionNonce}: ${config.rollingKeys ? '(++executionCounter)' : '0'},
       salt: ${config.rollingKeys ? 'salt' : '0'},
       currentOpcode: 0,
       poisoned: false,

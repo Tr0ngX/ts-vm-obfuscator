@@ -127,7 +127,7 @@ export function lowerNestedFunctionNode(self: IASTLowering, expr: SupportedFunct
 export function visitExpression(self: IASTLowering, expr: ts.Expression): Register {
   expr = self.normalizeExpression(expr);
   if (ts.isNumericLiteral(expr)) {
-    return self.emitConstant(ConstantKind.Number, parseFloat(expr.text));
+    return self.emitConstant(ConstantKind.Number, Number.parseFloat(expr.text));
   }
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
     return self.emitConstant(ConstantKind.String, expr.text);
@@ -713,7 +713,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       ]);
       self.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: self.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg);
       return resReg;
-    } else if (ts.isElementAccessExpression(expr.expression)) {
+    }if (ts.isElementAccessExpression(expr.expression)) {
       if (!expr.expression.argumentExpression) {
         self.failUnsupported(expr.expression, 'Element access requires an index expression');
       }

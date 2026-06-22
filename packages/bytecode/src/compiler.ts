@@ -235,7 +235,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         if (typeof regStr !== 'string') return regStr;
         const match = /^r(\d+)$/.exec(regStr);
         if (match) {
-          const origId = parseInt(match[1]!, 10);
+          const origId = Number.parseInt(match[1]!, 10);
           if (origId < paramCount) {
             return regStr;
           }
@@ -432,7 +432,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
             const targetIdx = blockInstIndices.get(op.value as string)!;
             val = instByteOffset[targetIdx] || 0;
           } else if (typeof op.value === 'string' && op.value.startsWith('r')) {
-            val = parseInt(op.value.substring(1), 10);
+            val = Number.parseInt(op.value.substring(1), 10);
           } else if (typeof op.value === 'number') {
             val = op.value;
           }

@@ -516,7 +516,7 @@ export class ObfuscationPipeline {
         for (let i = 0; i < irModules.length; i++) {
           irModules[i] = applyElectronHardening(irModules[i]!);
         }
-        this.emit('vm_build' as PipelineStage, `Applied Electron hardening rules`);
+        this.emit('vm_build' as PipelineStage, 'Applied Electron hardening rules');
       } catch (error: unknown) {
         this.emitError('vm_build' as PipelineStage, 'Electron hardening failed', error);
       }

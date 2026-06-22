@@ -15,19 +15,22 @@ output2.txt
 js-confuser-master/
 scratch/
 
+# Benchmark outputs
+BENCHMARK.json
+BENCHMARK.csv
+BENCHMARK.md
+
 # Temporary test/debug files
-packages/core/tests/debug-universal.test.ts
-packages/vm-runtime/tests/diag-syntax.mjs
-run_custom_test.js
-scratch-files.js
-scratch-inspect.js
-test-complex.js
-test_runner.js
-vm-fully-support-plan.md
-inspect-ir.js
-inspect-tea-pc.js
-inspect-tea.js
-inspect.js
+debug-*.test.ts
+diag-*.mjs
+inspect-*.js
+scratch-*.js
+run_*.js
+test-*.js
+test_*.js
 
 # Local test and playground directories
 taste-skill/
+
+# Stale junk files
+fnv1a.json

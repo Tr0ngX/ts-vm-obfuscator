@@ -43,7 +43,7 @@ function inferRegisterTypes(
   const getOperandType = (op: any): IRType => {
     if (op.kind === OperandKind.Register) {
       return types.get(op.value as Register) ?? IRType.Any;
-    } else if (op.kind === OperandKind.ConstantIndex) {
+    }if (op.kind === OperandKind.ConstantIndex) {
       return getConstantType(op.value as number);
     }
     return IRType.Any;
@@ -176,7 +176,7 @@ export class InstructionSubstitutionPass implements TransformPass {
           const getOperandType = (op: any): IRType => {
             if (op.kind === OperandKind.Register) {
               return regTypes.get(op.value as Register) ?? IRType.Any;
-            } else if (op.kind === OperandKind.ConstantIndex) {
+            }if (op.kind === OperandKind.ConstantIndex) {
               const entry = constantPool[op.value as number];
               if (entry) {
                 if (entry.kind === ConstantKind.Number) return IRType.Number;

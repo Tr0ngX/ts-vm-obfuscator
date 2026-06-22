@@ -97,7 +97,7 @@ function resolvePropertyName(
     const poolIndex =
       typeof constOperand.value === 'number'
         ? constOperand.value
-        : parseInt(constOperand.value as string, 10);
+        : Number.parseInt(constOperand.value as string, 10);
     if (Number.isNaN(poolIndex)) {
       return null;
     }

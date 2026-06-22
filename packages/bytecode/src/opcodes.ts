@@ -9,7 +9,7 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
   
   const opcodes: OpCode[] = [];
   for (const key in OpCode) {
-    if (!isNaN(Number(key))) {
+    if (!Number.isNaN(Number(key))) {
       opcodes.push(Number(key) as OpCode);
     }
   }

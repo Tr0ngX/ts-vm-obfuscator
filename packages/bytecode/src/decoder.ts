@@ -455,7 +455,7 @@ function estimateInstructionSize(inst: Instruction, config: VMBuildConfig, seed:
     size += 1;
     let val = 0;
     if (typeof op.value === 'string' && op.value.startsWith('r')) {
-      val = parseInt(op.value.substring(1), 10);
+      val = Number.parseInt(op.value.substring(1), 10);
     } else if (typeof op.value === 'number') {
       val = op.value;
     }
