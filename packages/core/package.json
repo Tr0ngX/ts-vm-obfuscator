@@ -1,6 +1,10 @@
 {
   "name": "@tsvm/core",
   "version": "0.1.0",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": true,
   "description": "Pipeline orchestrator for ts-vm-obfuscator — ties semantic analysis, IR, transforms, bytecode, and VM together",
   "type": "module",

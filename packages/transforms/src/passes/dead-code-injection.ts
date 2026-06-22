@@ -207,10 +207,11 @@ export class DeadCodeInjectionPass implements TransformPass {
                 phiNodes: []
               });
 
+              const origBlockId = currentBlockId;
               currentBlockId = nextBlockId;
               currentLabel = `${currentLabel}_opaque`;
               currentInstructions = [];
-              currentPredecessors = [currentBlockId, deadBlockId];
+              currentPredecessors = [origBlockId, deadBlockId];
             } else {
               // Normal injection directly into currentInstructions
               currentInstructions.push(...deadCodeInsts);

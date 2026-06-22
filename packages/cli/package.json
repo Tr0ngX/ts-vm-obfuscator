@@ -1,6 +1,10 @@
 {
   "name": "@tsvm/cli",
   "version": "0.1.0",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": true,
   "type": "module",
   "bin": {

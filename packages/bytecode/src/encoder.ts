@@ -5,15 +5,15 @@ import type { VMBuildConfig } from '@tsvm/shared';
 
 function isVariableLengthOpcode(opcode: number): boolean {
   return (
-    opcode === 0x40 || // OpCode.Call
-    opcode === 0x41 || // OpCode.CallMethod
-    opcode === 0x42 || // OpCode.New
-    opcode === 0x54 || // OpCode.ArrayNew
-    opcode === 0x55 || // OpCode.ObjectNew
-    opcode === 0x56 || // OpCode.Spread
-    opcode === 0x57 || // OpCode.SpreadIntoArray
-    opcode === 0x5E || // OpCode.SuperCall
-    opcode === 0xFE    // OpCode.SuperInstruction
+    opcode === OpCode.Call ||
+    opcode === OpCode.CallMethod ||
+    opcode === OpCode.New ||
+    opcode === OpCode.ArrayNew ||
+    opcode === OpCode.ObjectNew ||
+    opcode === OpCode.Spread ||
+    opcode === OpCode.SpreadIntoArray ||
+    opcode === OpCode.SuperCall ||
+    opcode === OpCode.SuperInstruction
   );
 }
 

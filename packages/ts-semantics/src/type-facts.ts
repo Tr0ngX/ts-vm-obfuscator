@@ -88,7 +88,7 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
 
           facts.push({
             symbolName: symbol.name,
-            symbolId: (symbol as any).id || -1, // Internal TS ID, will be normalized later
+            symbolId: (symbol as { id?: number }).id ?? -1,
             kind,
             typeText,
             flags: type.flags,
