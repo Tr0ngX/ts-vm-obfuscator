@@ -759,12 +759,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var propName = ctx.regs[args[0]];
     var globalVal = ${ctxRef('globalScope')}[propName];
-    if (false) {
-      console.log("[DEBUG] LoadGlobal for:", propName);
-      console.log("[DEBUG] globalScope exists:", !!${ctxRef('globalScope')});
-      console.log("[DEBUG] globalScope[propName] is function:", typeof globalVal === 'function');
-      console.log("[DEBUG] globalScope[propName] value:", globalVal);
-    }
     ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
       ? ${top.result}[propName]
       : globalVal;
@@ -777,16 +771,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
   declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
   
-  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : __ADD_EXPR__;`);
+  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : (ctx.regs[args[0]] + ctx.regs[args[1]]);`);
   declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? __SUB_EXPR__ : (ctx.regs[args[0]] - ctx.regs[args[1]]);`);
   declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
   declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
   declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
   declareHandler(OpCode.Neg, `${readArgs} ctx.regs[args[1]] = -ctx.regs[args[0]];`);
   
-  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = __AND_EXPR__;`);
-  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = __OR_EXPR__;`);
-  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = __XOR_EXPR__;`);
+  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] & ctx.regs[args[1]]);`);
+  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] | ctx.regs[args[1]]);`);
+  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] ^ ctx.regs[args[1]]);`);
   declareHandler(OpCode.Shl, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] << ctx.regs[args[1]];`);
   declareHandler(OpCode.Shr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >> ctx.regs[args[1]];`);
   declareHandler(OpCode.UShr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >>> ctx.regs[args[1]];`);
@@ -871,10 +865,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var fn = ${regRef('args[0]')};
     if (typeof fn === 'undefined' || fn === null) {
-      console.log("[DEBUG] OpCode.Call failed: fn is undefined!");
-      console.log("[DEBUG] args[0] register index:", args[0]);
-      console.log("[DEBUG] register values:", ctx.regs);
-      console.log("[DEBUG] args array:", args);
+      throw new TypeError('VM Call target is undefined or null');
     }
     var ab = [];
     for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
@@ -1390,37 +1381,24 @@ const ${top.vmFunctions} = (function() {
   const ${top.seed} = ${config.seed};
   const ${top.rawCP} = ${cp};
 
-  // Grab clean intrinsics from isolated context (iframe or node vm fallback)
-  // SECURITY WARNING: require('vm') has known sandbox escape vulnerabilities (CVE-2023-37903, etc.)
-  // SECURITY WARNING: In browser contexts, iframe injection has CSP implications and may be blocked.
-  // Consider providing pre-sealed intrinsics via config instead of runtime extraction.
+  // Grab clean intrinsics from a secure isolated context.
+  // Uses iframe (browser) ONLY — require('vm') is deliberately excluded
+  // due to known sandbox escape vulnerabilities (CVE-2023-37903, etc.).
+  // For Node.js environments, pre-sealed intrinsics should be provided via config.
   var cleanIntrinsics = (function() {
     var win;
     try {
-      if (typeof require === 'function') {
-        var vm = require('vm');
-        if (vm && typeof vm.runInNewContext === 'function') {
-          win = vm.runInNewContext('this');
-        }
+      if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+        var iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.documentElement.appendChild(iframe);
+        win = iframe.contentWindow;
+        try {
+          if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch(e) {}
       }
     } catch (e) {}
-    if (!win) {
-      try {
-        if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-          var iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          document.documentElement.appendChild(iframe);
-          win = iframe.contentWindow;
-          try {
-            if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-          } catch(e) {}
-        }
-      } catch (e) {}
-    }
-    if (!win) {
-      win = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : {};
-    }
-    return win;
+    return win || {};
   })();
 
   const ${top.weakMapCtor} = cleanIntrinsics.WeakMap || WeakMap;

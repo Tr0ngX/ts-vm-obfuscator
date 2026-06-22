@@ -276,7 +276,6 @@ export class TypeLevelFakePathPass implements TransformPass {
         const templateId = isParanoid ? ctx.rng.nextRange(0, 4) : 0;
         let opaqueInsts: Instruction[] = [];
 
-        // ─── ALL TEMPLATES NOW USE GetEntropy ───
         // GetEntropy loads a dynamic 0-255 value derived from VM internal state
         // directly into a register. No external API calls, no global lookups,
         // no Date.now() reflection, no 32-bit overflow bugs.

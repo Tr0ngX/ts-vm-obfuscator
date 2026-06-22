@@ -1,17 +1,12 @@
-// TODO: Refactor ASTLowering to expose a public interface for these extracted functions.
-// Currently, they access private members of ASTLowering via the `self` parameter,
-// which forces the use of @ts-nocheck. A proper solution would extract shared state
-// into a separate accessible context object or define a public interface for the
-// operations these functions need.
-// @ts-nocheck
-import type { ASTLowering } from '../builder.js';
+import type { IASTLowering } from '../builder.js';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
+import type { Register, Operand } from '@tsvm/shared';
 import ts from 'typescript';
 import { LEXICAL_THIS_CAPTURE, LEXICAL_NEW_TARGET_CAPTURE } from './types.js';
 import type { SupportedFunctionNode } from './types.js';
 
 export function lowerConditionalExpression(
-  self: ASTLowering,
+  self: IASTLowering,
   conditionReg: Register,
   whenTrue: () => Register,
   whenFalse: () => Register
@@ -50,7 +45,7 @@ export function lowerConditionalExpression(
   return self.loadFromLocal(tempReg);
 }
 
-export function lowerNullishCoalesce(self: ASTLowering, leftReg: Register, rightExpr: ts.Expression): Register {
+export function lowerNullishCoalesce(self: IASTLowering, leftReg: Register, rightExpr: ts.Expression): Register {
   const tempReg = self.createTempLocal('nullish');
   self.currentBlock.addInstruction(OpCode.StoreLocal, [
     { kind: OperandKind.Register, value: tempReg },
@@ -99,7 +94,7 @@ export function lowerNullishCoalesce(self: ASTLowering, leftReg: Register, right
   return self.loadFromLocal(tempReg);
 }
 
-export function lowerTemplateExpression(self: ASTLowering, expr: ts.TemplateExpression): Register {
+export function lowerTemplateExpression(self: IASTLowering, expr: ts.TemplateExpression): Register {
   let accReg = self.emitConstant(ConstantKind.String, expr.head.text);
 
   for (const span of expr.templateSpans) {
@@ -125,11 +120,11 @@ export function lowerTemplateExpression(self: ASTLowering, expr: ts.TemplateExpr
   return accReg;
 }
 
-export function lowerNestedFunctionNode(self: ASTLowering, expr: SupportedFunctionNode, explicitName?: string): Register {
+export function lowerNestedFunctionNode(self: IASTLowering, expr: SupportedFunctionNode, explicitName?: string): Register {
   return self.lowerNestedFunctionLike(expr, explicitName);
 }
 
-export function visitExpression(self: ASTLowering, expr: ts.Expression): Register {
+export function visitExpression(self: IASTLowering, expr: ts.Expression): Register {
   expr = self.normalizeExpression(expr);
   if (ts.isNumericLiteral(expr)) {
     return self.emitConstant(ConstantKind.Number, parseFloat(expr.text));
@@ -510,7 +505,6 @@ export function visitExpression(self: ASTLowering, expr: ts.Expression): Registe
         self.emitObjectPropertyAssignment(descriptorReg, self.emitConstant(ConstantKind.String, 'configurable'), trueReg);
         self.emitObjectPropertyAssignment(descriptorReg, self.emitConstant(ConstantKind.String, 'enumerable'), trueReg);
 
-        const dummyReg = self.fnBuilder.allocRegister();
         self.currentBlock.addInstruction(
           OpCode.CallMethod,
           [
@@ -520,7 +514,7 @@ export function visitExpression(self: ASTLowering, expr: ts.Expression): Registe
             { kind: OperandKind.Register, value: nameReg },
             { kind: OperandKind.Register, value: descriptorReg },
           ],
-          dummyReg
+          self.fnBuilder.allocRegister()
         );
         continue;
       }

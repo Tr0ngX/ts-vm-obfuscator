@@ -64,7 +64,6 @@ export function enforceReactProfile(functions: readonly IRFunction[], constantPo
         disabledCount++;
       }
       disabledIds.add(fn.id);
-      console.log(`[DEBUG] Initial disabled: name=${fn.name} id=${fn.id}`);
     }
   }
 
@@ -76,7 +75,6 @@ export function enforceReactProfile(functions: readonly IRFunction[], constantPo
           if (inst.opcode === OpCode.ClosureNew && inst.operands[0]?.kind === OperandKind.ConstantIndex) {
             const constIdx = inst.operands[0].value as number;
             const entry = constantPool[constIdx];
-            console.log(`[DEBUG] Found ClosureNew inside fn=${fn.name} (id=${fn.id}) referring to constIdx=${constIdx} value=${entry?.value}`);
             if (entry && typeof entry.value === 'string') {
               childToParent.set(entry.value, fn.id);
             }
@@ -104,7 +102,6 @@ export function enforceReactProfile(functions: readonly IRFunction[], constantPo
           disabledIds.add(fn.id);
           disabledCount++;
           changed = true;
-          console.log(`[DEBUG] Propagating disablement to parent: name=${fn.name} id=${fn.id}`);
         }
       }
     }

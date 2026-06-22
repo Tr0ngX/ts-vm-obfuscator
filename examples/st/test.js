@@ -1,3 +1,8 @@
+/**
+ * DEMO FILE — NOT part of the main pipeline.
+ * Tests basic state machine + token vault concepts.
+ * fakeRemoteScore() is a local simulation, not a real API call.
+ */
 /* obf-test.js */
 "use strict";
 

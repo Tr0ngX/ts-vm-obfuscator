@@ -66,7 +66,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
       'log', 'error', 'warn', 'info', 'dir', 'clear',
       // NodeJS/Browser standard & VM
       'exports', 'module', 'require', 'global', 'window', 'document', 'process',
-      'readFileSync', 'writeFileSync', 'readdirSync', 'statSync', 'execSync', 'mtime', 'getTime',
+      'readFileSync', 'writeFileSync', 'readdirSync', 'statSync', 'mtime', 'getTime',
       'exec', 'test', 'match', 'replace', 'split', 'trim', 'toLowerCase', 'toUpperCase',
       // Symbol properties or other standard ones
       'Symbol', 'iterator', 'asyncIterator', 'toStringTag',

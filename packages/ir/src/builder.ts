@@ -24,6 +24,38 @@ interface LoweringOptions {
   readonly instanceFieldsToInitialize?: readonly NormalizedClassFieldElement[];
 }
 
+export interface IASTLowering {
+  node: ts.Node;
+  fnBuilder: any;
+  currentBlock: any;
+  modBuilder: any;
+  scope: Map<string, any>;
+  outerCaptureBindings: Set<string>;
+  isAsyncFunction: boolean;
+  isGenerator: boolean;
+  instanceFieldsToInitialize: readonly any[] | undefined;
+
+  createTempLocal(name: string): any;
+  emitConstant(kind: any, value: unknown): any;
+  loadFromLocal(reg: any): any;
+  storeToLocal(reg1: any, reg2: any): void;
+  normalizeExpression(expr: ts.Expression): ts.Expression;
+  lowerNestedFunctionLike(expr: ts.FunctionLikeDeclaration, name?: string, options?: any): any;
+  resolveLexicalCapture(name: string, node: ts.Node, detail: string): any;
+  failUnsupported(node: ts.Node, msg?: string): never;
+  resolveVar(name: string): any;
+  storeValue(target: ts.Expression, valueReg: any): void;
+  readValue(target: ts.Expression): any;
+  resolvePrivateIdentifierRegister(identifier: ts.PrivateIdentifier): any;
+  emitObjectPropertyAssignment(objReg: any, keyReg: any, valueReg: any, computed?: boolean): void;
+  getPropertyNameText(name: ts.PropertyName): string;
+  materializeArgumentArray(args: readonly ts.Expression[]): any;
+  emitSpreadInto(targetReg: any, sourceReg: any): void;
+  emitSpreadIntoArray(targetReg: any, sourceReg: any, startIndexReg: any, destIndexLocal: any): void;
+  lowerClassLike(node: ts.ClassDeclaration | ts.ClassExpression, name?: string): any;
+  emitInstanceFieldInitializers(fields: readonly any[]): void;
+}
+
 export class ASTLowering {
   private fnBuilder: IRFunctionBuilder;
   private currentBlock: BasicBlockBuilder;
@@ -824,6 +856,10 @@ export class ASTLowering {
         this.emitObjectPropertyWrite(ctorReg, key.register, valueReg, key.computed);
         continue;
       }
+      // Wraps static block body in a fake function expression so it can be
+      // lowered through the same nested-function path. Called immediately via
+      // CallMethod. This is a structural workaround — the IR has no native
+      // static block representation.
       if (element.kind === 'static_block') {
         const fakeFn = ts.factory.createFunctionExpression(
           undefined, undefined, undefined, undefined, [], undefined, element.node.body
@@ -1096,9 +1132,8 @@ export class ASTLowering {
   }
 
   private declareScopedIdentifier(name: string): LocalBinding {
-    const existing = this.scope.get(name);
-    if (existing) {
-      return existing;
+    if (this.scope.hasOwn(name)) {
+      return this.scope.get(name)!;
     }
     const boxed = this.capturedLocals.has(name);
     const register = this.fnBuilder.addLocal(name, IRType.Any);
@@ -1775,15 +1810,16 @@ export class ASTLowering {
     whenTrue: () => Register,
     whenFalse: () => Register
   ): Register {
-    return lowerConditionalExpression(this, conditionReg, whenTrue, whenFalse);
+    const self: IASTLowering = this as any;
+    return lowerConditionalExpression(self, conditionReg, whenTrue, whenFalse);
   }
 
   private lowerNullishCoalesce(leftReg: Register, rightExpr: ts.Expression): Register {
-    return lowerNullishCoalesce(this, leftReg, rightExpr);
+    return lowerNullishCoalesce(this as any as IASTLowering, leftReg, rightExpr);
   }
 
   private lowerTemplateExpression(expr: ts.TemplateExpression): Register {
-    return lowerTemplateExpression(this, expr);
+    return lowerTemplateExpression(this as any as IASTLowering, expr);
   }
 
   private lowerNestedFunctionNode(expr: SupportedFunctionNode, explicitName?: string): Register {
@@ -1791,7 +1827,7 @@ export class ASTLowering {
   }
 
   private visitExpression(expr: ts.Expression): Register {
-    return lowerVisitExpression(this, expr);
+    return lowerVisitExpression(this as any as IASTLowering, expr);
   }
 
   private getPropertyNameText(name: ts.PropertyName): string {

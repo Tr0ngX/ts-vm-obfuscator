@@ -5,6 +5,7 @@ import { lowerToIR } from '../../ir/src/builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { tmpdir } from 'os';
 import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -336,8 +337,9 @@ describe('VM Runtime', () => {
     try {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
-      fs.writeFileSync(path.resolve('scratch/failed-source.js'), bundle.fullSource);
-      console.error("DUMPED FAILED SOURCE TO scratch/failed-source.js due to error:", e);
+      const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
+      console.error("DUMPED FAILED SOURCE TO", dumpPath, "due to error:", e);
+      fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
 
@@ -354,8 +356,9 @@ describe('VM Runtime', () => {
     try {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
-      fs.writeFileSync(path.resolve('scratch/failed-stealth.js'), bundle.fullSource);
-      console.error("DUMPED FAILED STEALTH SOURCE TO scratch/failed-stealth.js due to error:", e);
+      const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
+      console.error("DUMPED FAILED STEALTH SOURCE TO", dumpPath, "due to error:", e);
+      fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
 
@@ -434,8 +437,9 @@ describe('VM Runtime', () => {
     try {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
-      fs.writeFileSync(path.resolve('scratch/failed-classpack.js'), bundle.fullSource);
-      console.error("DUMPED FAILED CLASSPACK SOURCE TO scratch/failed-classpack.js due to error:", e);
+      const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
+      console.error("DUMPED FAILED CLASSPACK SOURCE TO", dumpPath, "due to error:", e);
+      fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
 

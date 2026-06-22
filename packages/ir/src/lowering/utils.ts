@@ -166,6 +166,9 @@ export class ScopeMap {
   has(name: string): boolean {
     return this.map.has(name) || (this.parent?.has(name) ?? false);
   }
+  hasOwn(name: string): boolean {
+    return this.map.has(name);
+  }
   delete(name: string): boolean {
     if (this.map.has(name)) {
       return this.map.delete(name);
