@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ControlFlowFlatteningPass } from '../src/passes/control-flow-flattening.js';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
 import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
-import { ConstantKind, IRModule, IRType, OperandKind, OpCode, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
+import { ConstantKind, IRModule, IRType, OperandKind, OpCode, ProjectSemanticGraph, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
 import { createTransformRegistry } from '../src/registry.js';
 
 const mockProfile: ObfuscationProfile = {
@@ -75,7 +75,16 @@ const mockProfile: ObfuscationProfile = {
     const ctx: TransformContext = {
       module: dummyModule,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -133,7 +142,16 @@ const mockProfile: ObfuscationProfile = {
     const ctx: TransformContext = {
       module: dummyModule,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -214,7 +232,16 @@ const mockProfile: ObfuscationProfile = {
     const ctx: TransformContext = {
       module: dummyModule,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng: new SeededRandom(1),
@@ -329,7 +356,16 @@ const mockProfile: ObfuscationProfile = {
           runtimeHardening: 'paranoid'
         }
       } as ObfuscationProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng: new SeededRandom(1),

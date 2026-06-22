@@ -93,7 +93,7 @@ export class ASTLowering {
       this.fnBuilder.addAttribute(attribute);
     }
     this.isAsyncFunction = !!this.node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
-      || ('asteriskToken' in this.node && !!this.node.asteriskToken && (this.node.name as any)?.text === 'async')
+      || ('asteriskToken' in this.node && !!this.node.asteriskToken && (this.node as SupportedFunctionNode & { name?: ts.Identifier }).name?.text === 'async')
       || (options.attributes ?? []).includes(FunctionAttribute.Async);
     this.isGenerator = 'asteriskToken' in this.node && !!this.node.asteriskToken;
 
@@ -829,13 +829,14 @@ export class ASTLowering {
       if (element.kind === 'field' || element.kind === 'constructor') {
         continue;
       }
-      const methodReg = this.lowerNestedFunctionLike(element.node as any, undefined, {
+      const methodElement = element as NormalizedClassMethodElement;
+      const methodReg = this.lowerNestedFunctionLike(methodElement.node, undefined, {
         availableOuterNames,
         extraCapturedFromOuter: [...normalized.privateIdentifiers.values()],
         privateIdentifierBindings: normalized.privateIdentifiers,
       });
-      const key = this.getPropertyKeyRegister((element as any).keyName, (element as any).computedBindingName);
-      this.emitClassMethodOrAccessorDescriptor(prototypeReg, key.register, key.computed, element as any, methodReg);
+      const key = this.getPropertyKeyRegister(methodElement.keyName, methodElement.computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(prototypeReg, key.register, key.computed, methodElement, methodReg);
     }
 
     for (const element of normalized.staticElements) {
@@ -878,13 +879,14 @@ export class ASTLowering {
         ], this.fnBuilder.allocRegister());
         continue;
       }
-      const methodReg = this.lowerNestedFunctionLike(element.node as any, undefined, {
+      const methodElement = element as NormalizedClassMethodElement;
+      const methodReg = this.lowerNestedFunctionLike(methodElement.node, undefined, {
         availableOuterNames,
         extraCapturedFromOuter: [...normalized.privateIdentifiers.values()],
         privateIdentifierBindings: normalized.privateIdentifiers,
       });
-      const key = this.getPropertyKeyRegister((element as any).keyName, (element as any).computedBindingName);
-      this.emitClassMethodOrAccessorDescriptor(ctorReg, key.register, key.computed, element as any, methodReg);
+      const key = this.getPropertyKeyRegister(methodElement.keyName, methodElement.computedBindingName);
+      this.emitClassMethodOrAccessorDescriptor(ctorReg, key.register, key.computed, methodElement, methodReg);
     }
 
     if (restoreBinding) {
@@ -1810,16 +1812,16 @@ export class ASTLowering {
     whenTrue: () => Register,
     whenFalse: () => Register
   ): Register {
-    const self: IASTLowering = this as any;
+    const self: IASTLowering = this as unknown as IASTLowering;
     return lowerConditionalExpression(self, conditionReg, whenTrue, whenFalse);
   }
 
   private lowerNullishCoalesce(leftReg: Register, rightExpr: ts.Expression): Register {
-    return lowerNullishCoalesce(this as any as IASTLowering, leftReg, rightExpr);
+    return lowerNullishCoalesce(this as unknown as IASTLowering, leftReg, rightExpr);
   }
 
   private lowerTemplateExpression(expr: ts.TemplateExpression): Register {
-    return lowerTemplateExpression(this as any as IASTLowering, expr);
+    return lowerTemplateExpression(this as unknown as IASTLowering, expr);
   }
 
   private lowerNestedFunctionNode(expr: SupportedFunctionNode, explicitName?: string): Register {
@@ -1827,7 +1829,7 @@ export class ASTLowering {
   }
 
   private visitExpression(expr: ts.Expression): Register {
-    return lowerVisitExpression(this as any as IASTLowering, expr);
+    return lowerVisitExpression(this as unknown as IASTLowering, expr);
   }
 
   private getPropertyNameText(name: ts.PropertyName): string {

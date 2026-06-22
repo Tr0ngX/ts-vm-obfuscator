@@ -65,9 +65,10 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
           const typeParameters: string[] = [];
           const constraints: string[] = [];
           
-          if ('typeParameters' in node && Array.isArray((node as any).typeParameters)) {
-            const tps = (node as any).typeParameters as ts.TypeParameterDeclaration[];
-            if (tps.length > 0) {
+          if ('typeParameters' in node) {
+            const nodeWithTP = node as { typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration> };
+            const tps = nodeWithTP.typeParameters;
+            if (tps) {
               isGeneric = true;
               tps.forEach(tp => {
                 typeParameters.push(tp.name.text);

@@ -286,8 +286,8 @@ export class ObfuscationPipeline {
     if (error instanceof Error) {
       errorMessage = `${error.message}\n${error.stack}`;
     } else if (error && typeof error === 'object') {
-      const obj = error as any;
-      errorMessage = obj.stack || obj.message || JSON.stringify(obj) || String(error);
+      const obj = error as Record<string, unknown>;
+      errorMessage = String(obj?.['stack'] ?? obj?.['message'] ?? JSON.stringify(obj) ?? String(error));
     } else {
       errorMessage = String(error);
     }

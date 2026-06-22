@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runBenchmarkSuite } from '../src/index.js';
-import type { IRModule, BytecodeModule, ObfuscationProfile } from '@tsvm/shared';
+import { IRType, type IRModule, type BytecodeModule, type ObfuscationProfile } from '@tsvm/shared';
 
 describe('Benchmark Suite Executor', () => {
   it('should accurately analyze complexity and timing on mock profiles', async () => {
@@ -34,12 +34,20 @@ describe('Benchmark Suite Executor', () => {
         sourceFile: 'index.ts',
         functions: [
           {
+            id: 'func_0',
             name: 'calculateSecretHash',
-            locals: [{ name: 'hash' }, { name: 'i' }],
+            params: [],
+            returnType: IRType.Number,
             blocks: [],
-            registers: 2,
-            parametersCount: 1
-          } as any
+            locals: [
+              { name: 'hash', register: 'r0', type: IRType.Any, isCaptured: false },
+              { name: 'i', register: 'r1', type: IRType.Any, isCaptured: false }
+            ],
+            isVirtualized: false,
+            isExported: false,
+            attributes: [],
+            capturedVariables: []
+          }
         ],
         globals: [],
         imports: [],
@@ -61,21 +69,23 @@ describe('Benchmark Suite Executor', () => {
         magic: 0x5453564d,
         version: 1,
         buildId: 'build_test_123',
-        opcodeMapping: {} as any,
+        opcodeMapping: { forward: new Map(), reverse: new Map(), seed: 0 },
         constantPool: [],
         functions: [
           {
-            id: 0,
+            id: 'func_0',
             name: 'calculateSecretHash',
+            paramCount: 1,
+            localCount: 0,
+            maxRegisters: 2,
             bytecode: new Uint8Array([
               0x02, 0x00, 0x00, 0x00, 0x00, // LoadLocal
               0x30, 0x0A, 0x00, 0x00, 0x00, // Jmp
               0x40, 0x01, 0x00, 0x00, 0x00, // Call
               0x03, 0x00, 0x00, 0x00, 0x00, // StoreLocal
             ]),
-            registers: 2,
-            parametersCount: 1
-          } as any
+            isEntryPoint: true
+          }
         ],
         entryPointIndex: 0,
         metadata: {

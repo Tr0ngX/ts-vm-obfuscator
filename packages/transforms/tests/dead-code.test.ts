@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
-import { IRModule, IRType, OperandKind, OpCode, SeededRandom, TransformContext, ObfuscationProfile } from '@tsvm/shared';
+import { IRModule, IRType, OperandKind, OpCode, SeededRandom, TransformContext, ObfuscationProfile, ConstantKind, ProjectSemanticGraph } from '@tsvm/shared';
 
 const mockProfile: ObfuscationProfile = {
   name: 'generic',
@@ -67,7 +67,7 @@ describe('DeadCodeInjectionPass', () => {
       globals: [],
       imports: [],
       exports: [],
-      constantPool: [{ index: 0, kind: 'number' as any, value: 42 }],
+      constantPool: [{ index: 0, kind: ConstantKind.Number, value: 42 }],
       metadata: {
         sourceFile: 'dead-code-test.ts',
         buildTimestamp: 0,
@@ -81,7 +81,16 @@ describe('DeadCodeInjectionPass', () => {
     const ctx: TransformContext = {
       module: mod,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -145,7 +154,16 @@ describe('DeadCodeInjectionPass', () => {
     const ctx: TransformContext = {
       module: mod,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -209,7 +227,16 @@ describe('DeadCodeInjectionPass', () => {
     const ctx: TransformContext = {
       module: mod,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -280,21 +307,30 @@ describe('DeadCodeInjectionPass', () => {
         globals: [],
         imports: [],
         exports: [],
-        constantPool: [{ index: 0, kind: 'number' as any, value: 0 }],
-        metadata: {
-          sourceFile: 'dead-code-seed.ts',
-          buildTimestamp: 0,
-          blockCount: 1,
-          functionCount: 1,
-          instructionCount: 5,
-          originalByteSize: 100,
-        },
-      };
+      constantPool: [{ index: 0, kind: ConstantKind.Number, value: 0 }],
+      metadata: {
+        sourceFile: 'dead-code-seed.ts',
+        buildTimestamp: 0,
+        blockCount: 1,
+        functionCount: 1,
+        instructionCount: 5,
+        originalByteSize: 100,
+      },
+    };
 
       const ctx: TransformContext = {
         module: mod,
         profile: mockProfile,
-        semanticGraph: {} as any,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
         symbolAliases: new Map(),
         diagnostics: [],
         rng,
@@ -363,7 +399,16 @@ describe('DeadCodeInjectionPass', () => {
     const ctx: TransformContext = {
       module: mod,
       profile: mockProfile,
-      semanticGraph: {} as any,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
