@@ -1,4 +1,15 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, ConstantPoolEntry, IRFunction, Instruction, BasicBlock, IRLocal, Register } from '@tsvm/shared';
+import type {
+  TransformPass,
+  TransformContext,
+  TransformResult,
+  IRModule,
+  ConstantPoolEntry,
+  IRFunction,
+  Instruction,
+  BasicBlock,
+  IRLocal,
+  Register,
+} from '@tsvm/shared';
 import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
 import { getMaxRegister } from '../utils.js';
 
@@ -7,7 +18,7 @@ export class StringPoolEncodingPass implements TransformPass {
   readonly priority = 70;
 
   execute(ctx: TransformContext): TransformResult {
-    const config = ctx.profile.transforms.find(t => t.name === this.name);
+    const config = ctx.profile.transforms.find((t) => t.name === this.name);
     const fragmentStrings = config?.options?.['fragmentStrings'] ?? true;
     const minLength = (config?.options?.['minLength'] as number) ?? 3;
 
@@ -16,7 +27,7 @@ export class StringPoolEncodingPass implements TransformPass {
         module: ctx.module,
         symbolsRenamed: 0,
         nodesTransformed: 0,
-        diagnostics: []
+        diagnostics: [],
       };
     }
 
@@ -25,7 +36,7 @@ export class StringPoolEncodingPass implements TransformPass {
 
     // Helper to find or add a string constant
     const getOrAddStringConstant = (val: string): number => {
-      const existing = newConstantPool.find(c => c.kind === ConstantKind.String && c.value === val);
+      const existing = newConstantPool.find((c) => c.kind === ConstantKind.String && c.value === val);
       if (existing) {
         return existing.index;
       }
@@ -33,14 +44,14 @@ export class StringPoolEncodingPass implements TransformPass {
       newConstantPool.push({
         index: newIdx,
         kind: ConstantKind.String,
-        value: val
+        value: val,
       });
       return newIdx;
     };
 
     // Helper to find or add a number constant
     const getOrAddNumberConstant = (val: number): number => {
-      const existing = newConstantPool.find(c => c.kind === ConstantKind.Number && c.value === val);
+      const existing = newConstantPool.find((c) => c.kind === ConstantKind.Number && c.value === val);
       if (existing) {
         return existing.index;
       }
@@ -48,28 +59,33 @@ export class StringPoolEncodingPass implements TransformPass {
       newConstantPool.push({
         index: newIdx,
         kind: ConstantKind.Number,
-        value: val
+        value: val,
       });
       return newIdx;
     };
 
     let nodesTransformed = 0;
 
-    const newFunctions = ctx.module.functions.map(fn => {
+    const newFunctions = ctx.module.functions.map((fn) => {
       let nextTempRegId = getMaxRegister(fn);
       const addedLocals: IRLocal[] = [];
 
-      const newBlocks = fn.blocks.map(block => {
+      const newBlocks = fn.blocks.map((block) => {
         const newInstructions: Instruction[] = [];
 
-        block.instructions.forEach(inst => {
+        block.instructions.forEach((inst) => {
           if (inst.opcode === OpCode.LoadConst && inst.operands.length > 0 && inst.result) {
             const op = inst.operands[0]!;
             if (op.kind === OperandKind.ConstantIndex) {
               const constIndex = op.value as number;
               const constant = ctx.module.constantPool[constIndex];
 
-              if (constant && constant.kind === ConstantKind.String && typeof constant.value === 'string' && constant.value.length >= minLength) {
+              if (
+                constant &&
+                constant.kind === ConstantKind.String &&
+                typeof constant.value === 'string' &&
+                constant.value.length >= minLength
+              ) {
                 const fullStr = constant.value;
                 const baseKey = ctx.rng.nextRange(1, 255);
 
@@ -93,7 +109,7 @@ export class StringPoolEncodingPass implements TransformPass {
                   { name: `str_pool_temp_${r_string_str}`, register: r_string_str, type: IRType.String, isCaptured: false },
                   { name: `str_pool_temp_${r_string}`, register: r_string, type: IRType.Any, isCaptured: false },
                   { name: `str_pool_temp_${r_from_char_code_str}`, register: r_from_char_code_str, type: IRType.String, isCaptured: false },
-                  { name: `str_pool_temp_${r_from_char_code}`, register: r_from_char_code, type: IRType.Any, isCaptured: false }
+                  { name: `str_pool_temp_${r_from_char_code}`, register: r_from_char_code, type: IRType.Any, isCaptured: false },
                 );
 
                 const stringNameIdx = getOrAddStringConstant('String');
@@ -104,8 +120,8 @@ export class StringPoolEncodingPass implements TransformPass {
                     opcode: OpCode.ArrayNew,
                     operands: [],
                     result: r_arr,
-                    sourceLocation: inst.sourceLocation
-                  }
+                    sourceLocation: inst.sourceLocation,
+                  },
                 ];
 
                 // Per-character cascading key derivation:
@@ -113,11 +129,11 @@ export class StringPoolEncodingPass implements TransformPass {
                 // prevEncoded starts as baseKey, then becomes the current encoded value
                 let prevEncoded = baseKey;
                 for (let i = 0; i < fullStr.length; i++) {
-                  const charKey = ((baseKey * (i + 1)) ^ prevEncoded ^ (i * 37)) & 0xFF;
+                  const charKey = ((baseKey * (i + 1)) ^ prevEncoded ^ (i * 37)) & 0xff;
                   // Ensure charKey is non-zero to avoid identity XOR
                   const effectiveKey = charKey === 0 ? 1 : charKey;
                   const encoded = fullStr.charCodeAt(i) ^ effectiveKey;
-                  prevEncoded = encoded & 0xFF;
+                  prevEncoded = encoded & 0xff;
 
                   const valIdx = getOrAddNumberConstant(encoded);
                   const keyIdx = getOrAddNumberConstant(effectiveKey);
@@ -128,38 +144,38 @@ export class StringPoolEncodingPass implements TransformPass {
                       opcode: OpCode.LoadConst,
                       operands: [{ kind: OperandKind.ConstantIndex, value: valIdx }],
                       result: r_val,
-                      sourceLocation: inst.sourceLocation
+                      sourceLocation: inst.sourceLocation,
                     },
                     {
                       opcode: OpCode.LoadConst,
                       operands: [{ kind: OperandKind.ConstantIndex, value: keyIdx }],
                       result: r_key,
-                      sourceLocation: inst.sourceLocation
+                      sourceLocation: inst.sourceLocation,
                     },
                     {
                       opcode: OpCode.BitXor,
                       operands: [
                         { kind: OperandKind.Register, value: r_val },
-                        { kind: OperandKind.Register, value: r_key }
+                        { kind: OperandKind.Register, value: r_key },
                       ],
                       result: r_dec,
-                      sourceLocation: inst.sourceLocation
+                      sourceLocation: inst.sourceLocation,
                     },
                     {
                       opcode: OpCode.LoadConst,
                       operands: [{ kind: OperandKind.ConstantIndex, value: idxIdx }],
                       result: r_idx,
-                      sourceLocation: inst.sourceLocation
+                      sourceLocation: inst.sourceLocation,
                     },
                     {
                       opcode: OpCode.ComputedSet,
                       operands: [
                         { kind: OperandKind.Register, value: r_arr },
                         { kind: OperandKind.Register, value: r_idx },
-                        { kind: OperandKind.Register, value: r_dec }
+                        { kind: OperandKind.Register, value: r_dec },
                       ],
-                      sourceLocation: inst.sourceLocation
-                    }
+                      sourceLocation: inst.sourceLocation,
+                    },
                   );
                 }
 
@@ -168,38 +184,38 @@ export class StringPoolEncodingPass implements TransformPass {
                     opcode: OpCode.LoadConst,
                     operands: [{ kind: OperandKind.ConstantIndex, value: stringNameIdx }],
                     result: r_string_str,
-                    sourceLocation: inst.sourceLocation
+                    sourceLocation: inst.sourceLocation,
                   },
                   {
                     opcode: OpCode.LoadGlobal,
                     operands: [{ kind: OperandKind.Register, value: r_string_str }],
                     result: r_string,
-                    sourceLocation: inst.sourceLocation
+                    sourceLocation: inst.sourceLocation,
                   },
                   {
                     opcode: OpCode.LoadConst,
                     operands: [{ kind: OperandKind.ConstantIndex, value: fromCharCodeIdx }],
                     result: r_from_char_code_str,
-                    sourceLocation: inst.sourceLocation
+                    sourceLocation: inst.sourceLocation,
                   },
                   {
                     opcode: OpCode.PropGet,
                     operands: [
                       { kind: OperandKind.Register, value: r_string },
-                      { kind: OperandKind.Register, value: r_from_char_code_str }
+                      { kind: OperandKind.Register, value: r_from_char_code_str },
                     ],
                     result: r_from_char_code,
-                    sourceLocation: inst.sourceLocation
+                    sourceLocation: inst.sourceLocation,
                   },
                   {
                     opcode: OpCode.CallWithArray,
                     operands: [
                       { kind: OperandKind.Register, value: r_from_char_code },
-                      { kind: OperandKind.Register, value: r_arr }
+                      { kind: OperandKind.Register, value: r_arr },
                     ],
                     result: inst.result,
-                    sourceLocation: inst.sourceLocation
-                  }
+                    sourceLocation: inst.sourceLocation,
+                  },
                 );
 
                 newInstructions.push(...stringPoolInsts);
@@ -214,28 +230,28 @@ export class StringPoolEncodingPass implements TransformPass {
 
         return {
           ...block,
-          instructions: newInstructions
+          instructions: newInstructions,
         };
       });
 
       return {
         ...fn,
         locals: [...fn.locals, ...addedLocals],
-        blocks: newBlocks
+        blocks: newBlocks,
       };
     });
 
     const newModule: IRModule = {
       ...ctx.module,
       constantPool: newConstantPool,
-      functions: newFunctions
+      functions: newFunctions,
     };
 
     return {
       module: newModule,
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

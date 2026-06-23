@@ -14,8 +14,8 @@ export function printIRModule(module: IRModule): string {
   out += '--- Functions ---\n';
   for (const fn of module.functions) {
     out += `Function ${fn.name} (${fn.id}) [${fn.attributes.join(', ')}]\n`;
-    out += `  Params: ${fn.params.map(p => `${p.register} (${p.name})`).join(', ')}\n`;
-    out += `  Locals: ${fn.locals.map(l => `${l.register} (${l.name})`).join(', ')}\n\n`;
+    out += `  Params: ${fn.params.map((p) => `${p.register} (${p.name})`).join(', ')}\n`;
+    out += `  Locals: ${fn.locals.map((l) => `${l.register} (${l.name})`).join(', ')}\n\n`;
 
     for (const block of fn.blocks) {
       out += `  Block ${block.id} (${block.label}):\n`;
@@ -50,10 +50,15 @@ function formatOperand(op: Operand): string {
 
 function formatTerminator(term: any): string {
   switch (term.kind) {
-    case 'return': return `return ${term.returnValue || 'void'}`;
-    case 'jump': return `jmp ${term.targets[0]}`;
-    case 'branch': return `br ${term.condition} ? ${term.targets[0]} : ${term.targets[1]}`;
-    case 'unreachable': return 'unreachable';
-    default: return `${term.kind} ${term.targets.join(', ')}`;
+    case 'return':
+      return `return ${term.returnValue || 'void'}`;
+    case 'jump':
+      return `jmp ${term.targets[0]}`;
+    case 'branch':
+      return `br ${term.condition} ? ${term.targets[0]} : ${term.targets[1]}`;
+    case 'unreachable':
+      return 'unreachable';
+    default:
+      return `${term.kind} ${term.targets.join(', ')}`;
   }
 }

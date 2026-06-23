@@ -5,7 +5,7 @@ import type {
   ObfuscationProfile,
   BenchmarkResult,
   BenchmarkMetric,
-  ReverseAttemptResult
+  ReverseAttemptResult,
 } from '@tsvm/shared';
 import { performance } from 'perf_hooks';
 
@@ -31,7 +31,7 @@ function calculateShannonEntropy(str: string): number {
 export async function runBenchmarkSuite(
   irModules: readonly IRModule[],
   bytecodeModules: readonly BytecodeModule[],
-  profile: ObfuscationProfile
+  profile: ObfuscationProfile,
 ): Promise<BenchmarkSuiteResult> {
   const startTime = Date.now();
   const cases: BenchmarkResult[] = [];
@@ -68,7 +68,7 @@ export async function runBenchmarkSuite(
   for (let cIdx = 0; cIdx < bytecodeModules.length; cIdx++) {
     const m = bytecodeModules[cIdx]!;
     const irMod = irModules[cIdx];
-    
+
     // Compute actual bytecode metrics
     let jumpCount = 0;
     let callCount = 0;
@@ -81,40 +81,40 @@ export async function runBenchmarkSuite(
       for (let i = 0; i < bc.length; i++) {
         const op = bc[i];
         if (op === 0x30 || op === 0x31 || op === 0x32) jumpCount++; // Jmp, JmpIf, JmpIfNot
-        if (op === 0x40 || op === 0x41 || op === 0x42 || op === 0x5E) callCount++; // Call, CallMethod, New, SuperCall
+        if (op === 0x40 || op === 0x41 || op === 0x42 || op === 0x5e) callCount++; // Call, CallMethod, New, SuperCall
         if (op === 0x02 || op === 0x03) localStoreLoadCount++; // LoadLocal, StoreLocal
       }
     }
 
     // Benchmark a standard virtualized execution iteration workload to determine VM interpreter stepping performance
     const startPerf = performance.now();
-    
+
     // Simulate JIT loop warm-up and high-precision execution workload steps
     let workloadChecksum = 0;
     const iterations = 5000;
     for (let i = 0; i < iterations; i++) {
       // Simulate typical VM loop stepping logic overhead representing the compiled instruction volume
       for (let instIdx = 0; instIdx < totalInstructions; instIdx++) {
-        workloadChecksum = (workloadChecksum + (instIdx ^ i)) & 0xFFFFFFFF;
+        workloadChecksum = (workloadChecksum + (instIdx ^ i)) & 0xffffffff;
       }
     }
-    
+
     const endPerf = performance.now();
     const runtimeOverheadMs = (endPerf - startPerf) / iterations; // average runtime overhead per execution call
-    
+
     totalVirtualizedExecutionTimeMs += runtimeOverheadMs;
     totalOriginalExecutionTimeMs += runtimeOverheadMs * 0.05; // Original is assumed 20x faster than bytecode interpreter
 
     // Calculate actual structural obfuscation complexity and reverse engineering resistance metrics
     const metrics: BenchmarkMetric[] = [];
-    
+
     // 1. AST Structural Complexity expansion factor
     const astNodeExpansionFactor = Number((totalNewSize / (totalOriginalSize || 1)).toFixed(2));
     metrics.push({
       name: 'AST Node Expansion Density',
       value: astNodeExpansionFactor,
       unit: 'x',
-      lowerIsBetter: true
+      lowerIsBetter: true,
     });
 
     // 2. Control Flow Graph Branch Density
@@ -123,7 +123,7 @@ export async function runBenchmarkSuite(
       name: 'CFG Branch Density Ratio',
       value: branchDensity,
       unit: '%',
-      lowerIsBetter: false
+      lowerIsBetter: false,
     });
 
     // 3. Register Reference Frequency
@@ -131,7 +131,7 @@ export async function runBenchmarkSuite(
       name: 'Local Register Mutation Rate',
       value: localStoreLoadCount,
       unit: 'mutations',
-      lowerIsBetter: true
+      lowerIsBetter: true,
     });
 
     // 4. Renamed Symbol Information Entropy
@@ -149,7 +149,7 @@ export async function runBenchmarkSuite(
       name: 'Renaming Information Entropy',
       value: renamingEntropy,
       unit: 'bits',
-      lowerIsBetter: false
+      lowerIsBetter: false,
     });
 
     cases.push({
@@ -163,7 +163,7 @@ export async function runBenchmarkSuite(
       runtimeOverheadMs: Number(runtimeOverheadMs.toFixed(3)),
       sizeOverheadBytes: totalVirtualizedBytecodeSize + Math.floor(vmRuntimeOverheadBytes / bytecodeModules.length),
       sizeOverheadPercent: Number(sizeOverheadPercent.toFixed(2)),
-      metrics
+      metrics,
     });
   }
 
@@ -184,7 +184,7 @@ export async function runBenchmarkSuite(
     symbolRecovery -= 25;
     readability -= 30;
   }
-  
+
   if (profile.vm.opcodeRemapping) baseSemanticRecovery -= 5;
   if (profile.vm.rollingKeys) {
     baseGraphRecovery -= 10;
@@ -212,7 +212,7 @@ export async function runBenchmarkSuite(
       graphRecovery: finalGraphRecovery,
       symbolRecovery: finalSymbolRecovery,
       humanReadabilityScore: finalReadability,
-      cfgEditDistance: 120
+      cfgEditDistance: 120,
     },
     {
       caseId: 'case_symbolic_solver',
@@ -224,8 +224,8 @@ export async function runBenchmarkSuite(
       graphRecovery: finalGraphRecovery,
       symbolRecovery: finalSymbolRecovery,
       humanReadabilityScore: finalReadability + 10,
-      cfgEditDistance: 85
-    }
+      cfgEditDistance: 85,
+    },
   ];
 
   const totalCases = bytecodeModules.length;
@@ -243,7 +243,7 @@ export async function runBenchmarkSuite(
       avgRuntimeOverheadMs: Number(totalVirtualizedExecutionTimeMs.toFixed(3)),
       avgSizeOverheadPercent: Number(sizeOverheadPercent.toFixed(2)),
       avgSemanticRecovery: finalSemanticRecovery,
-      avgGraphRecovery: finalGraphRecovery
-    }
+      avgGraphRecovery: finalGraphRecovery,
+    },
   };
 }

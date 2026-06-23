@@ -89,7 +89,11 @@ function buildVmFunctionWrapper(
   return `${signatureText}{ if (new.target) { return Reflect.construct(${vmObjectName}[${JSON.stringify(functionName)}], Array.prototype.slice.call(arguments), new.target); } return ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, arguments); }`;
 }
 
-function buildVmFunctionExpressionWrapper(functionName: string, initializer: import('typescript').Expression, vmObjectName: string): string {
+function buildVmFunctionExpressionWrapper(
+  functionName: string,
+  initializer: import('typescript').Expression,
+  vmObjectName: string,
+): string {
   if (ts.isArrowFunction(initializer)) {
     return initializer.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
       ? `async (...args) => ${vmObjectName}[${JSON.stringify(functionName)}].apply(this, args)`
@@ -211,21 +215,24 @@ export function buildUniversalBundle(
 ): VMRuntimeBundle {
   const sourceText = ts.sys.readFile(moduleInfo.filePath) || '';
   const transpiledSource = transpileModuleToEsm(sourceText, moduleInfo.filePath, compilerOptions);
-  const transpiledFile = ts.createSourceFile(`${moduleInfo.relativePath}.mjs`, transpiledSource, ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS);
+  const transpiledFile = ts.createSourceFile(
+    `${moduleInfo.relativePath}.mjs`,
+    transpiledSource,
+    ts.ScriptTarget.ESNext,
+    true,
+    ts.ScriptKind.JS,
+  );
   const vmObjectName = vmBundle ? extractVmFunctionObjectName(vmBundle.fullSource) : 'vmFunctions';
   const { rewrittenSource, hasVmFunctions } = rewriteModuleStatements(transpiledSource, transpiledFile, functionReports, vmObjectName);
 
   const loweredFunctions = functionReports.filter((report) => report.tier === 'js_lowered');
-  const reportComment = loweredFunctions.length > 0
-    ? loweredFunctions
-        .map((report) => `// ${report.functionName} -> js_lowered: ${report.reasons.join(', ')}`)
-        .join('\n')
-    : '// all top-level rewritten functions were vm_safe';
+  const reportComment =
+    loweredFunctions.length > 0
+      ? loweredFunctions.map((report) => `// ${report.functionName} -> js_lowered: ${report.reasons.join(', ')}`).join('\n')
+      : '// all top-level rewritten functions were vm_safe';
 
   const vmRuntimeSource = hasVmFunctions && vmBundle ? stripCommonJsFooter(vmBundle.fullSource) : '';
-  const esmModuleSource = vmRuntimeSource.length > 0
-    ? injectVmRuntimeAfterImports(rewrittenSource, vmRuntimeSource)
-    : rewrittenSource;
+  const esmModuleSource = vmRuntimeSource.length > 0 ? injectVmRuntimeAfterImports(rewrittenSource, vmRuntimeSource) : rewrittenSource;
 
   const source = `// Universal ESM bundle: ${moduleInfo.relativePath}
 ${reportComment}

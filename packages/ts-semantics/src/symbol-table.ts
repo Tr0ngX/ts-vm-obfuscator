@@ -4,19 +4,19 @@ import { ScopeKind } from '@tsvm/shared';
 export function buildSymbolTable(modules: Map<string, ModuleInfo>) {
   const symbolTable: TypeFact[] = [];
   const aliases = new Map<number, SymbolAlias>();
-  
+
   let nextSymbolId = 1;
 
   for (const [filePath, mod] of modules.entries()) {
     for (const fact of mod.typeFacts) {
       // Normalize ID
       const normalizedId = nextSymbolId++;
-      
+
       const normalizedFact: TypeFact = {
         ...fact,
-        symbolId: normalizedId
+        symbolId: normalizedId,
       };
-      
+
       symbolTable.push(normalizedFact);
 
       // Create initial alias mapping (identity)
@@ -25,7 +25,7 @@ export function buildSymbolTable(modules: Map<string, ModuleInfo>) {
         obfuscatedName: fact.symbolName, // Will be changed by SymbolIndirectionPass
         scope: fact.isExported ? ScopeKind.Module : ScopeKind.Block, // Simplified
         symbolId: normalizedId,
-        isExported: fact.isExported
+        isExported: fact.isExported,
       });
     }
   }

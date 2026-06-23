@@ -33,8 +33,8 @@ export class IRValidationPass implements TransformPass {
 
   private validateFunction(func: IRFunction, module: IRModule): import('@tsvm/shared').Diagnostic[] {
     const diagnostics: import('@tsvm/shared').Diagnostic[] = [];
-    const blockIds = new Set(func.blocks.map(b => b.id));
-    const blockMap = new Map(func.blocks.map(b => [b.id, b]));
+    const blockIds = new Set(func.blocks.map((b) => b.id));
+    const blockMap = new Map(func.blocks.map((b) => [b.id, b]));
     const maxReg = getMaxRegister(func);
 
     for (const block of func.blocks) {

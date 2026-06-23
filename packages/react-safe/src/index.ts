@@ -16,10 +16,7 @@ export function checkReactSafety(fn: IRFunction): boolean {
   return !isHookLikeFunction(fn) && !isReactComponentLike(fn);
 }
 
-export function collectReactComponentInfo(
-  functions: readonly IRFunction[],
-  filePath: string,
-): ReactComponentInfo[] {
+export function collectReactComponentInfo(functions: readonly IRFunction[], filePath: string): ReactComponentInfo[] {
   return functions
     .filter((fn) => isHookLikeFunction(fn) || isReactComponentLike(fn))
     .map((fn) => {
@@ -40,10 +37,7 @@ export function collectReactComponentInfo(
     });
 }
 
-export function createReactSafetyDiagnostics(
-  functions: readonly IRFunction[],
-  filePath: string,
-): Diagnostic[] {
+export function createReactSafetyDiagnostics(functions: readonly IRFunction[], filePath: string): Diagnostic[] {
   return functions
     .filter((fn) => !checkReactSafety(fn))
     .map((fn) => ({

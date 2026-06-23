@@ -58,9 +58,7 @@ export function resolveProfileTarget(profileOption: string): SupportedProfileTar
   const target = PROFILE_ALIASES[normalized];
 
   if (!target) {
-    throw new Error(
-      `Unsupported profile "${profileOption}". Expected one of: default, ${SUPPORTED_PROFILE_TARGETS.join(', ')}.`,
-    );
+    throw new Error(`Unsupported profile "${profileOption}". Expected one of: default, ${SUPPORTED_PROFILE_TARGETS.join(', ')}.`);
   }
 
   return target;
@@ -83,9 +81,7 @@ export function parseRuntimeBackend(runtimeOption?: string): SupportedRuntimeBac
   if (runtimeBackend) {
     return runtimeBackend;
   }
-  throw new Error(
-    `Unsupported runtime "${runtimeOption}". Expected one of: ${SUPPORTED_RUNTIME_BACKENDS.join(', ')}.`,
-  );
+  throw new Error(`Unsupported runtime "${runtimeOption}". Expected one of: ${SUPPORTED_RUNTIME_BACKENDS.join(', ')}.`);
 }
 
 export function applyRuntimeBackendToProfile<T extends { vm: { runtimeBackend?: SupportedRuntimeBackend } }>(
@@ -107,9 +103,7 @@ export function parseRuntimeHardening(hardeningOption?: string): SupportedRuntim
   if (runtimeHardening) {
     return runtimeHardening;
   }
-  throw new Error(
-    `Unsupported hardening "${hardeningOption}". Expected one of: ${SUPPORTED_HARDENING_LEVELS.join(', ')}.`,
-  );
+  throw new Error(`Unsupported hardening "${hardeningOption}". Expected one of: ${SUPPORTED_HARDENING_LEVELS.join(', ')}.`);
 }
 
 export function resolveRuntimeHardening(

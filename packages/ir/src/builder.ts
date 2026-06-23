@@ -4,13 +4,28 @@ import { DiagnosticSeverity, IRType, OpCode, OperandKind, ConstantKind, Function
 import { IRModuleBuilder, IRFunctionBuilder, type BasicBlockBuilder } from './ir.js';
 import { LEXICAL_THIS_CAPTURE, LEXICAL_NEW_TARGET_CAPTURE } from './lowering/types.js';
 import type {
-  LowerToIROptions, SupportedFunctionNode, ClosureAnalysis, LocalBinding,
-  PendingParameterBinding, CompletionKind, FinallyContext, FinallyCompletionTarget,
-  NormalizedClassMethodElement, NormalizedClassFieldElement, NormalizedComputedName,
-  NormalizedClass, NormalizedClassElement
+  LowerToIROptions,
+  SupportedFunctionNode,
+  ClosureAnalysis,
+  LocalBinding,
+  PendingParameterBinding,
+  CompletionKind,
+  FinallyContext,
+  FinallyCompletionTarget,
+  NormalizedClassMethodElement,
+  NormalizedClassFieldElement,
+  NormalizedComputedName,
+  NormalizedClass,
+  NormalizedClassElement,
 } from './lowering/types.js';
 import { analyzeFunctionClosures, pushUnique, isIdentifierReference, isNestedFunctionLike, ScopeMap } from './lowering/utils.js';
-import { visitExpression as lowerVisitExpression, lowerConditionalExpression, lowerNullishCoalesce, lowerTemplateExpression, lowerNestedFunctionNode } from './lowering/expressions.js';
+import {
+  visitExpression as lowerVisitExpression,
+  lowerConditionalExpression,
+  lowerNullishCoalesce,
+  lowerTemplateExpression,
+  lowerNestedFunctionNode,
+} from './lowering/expressions.js';
 
 interface LoweringOptions {
   readonly name: string;
@@ -76,7 +91,11 @@ export class ASTLowering {
   private readonly privateIdentifierBindings: ReadonlyMap<string, string>;
   private readonly instanceFieldsToInitialize?: readonly NormalizedClassFieldElement[];
 
-  constructor(public readonly modBuilder: IRModuleBuilder, private readonly node: SupportedFunctionNode, options: LoweringOptions) {
+  constructor(
+    public readonly modBuilder: IRModuleBuilder,
+    private readonly node: SupportedFunctionNode,
+    options: LoweringOptions,
+  ) {
     this.functionId = modBuilder.getNextFunctionId();
     this.fnBuilder = new IRFunctionBuilder(this.functionId, options.name, IRType.Any);
     this.sourceFile = node.getSourceFile();
@@ -92,9 +111,12 @@ export class ASTLowering {
     for (const attribute of options.attributes ?? []) {
       this.fnBuilder.addAttribute(attribute);
     }
-    this.isAsyncFunction = !!this.node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)
-      || ('asteriskToken' in this.node && !!this.node.asteriskToken && (this.node as SupportedFunctionNode & { name?: ts.Identifier }).name?.text === 'async')
-      || (options.attributes ?? []).includes(FunctionAttribute.Async);
+    this.isAsyncFunction =
+      !!this.node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
+      ('asteriskToken' in this.node &&
+        !!this.node.asteriskToken &&
+        (this.node as SupportedFunctionNode & { name?: ts.Identifier }).name?.text === 'async') ||
+      (options.attributes ?? []).includes(FunctionAttribute.Async);
     this.isGenerator = 'asteriskToken' in this.node && !!this.node.asteriskToken;
 
     this.currentBlock = this.fnBuilder.createBlock('entry');
@@ -151,16 +173,13 @@ export class ASTLowering {
     const { line, character } = this.sourceFile.getLineAndCharacterOfPosition(node.getStart(this.sourceFile));
     const message = detail ? `${kind} (${detail})` : kind;
     throw new Error(
-      `Unsupported AST in IR builder: ${message} at ${this.sourceFile.fileName}:${line + 1}:${character + 1} near "${snippet}"`
+      `Unsupported AST in IR builder: ${message} at ${this.sourceFile.fileName}:${line + 1}:${character + 1} near "${snippet}"`,
     );
   }
 
   private isSyntheticDeadBlock(block: BasicBlockBuilder): boolean {
     const label = block.label;
-    const syntheticLabel =
-      label === 'unreachable' ||
-      label === 'after_break' ||
-      label === 'after_continue';
+    const syntheticLabel = label === 'unreachable' || label === 'after_break' || label === 'after_continue';
     return (
       syntheticLabel &&
       block.getInstructionCount() === 0 &&
@@ -364,7 +383,11 @@ export class ASTLowering {
     this.fnBuilder.addCapturedVariable(name);
   }
 
-  private resolveLexicalCapture(name: typeof LEXICAL_THIS_CAPTURE | typeof LEXICAL_NEW_TARGET_CAPTURE, node: ts.Node, detail: string): Register {
+  private resolveLexicalCapture(
+    name: typeof LEXICAL_THIS_CAPTURE | typeof LEXICAL_NEW_TARGET_CAPTURE,
+    node: ts.Node,
+    detail: string,
+  ): Register {
     if (!this.scope.has(name) && !this.outerCaptureBindings.has(name)) {
       this.failUnsupported(node, detail);
     }
@@ -453,15 +476,21 @@ export class ASTLowering {
         });
         continue;
       }
-      const modifiers = ts.canHaveModifiers(member) ? ts.getModifiers(member) ?? [] : [];
+      const modifiers = ts.canHaveModifiers(member) ? (ts.getModifiers(member) ?? []) : [];
       if (ts.isPropertyDeclaration(member) && modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)) {
         continue;
       }
       const privateBindingName =
         'name' in member && member.name && ts.isPrivateIdentifier(member.name)
-          ? privateIdentifiers.get(member.name.text) ?? this.createSyntheticBindingName('private_slot')
+          ? (privateIdentifiers.get(member.name.text) ?? this.createSyntheticBindingName('private_slot'))
           : undefined;
-      if (privateBindingName && 'name' in member && member.name && ts.isPrivateIdentifier(member.name) && !privateIdentifiers.has(member.name.text)) {
+      if (
+        privateBindingName &&
+        'name' in member &&
+        member.name &&
+        ts.isPrivateIdentifier(member.name) &&
+        !privateIdentifiers.has(member.name.text)
+      ) {
         privateIdentifiers.set(member.name.text, privateBindingName);
       }
       if (privateBindingName && !ts.isPropertyDeclaration(member)) {
@@ -557,11 +586,7 @@ export class ASTLowering {
     };
   }
 
-  private lowerClassConstructor(
-    normalized: NormalizedClass,
-    availableOuterNames: ReadonlySet<string>,
-    classDisplayName: string,
-  ): Register {
+  private lowerClassConstructor(normalized: NormalizedClass, availableOuterNames: ReadonlySet<string>, classDisplayName: string): Register {
     const instanceFields = normalized.instanceElements.filter(
       (element): element is NormalizedClassFieldElement => element.kind === 'field',
     );
@@ -572,19 +597,16 @@ export class ASTLowering {
     } else {
       const bodyStatements: ts.Statement[] = [];
       if (normalized.extendsExpression) {
-        bodyStatements.push(
-          ts.factory.createExpressionStatement(
-            ts.factory.createCallExpression(
-              ts.factory.createSuper(),
-              undefined,
-              []
-            )
-          )
-        );
+        bodyStatements.push(ts.factory.createExpressionStatement(ts.factory.createCallExpression(ts.factory.createSuper(), undefined, [])));
       }
       ctorNode = ts.factory.createFunctionExpression(
-        undefined, undefined, undefined, undefined, [], undefined,
-        ts.factory.createBlock(bodyStatements, true)
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        ts.factory.createBlock(bodyStatements, true),
       );
     }
 
@@ -595,9 +617,7 @@ export class ASTLowering {
       }
       return nodes;
     });
-    const computedFieldCaptureNames = instanceFields
-      .map((field) => field.computedBindingName)
-      .filter((name): name is string => !!name);
+    const computedFieldCaptureNames = instanceFields.map((field) => field.computedBindingName).filter((name): name is string => !!name);
     const extraCapturedFromOuter = [
       ...this.collectReferencedOuterNames(fieldInitializerNodes, availableOuterNames),
       ...computedFieldCaptureNames,
@@ -656,12 +676,7 @@ export class ASTLowering {
     const baseAnalysis = analyzeFunctionClosures(expr, new Set<string>(availableOuterNames));
     const analysis: ClosureAnalysis = {
       ...baseAnalysis,
-      capturedFromOuter: [
-        ...new Set([
-          ...baseAnalysis.capturedFromOuter,
-          ...(overrides?.extraCapturedFromOuter ?? []),
-        ]),
-      ],
+      capturedFromOuter: [...new Set([...baseAnalysis.capturedFromOuter, ...(overrides?.extraCapturedFromOuter ?? [])])],
     };
     const nestedLowering = new ASTLowering(this.modBuilder, expr, {
       name: nestedName,
@@ -682,7 +697,7 @@ export class ASTLowering {
         { kind: OperandKind.ConstantIndex, value: functionIdIndex },
         { kind: OperandKind.Register, value: envReg },
       ],
-      closureReg
+      closureReg,
     );
     return closureReg;
   }
@@ -862,9 +877,7 @@ export class ASTLowering {
       // CallMethod. This is a structural workaround — the IR has no native
       // static block representation.
       if (element.kind === 'static_block') {
-        const fakeFn = ts.factory.createFunctionExpression(
-          undefined, undefined, undefined, undefined, [], undefined, element.node.body
-        );
+        const fakeFn = ts.factory.createFunctionExpression(undefined, undefined, undefined, undefined, [], undefined, element.node.body);
         const fnReg = this.lowerNestedFunctionLike(fakeFn, undefined, {
           availableOuterNames,
           extraCapturedFromOuter: [...normalized.privateIdentifiers.values()],
@@ -872,11 +885,15 @@ export class ASTLowering {
           attributes: [FunctionAttribute.Static],
         });
         const callPropReg = this.emitConstant(ConstantKind.String, 'call');
-        this.currentBlock.addInstruction(OpCode.CallMethod, [
-          { kind: OperandKind.Register, value: fnReg },
-          { kind: OperandKind.Register, value: callPropReg },
-          { kind: OperandKind.Register, value: ctorReg },
-        ], this.fnBuilder.allocRegister());
+        this.currentBlock.addInstruction(
+          OpCode.CallMethod,
+          [
+            { kind: OperandKind.Register, value: fnReg },
+            { kind: OperandKind.Register, value: callPropReg },
+            { kind: OperandKind.Register, value: ctorReg },
+          ],
+          this.fnBuilder.allocRegister(),
+        );
         continue;
       }
       const methodElement = element as NormalizedClassMethodElement;
@@ -993,7 +1010,11 @@ export class ASTLowering {
     const localBinding = this.scope.get(name);
     if (localBinding) {
       if (!localBinding.boxed) {
-        this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: localBinding.register }], localBinding.register);
+        this.currentBlock.addInstruction(
+          OpCode.CellNew,
+          [{ kind: OperandKind.Register, value: localBinding.register }],
+          localBinding.register,
+        );
         this.scope.set(name, { register: localBinding.register, boxed: true });
         this.fnBuilder.addCapturedVariable(name);
         return localBinding.register;
@@ -1019,16 +1040,28 @@ export class ASTLowering {
       if (this.scope.has(target.text)) {
         const binding = this.scope.get(target.text)!;
         if (binding.boxed) {
-          this.currentBlock.addInstruction(OpCode.CellSet, [{ kind: OperandKind.Register, value: binding.register }, { kind: OperandKind.Register, value: valueReg }]);
+          this.currentBlock.addInstruction(OpCode.CellSet, [
+            { kind: OperandKind.Register, value: binding.register },
+            { kind: OperandKind.Register, value: valueReg },
+          ]);
         } else {
-          this.currentBlock.addInstruction(OpCode.StoreLocal, [{ kind: OperandKind.Register, value: binding.register }, { kind: OperandKind.Register, value: valueReg }]);
+          this.currentBlock.addInstruction(OpCode.StoreLocal, [
+            { kind: OperandKind.Register, value: binding.register },
+            { kind: OperandKind.Register, value: valueReg },
+          ]);
         }
       } else if (this.outerCaptureBindings.has(target.text)) {
         const cellReg = this.loadOuterCaptureCell(target.text);
-        this.currentBlock.addInstruction(OpCode.CellSet, [{ kind: OperandKind.Register, value: cellReg }, { kind: OperandKind.Register, value: valueReg }]);
+        this.currentBlock.addInstruction(OpCode.CellSet, [
+          { kind: OperandKind.Register, value: cellReg },
+          { kind: OperandKind.Register, value: valueReg },
+        ]);
       } else {
         const strReg = this.emitConstant(ConstantKind.String, target.text);
-        this.currentBlock.addInstruction(OpCode.StoreGlobal, [{ kind: OperandKind.Register, value: strReg }, { kind: OperandKind.Register, value: valueReg }]);
+        this.currentBlock.addInstruction(OpCode.StoreGlobal, [
+          { kind: OperandKind.Register, value: strReg },
+          { kind: OperandKind.Register, value: valueReg },
+        ]);
       }
       return;
     }
@@ -1158,7 +1191,10 @@ export class ASTLowering {
     return binding;
   }
 
-  private withTemporaryBinding<T>(name: string, callback: () => T): { readonly result: T; readonly binding: LocalBinding; readonly restoreBinding?: LocalBinding } {
+  private withTemporaryBinding<T>(
+    name: string,
+    callback: () => T,
+  ): { readonly result: T; readonly binding: LocalBinding; readonly restoreBinding?: LocalBinding } {
     const restoreBinding = this.scope.get(name);
     const binding = this.declareForcedBoxedIdentifier(name);
     const result = callback();
@@ -1170,7 +1206,10 @@ export class ASTLowering {
     return { result, binding, restoreBinding };
   }
 
-  private getPropertyKeyRegister(keyName?: string, computedBindingName?: string): { readonly register: Register; readonly computed: boolean } {
+  private getPropertyKeyRegister(
+    keyName?: string,
+    computedBindingName?: string,
+  ): { readonly register: Register; readonly computed: boolean } {
     if (computedBindingName) {
       return {
         register: this.resolveVar(computedBindingName),
@@ -1226,14 +1265,11 @@ export class ASTLowering {
   }
 
   private emitObjectPropertyWrite(targetReg: Register, keyReg: Register, valueReg: Register, computed: boolean): void {
-    this.currentBlock.addInstruction(
-      computed ? OpCode.ComputedSet : OpCode.PropSet,
-      [
-        { kind: OperandKind.Register, value: targetReg },
-        { kind: OperandKind.Register, value: keyReg },
-        { kind: OperandKind.Register, value: valueReg },
-      ],
-    );
+    this.currentBlock.addInstruction(computed ? OpCode.ComputedSet : OpCode.PropSet, [
+      { kind: OperandKind.Register, value: targetReg },
+      { kind: OperandKind.Register, value: keyReg },
+      { kind: OperandKind.Register, value: valueReg },
+    ]);
   }
 
   private emitDefineProperty(targetReg: Register, keyReg: Register, descriptorReg: Register): void {
@@ -1331,13 +1367,10 @@ export class ASTLowering {
   }
 
   private emitSpreadInto(targetReg: Register, sourceReg: Register): void {
-    this.currentBlock.addInstruction(
-      OpCode.Spread,
-      [
-        { kind: OperandKind.Register, value: targetReg },
-        { kind: OperandKind.Register, value: sourceReg },
-      ],
-    );
+    this.currentBlock.addInstruction(OpCode.Spread, [
+      { kind: OperandKind.Register, value: targetReg },
+      { kind: OperandKind.Register, value: sourceReg },
+    ]);
   }
 
   private emitSpreadIntoArray(targetReg: Register, sourceReg: Register, startIndexReg: Register, destIndexLocal: Register): void {
@@ -1388,7 +1421,7 @@ export class ASTLowering {
         const keyReg = ts.isComputedPropertyName(propertyName)
           ? this.visitExpression(propertyName.expression)
           : this.emitConstant(ConstantKind.String, this.getPropertyNameText(propertyName));
-        
+
         excludedKeys.push(keyReg);
         const valueReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(
@@ -1455,7 +1488,11 @@ export class ASTLowering {
     this.bindPattern(decl.name, initializerReg, 'declare');
   }
 
-  private assignLoopBinding(initializer: ts.ForInitializer | ts.ForInOrOfStatement['initializer'], valueReg: Register, loopKind: string): void {
+  private assignLoopBinding(
+    initializer: ts.ForInitializer | ts.ForInOrOfStatement['initializer'],
+    valueReg: Register,
+    loopKind: string,
+  ): void {
     if (ts.isVariableDeclarationList(initializer)) {
       if (initializer.declarations.length !== 1) {
         this.failUnsupported(initializer, `${loopKind} supports a single declaration only`);
@@ -1523,7 +1560,12 @@ export class ASTLowering {
     return code;
   }
 
-  private setFinallyCompletion(context: FinallyContext, kind: CompletionKind, valueReg?: Register, target?: { kind: 'break' | 'continue'; blockId: string }): void {
+  private setFinallyCompletion(
+    context: FinallyContext,
+    kind: CompletionKind,
+    valueReg?: Register,
+    target?: { kind: 'break' | 'continue'; blockId: string },
+  ): void {
     this.storeToLocal(context.completionKindLocal, this.emitConstant(ConstantKind.Number, kind));
     if (valueReg) {
       this.storeToLocal(context.completionValueLocal, valueReg);
@@ -1534,7 +1576,11 @@ export class ASTLowering {
     }
   }
 
-  private routeAbruptCompletionThroughFinally(kind: CompletionKind, valueReg?: Register, target?: { kind: 'break' | 'continue'; blockId: string }): void {
+  private routeAbruptCompletionThroughFinally(
+    kind: CompletionKind,
+    valueReg?: Register,
+    target?: { kind: 'break' | 'continue'; blockId: string },
+  ): void {
     if (kind === 2 && this.throwPassthroughFinallyDepth > 0) {
       this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
       this.fnBuilder.addBlock(this.currentBlock.build());
@@ -1724,7 +1770,11 @@ export class ASTLowering {
       { kind: OperandKind.Register, value: exceptionLocal },
     ]);
     this.visitStatement(stmt.tryBlock);
-    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+    if (
+      !this.isSyntheticDeadBlock(this.currentBlock) &&
+      this.currentBlock.getTerminatorKind() !== 'return' &&
+      this.currentBlock.getTerminatorKind() !== 'throw'
+    ) {
       this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
     }
@@ -1732,7 +1782,11 @@ export class ASTLowering {
     this.currentBlock = catchBlock;
     this.bindCatchVariable(stmt.catchClause, exceptionLocal);
     this.visitStatement(stmt.catchClause.block);
-    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+    if (
+      !this.isSyntheticDeadBlock(this.currentBlock) &&
+      this.currentBlock.getTerminatorKind() !== 'return' &&
+      this.currentBlock.getTerminatorKind() !== 'throw'
+    ) {
       this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
     }
@@ -1766,7 +1820,11 @@ export class ASTLowering {
     } else {
       this.withFinallyContext(completion, () => this.visitStatement(stmt.tryBlock));
     }
-    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+    if (
+      !this.isSyntheticDeadBlock(this.currentBlock) &&
+      this.currentBlock.getTerminatorKind() !== 'return' &&
+      this.currentBlock.getTerminatorKind() !== 'throw'
+    ) {
       this.setFinallyCompletion(completion, 0);
       this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
@@ -1781,7 +1839,11 @@ export class ASTLowering {
         { kind: OperandKind.Register, value: catchExceptionLocal },
       ]);
       this.withFinallyContext(completion, () => this.visitStatement(catchClause.block));
-      if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+      if (
+        !this.isSyntheticDeadBlock(this.currentBlock) &&
+        this.currentBlock.getTerminatorKind() !== 'return' &&
+        this.currentBlock.getTerminatorKind() !== 'throw'
+      ) {
         this.setFinallyCompletion(completion, 0);
         this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
@@ -1800,18 +1862,18 @@ export class ASTLowering {
 
     this.currentBlock = finallyBlock;
     this.visitStatement(stmt.finallyBlock!);
-    if (!this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw') {
+    if (
+      !this.isSyntheticDeadBlock(this.currentBlock) &&
+      this.currentBlock.getTerminatorKind() !== 'return' &&
+      this.currentBlock.getTerminatorKind() !== 'throw'
+    ) {
       this.emitCompletionDispatch(completion, afterBlock.id);
     }
 
     this.currentBlock = afterBlock;
   }
 
-  private lowerConditionalExpression(
-    conditionReg: Register,
-    whenTrue: () => Register,
-    whenFalse: () => Register
-  ): Register {
+  private lowerConditionalExpression(conditionReg: Register, whenTrue: () => Register, whenFalse: () => Register): Register {
     const self: IASTLowering = this as unknown as IASTLowering;
     return lowerConditionalExpression(self, conditionReg, whenTrue, whenFalse);
   }
@@ -1949,12 +2011,11 @@ export class ASTLowering {
     if (ts.isBlock(stmt)) {
       this.scope = new ScopeMap(this.scope);
       try {
-        stmt.statements.forEach(s => this.visitStatement(s));
+        stmt.statements.forEach((s) => this.visitStatement(s));
       } finally {
         this.scope = this.scope.parent!;
       }
-    }
-    else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+    } else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       const boxed = this.capturedLocals.has(stmt.name.text);
       const localReg = this.scope.get(stmt.name.text)?.register ?? this.fnBuilder.addLocal(stmt.name.text, IRType.Any);
       this.scope.set(stmt.name.text, { register: localReg, boxed });
@@ -1968,19 +2029,15 @@ export class ASTLowering {
           { kind: OperandKind.Register, value: closureReg },
         ]);
       }
-    }
-    else if (ts.isClassDeclaration(stmt) && stmt.name) {
+    } else if (ts.isClassDeclaration(stmt) && stmt.name) {
       this.lowerClassLike(stmt);
-    }
-    else if (ts.isVariableStatement(stmt)) {
-      stmt.declarationList.declarations.forEach(decl => {
+    } else if (ts.isVariableStatement(stmt)) {
+      stmt.declarationList.declarations.forEach((decl) => {
         this.initializeVariableDeclaration(decl);
       });
-    }
-    else if (ts.isExpressionStatement(stmt)) {
+    } else if (ts.isExpressionStatement(stmt)) {
       this.visitExpression(stmt.expression);
-    }
-    else if (ts.isReturnStatement(stmt)) {
+    } else if (ts.isReturnStatement(stmt)) {
       const valReg = stmt.expression ? this.visitExpression(stmt.expression) : this.emitConstant(ConstantKind.Undefined, null);
       if (this.getActiveFinallyContext()) {
         this.routeAbruptCompletionThroughFinally(1, valReg);
@@ -1990,8 +2047,7 @@ export class ASTLowering {
         this.fnBuilder.addBlock(this.currentBlock.build());
         this.currentBlock = nextBlock;
       }
-    }
-    else if (ts.isThrowStatement(stmt)) {
+    } else if (ts.isThrowStatement(stmt)) {
       const valueReg = stmt.expression ? this.visitExpression(stmt.expression) : this.emitConstant(ConstantKind.Undefined, null);
       if (this.getActiveFinallyContext()) {
         this.routeAbruptCompletionThroughFinally(2, valueReg);
@@ -2001,8 +2057,7 @@ export class ASTLowering {
         this.fnBuilder.addBlock(this.currentBlock.build());
         this.currentBlock = nextBlock;
       }
-    }
-    else if (ts.isBreakStatement(stmt)) {
+    } else if (ts.isBreakStatement(stmt)) {
       const target = this.breakTargets[this.breakTargets.length - 1];
       if (!target) {
         this.failUnsupported(stmt, 'break used outside a loop or switch');
@@ -2012,8 +2067,7 @@ export class ASTLowering {
       } else {
         this.emitJumpAndAdvance(target, 'after_break');
       }
-    }
-    else if (ts.isContinueStatement(stmt)) {
+    } else if (ts.isContinueStatement(stmt)) {
       const target = this.continueTargets[this.continueTargets.length - 1];
       if (!target) {
         this.failUnsupported(stmt, 'continue used outside a loop');
@@ -2023,8 +2077,7 @@ export class ASTLowering {
       } else {
         this.emitJumpAndAdvance(target, 'after_continue');
       }
-    }
-    else if (ts.isForStatement(stmt)) {
+    } else if (ts.isForStatement(stmt)) {
       this.scope = new ScopeMap(this.scope);
       try {
         if (stmt.initializer) {
@@ -2034,15 +2087,15 @@ export class ASTLowering {
             this.visitExpression(stmt.initializer);
           }
         }
-        
+
         const condBlock = this.fnBuilder.createBlock('for_cond');
         const bodyBlock = this.fnBuilder.createBlock('for_body');
         const continueBlock = this.fnBuilder.createBlock('for_continue');
         const endBlock = this.fnBuilder.createBlock('for_end');
-        
+
         this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
-        
+
         // Condition
         this.currentBlock = condBlock;
         if (stmt.condition) {
@@ -2052,18 +2105,21 @@ export class ASTLowering {
           this.currentBlock.setTerminator({ kind: 'jump', targets: [bodyBlock.id] });
         }
         this.fnBuilder.addBlock(this.currentBlock.build());
-        
+
         // Body
         this.enterBreakTarget(endBlock.id);
         this.enterContinueTarget(continueBlock.id);
         this.currentBlock = bodyBlock;
         this.visitStatement(stmt.statement);
-        const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+        const bodyFallsThrough =
+          !this.isSyntheticDeadBlock(this.currentBlock) &&
+          this.currentBlock.getTerminatorKind() !== 'return' &&
+          this.currentBlock.getTerminatorKind() !== 'throw';
         if (bodyFallsThrough) {
           this.currentBlock.setTerminator({ kind: 'jump', targets: [continueBlock.id] });
           this.fnBuilder.addBlock(this.currentBlock.build());
         }
-        
+
         this.currentBlock = continueBlock;
         if (stmt.incrementor) {
           this.visitExpression(stmt.incrementor);
@@ -2072,13 +2128,12 @@ export class ASTLowering {
         this.fnBuilder.addBlock(this.currentBlock.build());
         this.leaveContinueTarget();
         this.leaveBreakTarget();
-        
+
         this.currentBlock = endBlock;
       } finally {
         this.scope = this.scope.parent!;
       }
-    }
-    else if (ts.isForOfStatement(stmt)) {
+    } else if (ts.isForOfStatement(stmt)) {
       this.scope = new ScopeMap(this.scope);
       try {
         const iterableReg = this.visitExpression(stmt.expression);
@@ -2139,11 +2194,7 @@ export class ASTLowering {
             ],
             nextPromiseReg,
           );
-          this.currentBlock.addInstruction(
-            OpCode.Await,
-            [{ kind: OperandKind.Register, value: nextPromiseReg }],
-            stepReg,
-          );
+          this.currentBlock.addInstruction(OpCode.Await, [{ kind: OperandKind.Register, value: nextPromiseReg }], stepReg);
         } else {
           this.currentBlock.addInstruction(
             OpCode.CallMethod,
@@ -2185,7 +2236,10 @@ export class ASTLowering {
         );
         this.assignLoopBinding(stmt.initializer, valueReg, 'for...of');
         this.visitStatement(stmt.statement);
-        const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+        const bodyFallsThrough =
+          !this.isSyntheticDeadBlock(this.currentBlock) &&
+          this.currentBlock.getTerminatorKind() !== 'return' &&
+          this.currentBlock.getTerminatorKind() !== 'throw';
         if (bodyFallsThrough) {
           this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
           this.fnBuilder.addBlock(this.currentBlock.build());
@@ -2197,8 +2251,7 @@ export class ASTLowering {
       } finally {
         this.scope = this.scope.parent!;
       }
-    }
-    else if (ts.isForInStatement(stmt)) {
+    } else if (ts.isForInStatement(stmt)) {
       this.scope = new ScopeMap(this.scope);
       try {
         const sourceReg = this.visitExpression(stmt.expression);
@@ -2278,7 +2331,10 @@ export class ASTLowering {
         );
         this.assignLoopBinding(stmt.initializer, keyReg, 'for...in');
         this.visitStatement(stmt.statement);
-        const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+        const bodyFallsThrough =
+          !this.isSyntheticDeadBlock(this.currentBlock) &&
+          this.currentBlock.getTerminatorKind() !== 'return' &&
+          this.currentBlock.getTerminatorKind() !== 'throw';
         if (bodyFallsThrough) {
           this.currentBlock.setTerminator({ kind: 'jump', targets: [continueBlock.id] });
           this.fnBuilder.addBlock(this.currentBlock.build());
@@ -2309,8 +2365,7 @@ export class ASTLowering {
       } finally {
         this.scope = this.scope.parent!;
       }
-    }
-    else if (ts.isIfStatement(stmt)) {
+    } else if (ts.isIfStatement(stmt)) {
       const conditionReg = this.visitExpression(stmt.expression);
       const trueBlock = this.fnBuilder.createBlock('if_true');
       const falseBlock = this.fnBuilder.createBlock(stmt.elseStatement ? 'if_false' : 'if_end');
@@ -2348,35 +2403,36 @@ export class ASTLowering {
       }
 
       this.currentBlock = endBlock;
-    }
-    else if (ts.isWhileStatement(stmt)) {
+    } else if (ts.isWhileStatement(stmt)) {
       const condBlock = this.fnBuilder.createBlock('while_cond');
       const bodyBlock = this.fnBuilder.createBlock('while_body');
       const endBlock = this.fnBuilder.createBlock('while_end');
-      
+
       this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
-      
+
       this.currentBlock = condBlock;
       const condReg = this.visitExpression(stmt.expression);
       this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
-      
+
       this.enterBreakTarget(endBlock.id);
       this.enterContinueTarget(condBlock.id);
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
-      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      const bodyFallsThrough =
+        !this.isSyntheticDeadBlock(this.currentBlock) &&
+        this.currentBlock.getTerminatorKind() !== 'return' &&
+        this.currentBlock.getTerminatorKind() !== 'throw';
       if (bodyFallsThrough) {
         this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
       }
       this.leaveContinueTarget();
       this.leaveBreakTarget();
-      
+
       this.currentBlock = endBlock;
-    }
-    else if (ts.isDoStatement(stmt)) {
+    } else if (ts.isDoStatement(stmt)) {
       const bodyBlock = this.fnBuilder.createBlock('do_body');
       const condBlock = this.fnBuilder.createBlock('do_cond');
       const endBlock = this.fnBuilder.createBlock('do_end');
@@ -2388,7 +2444,10 @@ export class ASTLowering {
       this.enterContinueTarget(condBlock.id);
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
-      const bodyFallsThrough = !this.isSyntheticDeadBlock(this.currentBlock) && this.currentBlock.getTerminatorKind() !== 'return' && this.currentBlock.getTerminatorKind() !== 'throw';
+      const bodyFallsThrough =
+        !this.isSyntheticDeadBlock(this.currentBlock) &&
+        this.currentBlock.getTerminatorKind() !== 'return' &&
+        this.currentBlock.getTerminatorKind() !== 'throw';
       if (bodyFallsThrough) {
         this.currentBlock.setTerminator({ kind: 'jump', targets: [condBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
@@ -2402,8 +2461,7 @@ export class ASTLowering {
       this.leaveBreakTarget();
 
       this.currentBlock = endBlock;
-    }
-    else if (ts.isSwitchStatement(stmt)) {
+    } else if (ts.isSwitchStatement(stmt)) {
       const discriminantReg = this.visitExpression(stmt.expression);
       const endBlock = this.fnBuilder.createBlock('switch_end');
       const clauseBlocks = stmt.caseBlock.clauses.map((clause, index) => this.fnBuilder.createBlock(`switch_clause_${index}`));
@@ -2459,9 +2517,10 @@ export class ASTLowering {
       stmt.caseBlock.clauses.forEach((clause, index) => {
         this.currentBlock = clauseBlocks[index]!;
         clause.statements.forEach((caseStmt) => this.visitStatement(caseStmt));
-        const fallsThrough = !this.isSyntheticDeadBlock(this.currentBlock)
-          && this.currentBlock.getTerminatorKind() !== 'return'
-          && this.currentBlock.getTerminatorKind() !== 'throw';
+        const fallsThrough =
+          !this.isSyntheticDeadBlock(this.currentBlock) &&
+          this.currentBlock.getTerminatorKind() !== 'return' &&
+          this.currentBlock.getTerminatorKind() !== 'throw';
         if (fallsThrough) {
           const nextTarget = clauseBlocks[index + 1]?.id ?? endBlock.id;
           this.currentBlock.setTerminator({ kind: 'jump', targets: [nextTarget] });
@@ -2471,15 +2530,13 @@ export class ASTLowering {
 
       this.leaveBreakTarget();
       this.currentBlock = endBlock;
-    }
-    else if (ts.isTryStatement(stmt)) {
+    } else if (ts.isTryStatement(stmt)) {
       if (stmt.finallyBlock) {
         this.lowerTryFinallyStatement(stmt);
       } else {
         this.lowerTryCatchStatement(stmt);
       }
-    }
-    else {
+    } else {
       this.failUnsupported(stmt);
     }
   }
@@ -2497,11 +2554,12 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
       return;
     }
     const jsDoc = ts.getJSDocTags(functionNode);
-    const isVirtualized = options.forceVirtualizeAll
-      || options.forceVirtualizeFunctionNames?.has(functionName)
-      || jsDoc.some((tag) => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text))
-      || functionName === 'calculateSecretHash'
-      || functionName === 'encryptTEA';
+    const isVirtualized =
+      options.forceVirtualizeAll ||
+      options.forceVirtualizeFunctionNames?.has(functionName) ||
+      jsDoc.some((tag) => ['virtualize', 'obfuscate', 'protect-critical'].includes(tag.tagName.text)) ||
+      functionName === 'calculateSecretHash' ||
+      functionName === 'encryptTEA';
     const analysis = analyzeFunctionClosures(functionNode, new Set<string>());
     const attributes: FunctionAttribute[] = [];
     if (functionNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) {
@@ -2538,10 +2596,10 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
       });
     }
   };
-  
+
   ts.forEachChild(sourceFile, function visit(node) {
     if (node.parent === sourceFile && ts.isFunctionDeclaration(node) && node.name) {
-      const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+      const isExported = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
       lowerTopLevelFunction(node.name.text, node, isExported);
     } else if (node.parent === sourceFile && ts.isVariableStatement(node)) {
       const isExported = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;

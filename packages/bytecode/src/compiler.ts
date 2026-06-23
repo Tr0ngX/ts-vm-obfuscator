@@ -1,4 +1,13 @@
-import type { IRModule, IRFunction, BytecodeModule, VMBuildConfig, BytecodeFunction, Instruction, Operand, ConstantPoolEntry } from '@tsvm/shared';
+import type {
+  IRModule,
+  IRFunction,
+  BytecodeModule,
+  VMBuildConfig,
+  BytecodeFunction,
+  Instruction,
+  Operand,
+  ConstantPoolEntry,
+} from '@tsvm/shared';
 import { FunctionAttribute, OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
@@ -80,8 +89,8 @@ function isVariableLengthOpcode(opcode: number): boolean {
     opcode === 0x55 || // OpCode.ObjectNew
     opcode === 0x56 || // OpCode.Spread
     opcode === 0x57 || // OpCode.SpreadIntoArray
-    opcode === 0x5E || // OpCode.SuperCall
-    opcode === 0xFE    // OpCode.SuperInstruction
+    opcode === 0x5e || // OpCode.SuperCall
+    opcode === 0xfe // OpCode.SuperInstruction
   );
 }
 
@@ -142,8 +151,8 @@ function fuseInstructions(insts: Instruction[], config: VMBuildConfig): Instruct
               inst1.operands[0], // constIdx
               { kind: OperandKind.Register, value: inst1.result }, // regT
               regX, // regX
-              { kind: OperandKind.Register, value: inst2.result } // regR
-            ]
+              { kind: OperandKind.Register, value: inst2.result }, // regR
+            ],
           });
           i += 2;
           continue;
@@ -166,8 +175,8 @@ function fuseInstructions(insts: Instruction[], config: VMBuildConfig): Instruct
           operands: [
             { kind: OperandKind.Immediate, value: getEntropyMulId },
             { kind: OperandKind.Register, value: inst1.result }, // regT
-            { kind: OperandKind.Register, value: inst2.result } // regR
-          ]
+            { kind: OperandKind.Register, value: inst2.result }, // regR
+          ],
         });
         i += 2;
         continue;
@@ -191,8 +200,8 @@ function fuseInstructions(insts: Instruction[], config: VMBuildConfig): Instruct
             inst1.operands[0], // constIdx
             { kind: OperandKind.Register, value: inst1.result }, // regT
             inst2.operands[1], // regX (second operand)
-            { kind: OperandKind.Register, value: inst2.result } // regR
-          ]
+            { kind: OperandKind.Register, value: inst2.result }, // regR
+          ],
         });
         i += 2;
         continue;
@@ -250,9 +259,9 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
       for (const block of irFn.blocks) {
         blockInstIndices.set(block.id, flatInsts.length);
-        
-        const mappedInstructions = block.instructions.map(inst => {
-          const mappedOperands = inst.operands.map(op => {
+
+        const mappedInstructions = block.instructions.map((inst) => {
+          const mappedOperands = inst.operands.map((op) => {
             if (op.kind === OperandKind.Register) {
               return { ...op, value: mapReg(op.value) };
             }
@@ -265,20 +274,18 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
           return {
             ...inst,
             result: inst.result ? mapReg(inst.result) : undefined,
-            operands: mappedOperands
+            operands: mappedOperands,
           };
         });
 
         const fusedInstructions = fuseInstructions(mappedInstructions, config);
         flatInsts.push(...fusedInstructions);
-        
+
         if (block.terminator) {
           if (block.terminator.kind === 'jump') {
             flatInsts.push({
               opcode: OpCode.Jmp,
-              operands: [
-                { kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! }
-              ]
+              operands: [{ kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! }],
             });
           } else if (block.terminator.kind === 'branch') {
             flatInsts.push({
@@ -286,21 +293,17 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               operands: [
                 { kind: OperandKind.Register, value: mapReg(block.terminator.condition!) },
                 { kind: OperandKind.BlockLabel, value: block.terminator.targets[0]! },
-                { kind: OperandKind.BlockLabel, value: block.terminator.targets[1]! }
-              ]
+                { kind: OperandKind.BlockLabel, value: block.terminator.targets[1]! },
+              ],
             });
           } else if (block.terminator.kind === 'return') {
-            const ops = block.terminator.returnValue
-              ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }]
-              : [];
+            const ops = block.terminator.returnValue ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }] : [];
             flatInsts.push({
               opcode: OpCode.Return,
-              operands: ops
+              operands: ops,
             });
           } else if (block.terminator.kind === 'throw') {
-            const ops = block.terminator.returnValue
-              ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }]
-              : [];
+            const ops = block.terminator.returnValue ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }] : [];
             flatInsts.push({
               opcode: OpCode.Throw,
               operands: ops,
@@ -324,7 +327,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       // Duplicate constant pool entries, mapping expected path hash values
       let expectedPathHash = 0;
       for (const inst of flatInsts) {
-        expectedPathHash = (Math.imul(expectedPathHash, 31) + inst.mappedOp!) & 0xFFFFFFFF;
+        expectedPathHash = (Math.imul(expectedPathHash, 31) + inst.mappedOp!) & 0xffffffff;
         for (const op of inst.operands) {
           if (op.kind === OperandKind.ConstantIndex) {
             const origIdx = op.value as number;
@@ -333,7 +336,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
             duplicatedCP.push({
               ...origEntry,
               index: newIdx,
-              expectedPathHash: config.rollingKeys ? expectedPathHash : undefined
+              expectedPathHash: config.rollingKeys ? expectedPathHash : undefined,
             });
             (op as unknown as { value: number }).value = newIdx;
           }
@@ -347,7 +350,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         irFn,
         flatInsts,
         blockInstIndices,
-        maxRegs
+        maxRegs,
       });
     }
   }
@@ -366,7 +369,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
   shuffledIndices.forEach((origIdx, shuffledIdx) => {
     shuffledCP[shuffledIdx] = {
       ...duplicatedCP[origIdx]!,
-      index: shuffledIdx
+      index: shuffledIdx,
     };
   });
 
@@ -399,7 +402,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         }
 
         const inst = flatInsts[i]!;
-        
+
         let mappedOp = inst.mappedOp !== undefined ? inst.mappedOp : inst.opcode;
         const forward = mapping.forward.get(inst.opcode);
         if (inst.mappedOp === undefined) {
@@ -437,7 +440,8 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
             val = op.value;
           }
 
-          if (config.immediateEncoding === 1) { // VariableLength
+          if (config.immediateEncoding === 1) {
+            // VariableLength
             let v = val;
             do {
               v >>>= 7;
@@ -456,18 +460,18 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       if (inst.opcode === OpCode.Jmp || inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
         const ops = inst.operands!;
         if (inst.opcode === OpCode.Jmp) {
-           if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
-             const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-             (ops[0] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
-             (ops[0] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
-           }
+          if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
+            const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
+            (ops[0] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
+            (ops[0] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+          }
         } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
-            const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
-            const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
-            (ops[1] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetTrueIdx]!;
-            (ops[1] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
-            (ops[2] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetFalseIdx]!;
-            (ops[2] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+          const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
+          const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
+          (ops[1] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetTrueIdx]!;
+          (ops[1] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+          (ops[2] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetFalseIdx]!;
+          (ops[2] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
         }
       } else {
         for (const op of inst.operands) {
@@ -490,7 +494,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       localCount: irFn.locals.length,
       maxRegisters: maxRegs,
       attributes: irFn.attributes,
-      isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported)
+      isEntryPoint: !irFn.attributes.includes(FunctionAttribute.Nested) && (irFn.isVirtualized || irFn.isExported),
     });
   }
 
@@ -498,22 +502,26 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
   const constantPool = encodeConstantPool(shuffledCP, config.constantPoolEncoding, config.seed);
 
-  const sourceFileName = irModule.sourceFile.split(/[\\/]/).pop()?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'unknown';
+  const sourceFileName =
+    irModule.sourceFile
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/[^a-zA-Z0-9]/g, '_') ?? 'unknown';
 
   return {
-    magic: 0x54534F42,
+    magic: 0x54534f42,
     version: 1,
     buildId: `build_${config.seed}_${sourceFileName}`,
     functions: shuffledFunctions,
     constantPool,
     opcodeMapping: mapping,
-    entryPointIndex: shuffledFunctions.findIndex(f => f.isEntryPoint),
+    entryPointIndex: shuffledFunctions.findIndex((f) => f.isEntryPoint),
     metadata: {
       buildTimestamp: Date.now(),
       buildId: `build_${config.seed}`,
       sourceHash: computeSourceHash(irModule),
       profile: config.profile ?? 'generic',
-      deterministicSeed: config.seed
-    }
+      deterministicSeed: config.seed,
+    },
   };
 }

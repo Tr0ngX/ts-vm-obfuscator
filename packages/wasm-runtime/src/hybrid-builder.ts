@@ -2,9 +2,8 @@ import type { BytecodeModule, VMBuildConfig, VMRuntimeBundle } from '@tsvm/share
 import { buildVMRuntime } from '@tsvm/vm-runtime';
 
 const WASM_CORE_BYTES = [
-  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 127, 3, 2, 1, 0,
-  7, 21, 1, 17, 116, 115, 118, 109, 95, 119, 97, 115, 109, 95, 98, 97,
-  99, 107, 101, 110, 100, 0, 0, 10, 6, 1, 4, 0, 65, 1, 11,
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 127, 3, 2, 1, 0, 7, 21, 1, 17, 116, 115, 118, 109, 95, 119, 97, 115, 109, 95, 98, 97, 99,
+  107, 101, 110, 100, 0, 0, 10, 6, 1, 4, 0, 65, 1, 11,
 ];
 
 function createWasmBootstrap(): string {

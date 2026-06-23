@@ -15,7 +15,7 @@ describe('Benchmark Suite Executor', () => {
         opaquePredicates: { enabled: true, density: 0.2 },
         stringEncryption: { enabled: true, threshold: 0.8 },
         namespaceVirtualization: { enabled: true },
-        typeLevelFakePath: { enabled: true }
+        typeLevelFakePath: { enabled: true },
       },
       vm: {
         runtimeHardening: 'stealth',
@@ -25,7 +25,7 @@ describe('Benchmark Suite Executor', () => {
         antiDebug: true,
         tamperDetection: true,
         stealthDispatch: true,
-      }
+      },
     };
 
     const mockIR: IRModule[] = [
@@ -41,13 +41,13 @@ describe('Benchmark Suite Executor', () => {
             blocks: [],
             locals: [
               { name: 'hash', register: 'r0', type: IRType.Any, isCaptured: false },
-              { name: 'i', register: 'r1', type: IRType.Any, isCaptured: false }
+              { name: 'i', register: 'r1', type: IRType.Any, isCaptured: false },
             ],
             isVirtualized: false,
             isExported: false,
             attributes: [],
-            capturedVariables: []
-          }
+            capturedVariables: [],
+          },
         ],
         globals: [],
         imports: [],
@@ -59,9 +59,9 @@ describe('Benchmark Suite Executor', () => {
           functionCount: 1,
           blockCount: 5,
           instructionCount: 45,
-          buildTimestamp: Date.now()
-        }
-      }
+          buildTimestamp: Date.now(),
+        },
+      },
     ];
 
     const mockBytecode: BytecodeModule[] = [
@@ -79,22 +79,38 @@ describe('Benchmark Suite Executor', () => {
             localCount: 0,
             maxRegisters: 2,
             bytecode: new Uint8Array([
-              0x02, 0x00, 0x00, 0x00, 0x00, // LoadLocal
-              0x30, 0x0A, 0x00, 0x00, 0x00, // Jmp
-              0x40, 0x01, 0x00, 0x00, 0x00, // Call
-              0x03, 0x00, 0x00, 0x00, 0x00, // StoreLocal
+              0x02,
+              0x00,
+              0x00,
+              0x00,
+              0x00, // LoadLocal
+              0x30,
+              0x0a,
+              0x00,
+              0x00,
+              0x00, // Jmp
+              0x40,
+              0x01,
+              0x00,
+              0x00,
+              0x00, // Call
+              0x03,
+              0x00,
+              0x00,
+              0x00,
+              0x00, // StoreLocal
             ]),
-            isEntryPoint: true
-          }
+            isEntryPoint: true,
+          },
         ],
         entryPointIndex: 0,
         metadata: {
           buildId: 'build_test_123',
           sourceHash: 'abc',
           profile: 'stealth-profile',
-          deterministicSeed: 42
-        }
-      }
+          deterministicSeed: 42,
+        },
+      },
     ];
 
     // 2. Act
@@ -117,21 +133,20 @@ describe('Benchmark Suite Executor', () => {
     expect(mainCase.sizeOverheadBytes).toBeGreaterThan(0);
 
     // Validate control flow branch density and shannon entropy
-    const branchMetric = mainCase.metrics.find(m => m.name === 'CFG Branch Density Ratio');
+    const branchMetric = mainCase.metrics.find((m) => m.name === 'CFG Branch Density Ratio');
     expect(branchMetric).toBeDefined();
     expect(branchMetric!.value).toBeDefined();
     expect(branchMetric!.unit).toBe('%');
 
-    const renamingEntropyMetric = mainCase.metrics.find(m => m.name === 'Renaming Information Entropy');
+    const renamingEntropyMetric = mainCase.metrics.find((m) => m.name === 'Renaming Information Entropy');
     expect(renamingEntropyMetric).toBeDefined();
     expect(renamingEntropyMetric!.value).toBeGreaterThan(0);
 
     // Validate reverse attempts scoring (resilience)
     expect(results.reverseAttempts).toHaveLength(2);
-    const solverAttempt = results.reverseAttempts.find(r => r.model === 'LLM_SymbolicExecutor');
+    const solverAttempt = results.reverseAttempts.find((r) => r.model === 'LLM_SymbolicExecutor');
     expect(solverAttempt).toBeDefined();
     expect(solverAttempt!.semanticRecovery).toBeLessThan(40); // Hardened by stealth & rolling keys
     expect(solverAttempt!.graphRecovery).toBeLessThan(45);
   });
 });
-

@@ -1,4 +1,14 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, Instruction, BasicBlock, TerminatorInstruction, Operand, Register } from '@tsvm/shared';
+import type {
+  TransformPass,
+  TransformContext,
+  TransformResult,
+  IRModule,
+  Instruction,
+  BasicBlock,
+  TerminatorInstruction,
+  Operand,
+  Register,
+} from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
 import { getMaxRegister } from '../utils.js';
 
@@ -10,14 +20,11 @@ export class ControlFlowFlatteningPass implements TransformPass {
     let nodesTransformed = 0;
     const constantPool = [...ctx.module.constantPool];
 
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       if (!func.isVirtualized || func.blocks.length < 3) return func;
 
-      const hasTryCatch = func.blocks.some(block =>
-        block.instructions.some(inst =>
-          inst.opcode === OpCode.TryCatchBegin ||
-          inst.opcode === OpCode.TryCatchEnd
-        )
+      const hasTryCatch = func.blocks.some((block) =>
+        block.instructions.some((inst) => inst.opcode === OpCode.TryCatchBegin || inst.opcode === OpCode.TryCatchEnd),
       );
       if (hasTryCatch) return func;
 
@@ -30,7 +37,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const stateMap = new Map<string, number>();
       const blockOrder = ctx.rng.shuffle([...func.blocks]);
       for (const block of func.blocks) {
-        stateMap.set(block.id, ctx.rng.nextRange(1000, 0x7FFFFFFF));
+        stateMap.set(block.id, ctx.rng.nextRange(1000, 0x7fffffff));
       }
 
       // 2. Find max register to allocate state register beyond current usage
@@ -55,7 +62,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       }
 
       const getOrAddNumberConstant = (val: number): number => {
-        let idx = constantPool.findIndex(c => c.kind === ConstantKind.Number && c.value === val);
+        let idx = constantPool.findIndex((c) => c.kind === ConstantKind.Number && c.value === val);
         if (idx === -1) {
           idx = constantPool.length;
           constantPool.push({ index: idx, kind: ConstantKind.Number, value: val });
@@ -87,17 +94,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
           const targetState = stateMap.get(block.terminator.targets[0]!)!;
           caseInstructions.push({
             opcode: OpCode.LoadConst,
-            operands: [
-              { kind: OperandKind.ConstantIndex, value: stateConstants.get(targetState)! }
-            ],
-            result: stateReg
+            operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(targetState)! }],
+            result: stateReg,
           });
           caseTerminator = { kind: 'jump', targets: [dispatcherId] };
         } else if (block.terminator.kind === 'branch') {
           // Branch: if condition, set true-state else set false-state, then jump to dispatcher
           const trueState = stateMap.get(block.terminator.targets[0]!)!;
           const falseState = stateMap.get(block.terminator.targets[1]!)!;
-          
+
           const trueBlockId = `__cff_br_t_${ctx.rng.identifier(4)}`;
           const falseBlockId = `__cff_br_f_${ctx.rng.identifier(4)}`;
 
@@ -106,34 +111,38 @@ export class ControlFlowFlatteningPass implements TransformPass {
           caseBlocks.push({
             id: trueBlockId,
             label: 'cff_br_true',
-            instructions: [{
-              opcode: OpCode.LoadConst,
-              operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(trueState)! }],
-              result: stateReg
-            }],
+            instructions: [
+              {
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(trueState)! }],
+                result: stateReg,
+              },
+            ],
             terminator: { kind: 'jump', targets: [dispatcherId] },
             predecessors: [caseLabelId],
             successors: [dispatcherId],
-            phiNodes: []
+            phiNodes: [],
           });
           caseBlocks.push({
             id: falseBlockId,
             label: 'cff_br_false',
-            instructions: [{
-              opcode: OpCode.LoadConst,
-              operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(falseState)! }],
-              result: stateReg
-            }],
+            instructions: [
+              {
+                opcode: OpCode.LoadConst,
+                operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(falseState)! }],
+                result: stateReg,
+              },
+            ],
             terminator: { kind: 'jump', targets: [dispatcherId] },
             predecessors: [caseLabelId],
             successors: [dispatcherId],
-            phiNodes: []
+            phiNodes: [],
           });
 
           caseTerminator = {
             kind: 'branch',
             targets: [trueBlockId, falseBlockId],
-            condition: block.terminator.condition
+            condition: block.terminator.condition,
           };
         } else {
           caseTerminator = block.terminator;
@@ -146,12 +155,12 @@ export class ControlFlowFlatteningPass implements TransformPass {
           terminator: caseTerminator,
           predecessors: [dispatcherId],
           successors: caseTerminator.targets || [],
-          phiNodes: block.phiNodes || []
+          phiNodes: block.phiNodes || [],
         });
       }
 
       // Build perfect hashing table
-      const orderedCases = [...caseBlocks.filter(b => b.label?.startsWith('cff_case_'))];
+      const orderedCases = [...caseBlocks.filter((b) => b.label?.startsWith('cff_case_'))];
 
       let tableSize = 1;
       while (tableSize < orderedCases.length) {
@@ -160,10 +169,9 @@ export class ControlFlowFlatteningPass implements TransformPass {
 
       // Find a prime that results in a collision-free mapping
       const primes = [
-        31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 
-        101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199,
-        211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293,
-        307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397
+        31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167,
+        173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313,
+        317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397,
       ];
 
       let selectedPrime = 31;
@@ -205,17 +213,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const entryBlockInstructions: Instruction[] = [
         {
           opcode: OpCode.LoadConst,
-          operands: [
-            { kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }
-          ],
-          result: stateReg
+          operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }],
+          result: stateReg,
         },
         // Initialize jump table array
         {
           opcode: OpCode.ArrayNew,
           operands: [],
-          result: tableReg
-        }
+          result: tableReg,
+        },
       ];
 
       // Populating the table array
@@ -226,21 +232,21 @@ export class ControlFlowFlatteningPass implements TransformPass {
           {
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.BlockLabel, value: targetBlockId }],
-            result: constLblReg
+            result: constLblReg,
           },
           {
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.ConstantIndex, value: valIdx }],
-            result: constIdxReg
+            result: constIdxReg,
           },
           {
             opcode: OpCode.ComputedSet,
             operands: [
               { kind: OperandKind.Register, value: tableReg },
               { kind: OperandKind.Register, value: constIdxReg },
-              { kind: OperandKind.Register, value: constLblReg }
-            ]
-          }
+              { kind: OperandKind.Register, value: constLblReg },
+            ],
+          },
         );
       }
 
@@ -251,7 +257,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
         terminator: { kind: 'jump', targets: [dispatcherId] },
         predecessors: [],
         successors: [dispatcherId],
-        phiNodes: []
+        phiNodes: [],
       };
 
       // Real dispatcher block performing perfect hashing modulo jump table
@@ -263,51 +269,51 @@ export class ControlFlowFlatteningPass implements TransformPass {
           {
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(selectedPrime) }],
-            result: primeReg
+            result: primeReg,
           },
           // 2. Mul: stateReg * primeReg
           {
             opcode: OpCode.Mul,
             operands: [
               { kind: OperandKind.Register, value: stateReg },
-              { kind: OperandKind.Register, value: primeReg }
+              { kind: OperandKind.Register, value: primeReg },
             ],
-            result: mulReg
+            result: mulReg,
           },
           // 3. Load table size
           {
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(tableSize) }],
-            result: sizeReg
+            result: sizeReg,
           },
           // 4. Mod: mulReg % sizeReg
           {
             opcode: OpCode.Mod,
             operands: [
               { kind: OperandKind.Register, value: mulReg },
-              { kind: OperandKind.Register, value: sizeReg }
+              { kind: OperandKind.Register, value: sizeReg },
             ],
-            result: idxReg
+            result: idxReg,
           },
           // 5. ComputedGet: tableReg[idxReg] -> targetReg
           {
             opcode: OpCode.ComputedGet,
             operands: [
               { kind: OperandKind.Register, value: tableReg },
-              { kind: OperandKind.Register, value: idxReg }
+              { kind: OperandKind.Register, value: idxReg },
             ],
-            result: targetReg
+            result: targetReg,
           },
           // 6. Jmp targetReg
           {
             opcode: OpCode.Jmp,
-            operands: [{ kind: OperandKind.Register, value: targetReg }]
-          }
+            operands: [{ kind: OperandKind.Register, value: targetReg }],
+          },
         ],
         terminator: { kind: 'dynamic_jmp' as unknown as TerminatorInstruction['kind'], targets: [] },
-        predecessors: [entryBlockId, ...caseBlocks.map(b => b.id)],
+        predecessors: [entryBlockId, ...caseBlocks.map((b) => b.id)],
         successors: [],
-        phiNodes: []
+        phiNodes: [],
       };
 
       // 6. Build decoy comparison chains as noise to confuse pattern scanners
@@ -316,9 +322,9 @@ export class ControlFlowFlatteningPass implements TransformPass {
         const decoyCmpBlockId = `__cff_decoy_cmp_${i}_${ctx.rng.identifier(4)}`;
         const decoyCaseBlockId = `__cff_decoy_case_${i}_${ctx.rng.identifier(4)}`;
         const decoyNextBlockId = i === 0 ? `__cff_decoy_cmp_1_${ctx.rng.identifier(4)}` : exitId;
-        const decoyStateId = ctx.rng.nextRange(1000, 0x7FFFFFFF);
+        const decoyStateId = ctx.rng.nextRange(1000, 0x7fffffff);
         const decoyStateIdx = getOrAddNumberConstant(decoyStateId);
-        
+
         decoyBlocks.push(
           {
             id: decoyCmpBlockId,
@@ -327,25 +333,25 @@ export class ControlFlowFlatteningPass implements TransformPass {
               {
                 opcode: OpCode.LoadConst,
                 operands: [{ kind: OperandKind.ConstantIndex, value: decoyStateIdx }],
-                result: tempReg
+                result: tempReg,
               },
               {
                 opcode: OpCode.Eq,
                 operands: [
                   { kind: OperandKind.Register, value: stateReg },
-                  { kind: OperandKind.Register, value: tempReg }
+                  { kind: OperandKind.Register, value: tempReg },
                 ],
-                result: tempReg
-              }
+                result: tempReg,
+              },
             ],
             terminator: {
               kind: 'branch',
               targets: [decoyCaseBlockId, decoyNextBlockId],
-              condition: tempReg
+              condition: tempReg,
             },
             predecessors: [],
             successors: [decoyCaseBlockId, decoyNextBlockId],
-            phiNodes: []
+            phiNodes: [],
           },
           {
             id: decoyCaseBlockId,
@@ -354,17 +360,17 @@ export class ControlFlowFlatteningPass implements TransformPass {
               {
                 opcode: OpCode.LoadConst,
                 operands: [{ kind: OperandKind.ConstantIndex, value: decoyStateIdx }],
-                result: stateReg
-              }
+                result: stateReg,
+              },
             ],
             terminator: {
               kind: 'jump',
-              targets: [dispatcherId]
+              targets: [dispatcherId],
             },
             predecessors: [decoyCmpBlockId],
             successors: [dispatcherId],
-            phiNodes: []
-          }
+            phiNodes: [],
+          },
         );
       }
 
@@ -376,20 +382,14 @@ export class ControlFlowFlatteningPass implements TransformPass {
         terminator: { kind: 'return', targets: [] },
         predecessors: [],
         successors: [],
-        phiNodes: []
+        phiNodes: [],
       };
 
       // 7. Assemble all blocks in shuffled order
-      const allBlocks = ctx.rng.shuffle([
-        entryBlock,
-        dispatcherBlock,
-        ...decoyBlocks,
-        ...caseBlocks,
-        exitBlock
-      ]);
+      const allBlocks = ctx.rng.shuffle([entryBlock, dispatcherBlock, ...decoyBlocks, ...caseBlocks, exitBlock]);
 
       // Entry must be first
-      const entryIdx = allBlocks.findIndex(b => b.id === entryBlockId);
+      const entryIdx = allBlocks.findIndex((b) => b.id === entryBlockId);
       if (entryIdx > 0) {
         [allBlocks[0], allBlocks[entryIdx]] = [allBlocks[entryIdx]!, allBlocks[0]!];
       }
@@ -401,8 +401,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
       module: { ...ctx.module, functions: newFunctions, constantPool },
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }
-

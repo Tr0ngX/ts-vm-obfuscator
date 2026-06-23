@@ -5,12 +5,18 @@ import type { VMBuildConfig } from '@tsvm/shared';
 
 function numToOperandKind(kind: number): OperandKind {
   switch (kind) {
-    case 0: return OperandKind.Register;
-    case 1: return OperandKind.Immediate;
-    case 2: return OperandKind.ConstantIndex;
-    case 3: return OperandKind.BlockLabel;
-    case 4: return OperandKind.FunctionRef;
-    default: throw new Error(`Unknown operand kind: ${kind}`);
+    case 0:
+      return OperandKind.Register;
+    case 1:
+      return OperandKind.Immediate;
+    case 2:
+      return OperandKind.ConstantIndex;
+    case 3:
+      return OperandKind.BlockLabel;
+    case 4:
+      return OperandKind.FunctionRef;
+    default:
+      throw new Error(`Unknown operand kind: ${kind}`);
   }
 }
 
@@ -48,9 +54,9 @@ function unrollKeys(bytes: Uint8Array, seed: number): Uint8Array {
   const result = new Uint8Array(bytes.length);
   for (let pc = 0; pc < bytes.length; pc++) {
     const encoded = bytes[pc]!;
-    const rollingKey = ((seed ^ (pc * 0x9E3779B9)) >>> 8) & 0xFF;
+    const rollingKey = ((seed ^ (pc * 0x9e3779b9)) >>> 8) & 0xff;
     const offsetVal = encoded ^ rollingKey;
-    result[pc] = (offsetVal - pc) & 0xFF;
+    result[pc] = (offsetVal - pc) & 0xff;
   }
   return result;
 }
@@ -61,7 +67,7 @@ function readLEB128(bytes: Uint8Array, offset: { pos: number }): number {
   let b = 0;
   do {
     b = bytes[offset.pos++]!;
-    val |= (b & 0x7F) << shift;
+    val |= (b & 0x7f) << shift;
     shift += 7;
   } while (b & 0x80);
   return val;
@@ -166,13 +172,13 @@ export function decodeBytecode(bytes: Uint8Array, mapping: OpcodeMapping, config
     let mappedOp: number;
     if (config.stealthDispatch) {
       const delta = raw[offset.pos++]!;
-      mappedOp = (delta + currentHandlerIdx) & 0xFF;
+      mappedOp = (delta + currentHandlerIdx) & 0xff;
     } else {
       mappedOp = raw[offset.pos++]!;
     }
 
     const canonicalOp = mapping.reverse.get(mappedOp);
-    const opcode = canonicalOp ?? mappedOp as OpCode;
+    const opcode = canonicalOp ?? (mappedOp as OpCode);
 
     const numJunk = config.junkInsertion ? (opcode * 7 + config.seed) % 4 : 0;
     offset.pos += numJunk;
@@ -241,7 +247,7 @@ export function decodeBytecode(bytes: Uint8Array, mapping: OpcodeMapping, config
 export function decodeConstantPool(encoded: EncodedConstant[], scheme: ConstantEncodingScheme, seed: number): ConstantPoolEntry[] {
   return encoded.map((entry, index) => {
     if (scheme === ConstantEncodingScheme.XorRotate && entry.kind === ConstantKind.String && typeof entry.value === 'string') {
-      let stringSeed = (seed ^ (index * 0x9E3779B9)) & 0xffffffff;
+      let stringSeed = (seed ^ (index * 0x9e3779b9)) & 0xffffffff;
       if (entry.decodingKey !== 0) {
         stringSeed = (stringSeed ^ entry.decodingKey) & 0xffffffff;
       }
@@ -406,17 +412,27 @@ export function disassemble(module: BytecodeModule): string {
       for (let i = 0; i < instructions.length; i++) {
         const inst = instructions[i]!;
         const opName = opcodeNames[inst.opcode] ?? `OP_${inst.opcode.toString(16).toUpperCase().padStart(2, '0')}`;
-        const mappedStr = inst.mappedOp !== undefined && inst.mappedOp !== inst.opcode
-          ? ` (mapped: 0x${inst.mappedOp.toString(16).toUpperCase().padStart(2, '0')})`
-          : '';
-        const opsStr = inst.operands.map(op => {
-          const kindStr = op.kind === OperandKind.Register ? 'r' + op.value :
-            op.kind === OperandKind.Immediate ? '#' + op.value :
-            op.kind === OperandKind.ConstantIndex ? '@' + op.value :
-            op.kind === OperandKind.BlockLabel ? 'L' + op.value :
-            op.kind === OperandKind.FunctionRef ? 'fn' + op.value : String(op.value);
-          return kindStr;
-        }).join(', ');
+        const mappedStr =
+          inst.mappedOp !== undefined && inst.mappedOp !== inst.opcode
+            ? ` (mapped: 0x${inst.mappedOp.toString(16).toUpperCase().padStart(2, '0')})`
+            : '';
+        const opsStr = inst.operands
+          .map((op) => {
+            const kindStr =
+              op.kind === OperandKind.Register
+                ? 'r' + op.value
+                : op.kind === OperandKind.Immediate
+                  ? '#' + op.value
+                  : op.kind === OperandKind.ConstantIndex
+                    ? '@' + op.value
+                    : op.kind === OperandKind.BlockLabel
+                      ? 'L' + op.value
+                      : op.kind === OperandKind.FunctionRef
+                        ? 'fn' + op.value
+                        : String(op.value);
+            return kindStr;
+          })
+          .join(', ');
         lines.push(`  ${byteOffset.toString(10).padStart(4, ' ')}: ${opName}${mappedStr} ${opsStr}`);
         byteOffset += estimateInstructionSize(inst, config, module.metadata.deterministicSeed ?? 0);
       }

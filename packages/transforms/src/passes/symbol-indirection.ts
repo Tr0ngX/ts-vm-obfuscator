@@ -18,9 +18,9 @@ export class SymbolIndirectionPass implements TransformPass {
 
   execute(ctx: TransformContext): TransformResult {
     let symbolsRenamed = 0;
-    
+
     // Rename functions
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       // Always preserve exported function names — the VM runtime needs
       // the original name for module.exports binding.
       // Internal implementation is still fully obfuscated via bytecode.
@@ -30,48 +30,48 @@ export class SymbolIndirectionPass implements TransformPass {
 
       // Preserve special names like 'constructor' or React specific ones if needed
       if (ctx.profile.reactSafe && func.name.startsWith('use')) {
-         return func;
+        return func;
       }
 
       const newName = `fn_${ctx.rng.identifier(8)}`;
       symbolsRenamed++;
 
       // Also rename locals
-      const newLocals = func.locals.map(local => {
+      const newLocals = func.locals.map((local) => {
         symbolsRenamed++;
         return {
           ...local,
-          name: `v_${ctx.rng.identifier(6)}`
+          name: `v_${ctx.rng.identifier(6)}`,
         };
       });
 
       return {
         ...func,
         name: newName,
-        locals: newLocals
+        locals: newLocals,
       };
     });
 
-    const newGlobals = ctx.module.globals.map(g => {
+    const newGlobals = ctx.module.globals.map((g) => {
       if (g.isExported && ctx.profile.preserveExports) return g;
       symbolsRenamed++;
       return {
         ...g,
-        name: `g_${ctx.rng.identifier(8)}`
+        name: `g_${ctx.rng.identifier(8)}`,
       };
     });
 
     const newModule: IRModule = {
       ...ctx.module,
       functions: newFunctions,
-      globals: newGlobals
+      globals: newGlobals,
     };
 
     return {
       module: newModule,
       symbolsRenamed,
       nodesTransformed: 0,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

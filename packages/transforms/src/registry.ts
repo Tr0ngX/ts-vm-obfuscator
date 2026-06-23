@@ -19,20 +19,20 @@ export class TransformRegistry {
 
   constructor(profile: ObfuscationProfile) {
     const availablePasses: Record<string, new () => TransformPass> = {
-      'PreserveTypeIllusionsPass': PreserveTypeIllusionsPass,
-      'GenericConfusionPass': GenericConfusionPass,
-      'DecoratorAwareLoweringPass': DecoratorAwareLoweringPass,
-      'NamespaceVirtualizationPass': NamespaceVirtualizationPass,
-      'TypeLevelFakePathPass': TypeLevelFakePathPass,
-      'SymbolIndirectionPass': SymbolIndirectionPass,
-      'StringPoolEncodingPass': StringPoolEncodingPass,
-      'FunctionVirtualizationPass': FunctionVirtualizationPass,
-      'DeadCodeInjectionPass': DeadCodeInjectionPass,
-      'ControlFlowFlatteningPass': ControlFlowFlatteningPass,
-      'StripDebugPass': StripDebugPass,
-      'IRValidationPass': IRValidationPass,
-      'RegisterCompactingPass': RegisterCompactingPass,
-      'InstructionSubstitutionPass': InstructionSubstitutionPass,
+      PreserveTypeIllusionsPass: PreserveTypeIllusionsPass,
+      GenericConfusionPass: GenericConfusionPass,
+      DecoratorAwareLoweringPass: DecoratorAwareLoweringPass,
+      NamespaceVirtualizationPass: NamespaceVirtualizationPass,
+      TypeLevelFakePathPass: TypeLevelFakePathPass,
+      SymbolIndirectionPass: SymbolIndirectionPass,
+      StringPoolEncodingPass: StringPoolEncodingPass,
+      FunctionVirtualizationPass: FunctionVirtualizationPass,
+      DeadCodeInjectionPass: DeadCodeInjectionPass,
+      ControlFlowFlatteningPass: ControlFlowFlatteningPass,
+      StripDebugPass: StripDebugPass,
+      IRValidationPass: IRValidationPass,
+      RegisterCompactingPass: RegisterCompactingPass,
+      InstructionSubstitutionPass: InstructionSubstitutionPass,
     };
 
     for (const passConfig of profile.transforms) {

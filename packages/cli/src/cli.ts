@@ -119,8 +119,7 @@ Runtime notes:
     });
 }
 
-const isDirectExecution =
-  typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+const isDirectExecution = typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 
 if (isDirectExecution) {
   createProgram().parse(process.argv);

@@ -6,7 +6,7 @@ function inferRegisterTypes(
   blocks: readonly BasicBlock[],
   params: readonly any[],
   locals: readonly any[],
-  constantPool: readonly ConstantPoolEntry[]
+  constantPool: readonly ConstantPoolEntry[],
 ): Map<Register, IRType> {
   const types = new Map<Register, IRType>();
 
@@ -43,7 +43,8 @@ function inferRegisterTypes(
   const getOperandType = (op: any): IRType => {
     if (op.kind === OperandKind.Register) {
       return types.get(op.value as Register) ?? IRType.Any;
-    }if (op.kind === OperandKind.ConstantIndex) {
+    }
+    if (op.kind === OperandKind.ConstantIndex) {
       return getConstantType(op.value as number);
     }
     return IRType.Any;
@@ -149,7 +150,7 @@ export class InstructionSubstitutionPass implements TransformPass {
     const constantPool = [...ctx.module.constantPool];
 
     const getOrAddNumberConstant = (val: number): number => {
-      let idx = constantPool.findIndex(c => c.kind === ConstantKind.Number && c.value === val);
+      let idx = constantPool.findIndex((c) => c.kind === ConstantKind.Number && c.value === val);
       if (idx === -1) {
         idx = constantPool.length;
         constantPool.push({ index: idx, kind: ConstantKind.Number, value: val });
@@ -157,18 +158,18 @@ export class InstructionSubstitutionPass implements TransformPass {
       return idx;
     };
 
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       if (!func.isVirtualized) return func;
 
       const regTypes = inferRegisterTypes(func.blocks, func.params, func.locals, constantPool);
       let nextReg = getMaxRegister(func);
       let changed = false;
 
-      const newBlocks = func.blocks.map(block => {
+      const newBlocks = func.blocks.map((block) => {
         const newInstructions: Instruction[] = [];
 
         for (const inst of block.instructions) {
-          if (ctx.rng.nextFloat() >= 0.40) {
+          if (ctx.rng.nextFloat() >= 0.4) {
             newInstructions.push(inst);
             continue;
           }
@@ -176,7 +177,8 @@ export class InstructionSubstitutionPass implements TransformPass {
           const getOperandType = (op: any): IRType => {
             if (op.kind === OperandKind.Register) {
               return regTypes.get(op.value as Register) ?? IRType.Any;
-            }if (op.kind === OperandKind.ConstantIndex) {
+            }
+            if (op.kind === OperandKind.ConstantIndex) {
               const entry = constantPool[op.value as number];
               if (entry) {
                 if (entry.kind === ConstantKind.Number) return IRType.Number;
@@ -205,27 +207,25 @@ export class InstructionSubstitutionPass implements TransformPass {
                 { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp2 },
                 {
                   opcode: OpCode.LoadConst,
-                  operands: [
-                    { kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(2) }
-                  ],
-                  result: tempConst2
+                  operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(2) }],
+                  result: tempConst2,
                 },
                 {
                   opcode: OpCode.Mul,
                   operands: [
                     { kind: OperandKind.Register, value: temp2 },
-                    { kind: OperandKind.Register, value: tempConst2 }
+                    { kind: OperandKind.Register, value: tempConst2 },
                   ],
-                  result: temp3
+                  result: temp3,
                 },
                 {
                   opcode: OpCode.Add,
                   operands: [
                     { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp3 }
+                    { kind: OperandKind.Register, value: temp3 },
                   ],
-                  result: inst.result
-                }
+                  result: inst.result,
+                },
               );
 
               nodesTransformed++;
@@ -252,10 +252,10 @@ export class InstructionSubstitutionPass implements TransformPass {
                   opcode: OpCode.Sub,
                   operands: [
                     { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 }
+                    { kind: OperandKind.Register, value: temp2 },
                   ],
-                  result: inst.result
-                }
+                  result: inst.result,
+                },
               );
 
               nodesTransformed++;
@@ -282,10 +282,10 @@ export class InstructionSubstitutionPass implements TransformPass {
                   opcode: OpCode.Add,
                   operands: [
                     { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 }
+                    { kind: OperandKind.Register, value: temp2 },
                   ],
-                  result: inst.result
-                }
+                  result: inst.result,
+                },
               );
 
               nodesTransformed++;
@@ -312,10 +312,10 @@ export class InstructionSubstitutionPass implements TransformPass {
                   opcode: OpCode.Sub,
                   operands: [
                     { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 }
+                    { kind: OperandKind.Register, value: temp2 },
                   ],
-                  result: inst.result
-                }
+                  result: inst.result,
+                },
               );
 
               nodesTransformed++;
@@ -335,19 +335,14 @@ export class InstructionSubstitutionPass implements TransformPass {
               newInstructions.push(
                 {
                   opcode: OpCode.LoadConst,
-                  operands: [
-                    { kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(-1) }
-                  ],
-                  result: tempConstNeg1
+                  operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(-1) }],
+                  result: tempConstNeg1,
                 },
                 {
                   opcode: OpCode.Mul,
-                  operands: [
-                    opA,
-                    { kind: OperandKind.Register, value: tempConstNeg1 }
-                  ],
-                  result: inst.result
-                }
+                  operands: [opA, { kind: OperandKind.Register, value: tempConstNeg1 }],
+                  result: inst.result,
+                },
               );
 
               nodesTransformed++;
@@ -372,7 +367,7 @@ export class InstructionSubstitutionPass implements TransformPass {
           name: `isub_temp_r${reg}`,
           register: `r${reg}` as Register,
           type: IRType.Any,
-          isCaptured: false
+          isCaptured: false,
         });
       }
 
@@ -383,7 +378,7 @@ export class InstructionSubstitutionPass implements TransformPass {
       module: { ...ctx.module, functions: newFunctions, constantPool },
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

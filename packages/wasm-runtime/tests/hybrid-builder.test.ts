@@ -4,7 +4,7 @@ import { ConstantEncodingScheme, ImmediateEncodingScheme, OpCode, type BytecodeM
 
 function createReturnUndefinedModule(): BytecodeModule {
   return {
-    magic: 0x54534F42,
+    magic: 0x54534f42,
     version: 1,
     buildId: 'wasm-hybrid-test',
     opcodeMapping: {

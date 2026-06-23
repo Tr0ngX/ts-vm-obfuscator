@@ -3,7 +3,18 @@ import { buildVMRuntime } from '../src/polymorphic-builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import { decodeBytecode } from '../../bytecode/src/decoder.js';
 import { generateRemappedOpcodes } from '../../bytecode/src/opcodes.js';
-import { OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, FunctionAttribute, IRType, type ConstantKind, type IRModule, type Instruction, type VMBuildConfig } from '@tsvm/shared';
+import {
+  OpCode,
+  ImmediateEncodingScheme,
+  ConstantEncodingScheme,
+  OperandKind,
+  FunctionAttribute,
+  IRType,
+  type ConstantKind,
+  type IRModule,
+  type Instruction,
+  type VMBuildConfig,
+} from '@tsvm/shared';
 
 function makeModuleWithPool(constantPoolValues: { index: number; value: unknown; kind: string }[]): IRModule {
   const insts: Instruction[] = constantPoolValues.map((entry, i) => ({
@@ -75,10 +86,7 @@ const baseConfig: VMBuildConfig = {
 
 describe('VM Security', () => {
   it('resists code injection via constant pool with malicious strings', () => {
-    const maliciousStrings = [
-      '"); process.exit(1); ("',
-      '\\"; process.exit(1); //',
-    ];
+    const maliciousStrings = ['"); process.exit(1); ("', '\\"; process.exit(1); //'];
     for (const malicious of maliciousStrings) {
       const module = makeModuleWithPool([{ index: 0, value: malicious, kind: 'string' }]);
       const compiled = compileToBytecode(module, baseConfig);
@@ -107,7 +115,7 @@ describe('VM Security', () => {
     const mapping = generateRemappedOpcodes(7);
     const bundle = buildVMRuntime(
       {
-        magic: 0x54534F42,
+        magic: 0x54534f42,
         version: 1,
         buildId: 'trap-test',
         opcodeMapping: mapping,

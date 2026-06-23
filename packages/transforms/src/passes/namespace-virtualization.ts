@@ -4,7 +4,7 @@ import { getMaxRegister } from '../utils.js';
 
 /**
  * 1) Invariant đầu vào: Hàm truy cập các symbol thông qua namespace hoặc exported object (PropGet/PropSet).
- * 2) Invariant đầu ra: Các lookup namespace tĩnh bị biến thành lookup động trên một object graph ảo 
+ * 2) Invariant đầu ra: Các lookup namespace tĩnh bị biến thành lookup động trên một object graph ảo
  *    được quản lý ở runtime.
  * 3) Node kinds đụng tới: PropGet, PropSet, ComputedGet, ComputedSet.
  * 4) Edge cases: Bỏ qua các object native như window, document hoặc module của bên thứ ba không thể virtualize.
@@ -32,8 +32,6 @@ export class NamespaceVirtualizationPass implements TransformPass {
       return false;
     }
 
-
-
     function getPropertyNameOfRegister(func: IRFunction, reg: string, cp: readonly any[]): string | undefined {
       for (const block of func.blocks) {
         for (const inst of block.instructions) {
@@ -52,30 +50,110 @@ export class NamespaceVirtualizationPass implements TransformPass {
     }
 
     const standardBuiltins = new Set([
-      'prototype', 'constructor', 'length', 'name',
+      'prototype',
+      'constructor',
+      'length',
+      'name',
       // Array & Object methods
-      'push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'concat', 'join',
-      'forEach', 'map', 'filter', 'reduce', 'indexOf', 'includes', 'find', 'findIndex',
-      'keys', 'values', 'entries', 'toString', 'valueOf', 'toLocaleString',
-      'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'apply', 'call', 'bind',
+      'push',
+      'pop',
+      'shift',
+      'unshift',
+      'splice',
+      'slice',
+      'concat',
+      'join',
+      'forEach',
+      'map',
+      'filter',
+      'reduce',
+      'indexOf',
+      'includes',
+      'find',
+      'findIndex',
+      'keys',
+      'values',
+      'entries',
+      'toString',
+      'valueOf',
+      'toLocaleString',
+      'hasOwnProperty',
+      'isPrototypeOf',
+      'propertyIsEnumerable',
+      'apply',
+      'call',
+      'bind',
       // Promise & Async / Iterator
-      'then', 'catch', 'finally', 'resolve', 'reject', 'next', 'throw', 'return', 'value', 'done',
+      'then',
+      'catch',
+      'finally',
+      'resolve',
+      'reject',
+      'next',
+      'throw',
+      'return',
+      'value',
+      'done',
       // Error standard properties
-      'message', 'stack', 'cause',
+      'message',
+      'stack',
+      'cause',
       // Console & System
-      'log', 'error', 'warn', 'info', 'dir', 'clear',
+      'log',
+      'error',
+      'warn',
+      'info',
+      'dir',
+      'clear',
       // NodeJS/Browser standard & VM
-      'exports', 'module', 'require', 'global', 'window', 'document', 'process',
-      'readFileSync', 'writeFileSync', 'readdirSync', 'statSync', 'mtime', 'getTime',
-      'exec', 'test', 'match', 'replace', 'split', 'trim', 'toLowerCase', 'toUpperCase',
+      'exports',
+      'module',
+      'require',
+      'global',
+      'window',
+      'document',
+      'process',
+      'readFileSync',
+      'writeFileSync',
+      'readdirSync',
+      'statSync',
+      'mtime',
+      'getTime',
+      'exec',
+      'test',
+      'match',
+      'replace',
+      'split',
+      'trim',
+      'toLowerCase',
+      'toUpperCase',
       // Symbol properties or other standard ones
-      'Symbol', 'iterator', 'asyncIterator', 'toStringTag',
+      'Symbol',
+      'iterator',
+      'asyncIterator',
+      'toStringTag',
       // Reflect and Object proxy trap builtins
-      'setPrototypeOf', 'getPrototypeOf', 'defineProperty', 'defineProperties',
-      'getOwnPropertyDescriptor', 'getOwnPropertyNames', 'getOwnPropertySymbols',
-      'create', 'assign', 'freeze', 'seal', 'preventExtensions', 'isExtensible',
-      'isFrozen', 'isSealed', 'construct', 'has', 'get', 'set', 'deleteProperty',
-      'ownKeys'
+      'setPrototypeOf',
+      'getPrototypeOf',
+      'defineProperty',
+      'defineProperties',
+      'getOwnPropertyDescriptor',
+      'getOwnPropertyNames',
+      'getOwnPropertySymbols',
+      'create',
+      'assign',
+      'freeze',
+      'seal',
+      'preventExtensions',
+      'isExtensible',
+      'isFrozen',
+      'isSealed',
+      'construct',
+      'has',
+      'get',
+      'set',
+      'deleteProperty',
+      'ownKeys',
     ]);
 
     function hashString(str: string, seed: number): string {
@@ -87,11 +165,11 @@ export class NamespaceVirtualizationPass implements TransformPass {
         hash = Math.imul(hash, prime) >>> 0;
       }
       // XOR-fold and combine with rotated seed for wider hash space
-      const folded = ((hash >>> 16) ^ (hash & 0xFFFF)) ^ ((seed >>> 8) & 0xFFFF);
+      const folded = (hash >>> 16) ^ (hash & 0xffff) ^ ((seed >>> 8) & 0xffff);
       return folded.toString(16).padStart(4, '0') + ((hash ^ seed) >>> 0).toString(16);
     }
 
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       let changed = false;
       const nextReg = getMaxRegister(func);
       let tempIndex = 0;
@@ -107,7 +185,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
       while (sizeChanged) {
         const oldRegSize = paramRegs.size;
         const oldLocalSize = paramLocals.size;
-        
+
         for (const block of func.blocks) {
           for (const inst of block.instructions) {
             if (inst.opcode === OpCode.Move) {
@@ -136,13 +214,15 @@ export class NamespaceVirtualizationPass implements TransformPass {
             } else if (inst.result) {
               const srcOp = inst.operands[0];
               const isSrcReg = srcOp && srcOp.kind === OperandKind.Register && typeof srcOp.value === 'string';
-              
+
               if ((inst.opcode === OpCode.PropGet || inst.opcode === OpCode.ComputedGet) && isSrcReg && paramRegs.has(srcOp.value)) {
                 paramRegs.add(inst.result);
-              } else if (inst.opcode === OpCode.Call ||
-                         inst.opcode === OpCode.CallMethod ||
-                         inst.opcode === OpCode.CallWithArray ||
-                         inst.opcode === OpCode.CallMethodWithArray) {
+              } else if (
+                inst.opcode === OpCode.Call ||
+                inst.opcode === OpCode.CallMethod ||
+                inst.opcode === OpCode.CallWithArray ||
+                inst.opcode === OpCode.CallMethodWithArray
+              ) {
                 paramRegs.add(inst.result);
               } else if (inst.opcode === OpCode.RestArgs) {
                 paramRegs.add(inst.result);
@@ -175,7 +255,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
       while (lexicalSizeChanged) {
         const oldRegSize = lexicalThisRegs.size;
         const oldLocalSize = lexicalThisLocals.size;
-        
+
         for (const block of func.blocks) {
           for (const inst of block.instructions) {
             if (inst.opcode === OpCode.Move) {
@@ -222,7 +302,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
       while (localObjSizeChanged) {
         const oldRegSize = localObjects.size;
         const oldLocalSize = localObjectLocals.size;
-        
+
         for (const block of func.blocks) {
           for (const inst of block.instructions) {
             if (inst.opcode === OpCode.ObjectNew && inst.result) {
@@ -256,7 +336,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
         localObjSizeChanged = localObjects.size !== oldRegSize || localObjectLocals.size !== oldLocalSize;
       }
 
-      const newBlocks = func.blocks.map(block => {
+      const newBlocks = func.blocks.map((block) => {
         const newInstructions: Instruction[] = [];
         for (const inst of block.instructions) {
           if (inst.opcode === OpCode.PropGet || inst.opcode === OpCode.PropSet) {
@@ -264,35 +344,42 @@ export class NamespaceVirtualizationPass implements TransformPass {
             const keyOp = inst.operands[1];
 
             const isStaticContext = func.attributes && func.attributes.indexOf(FunctionAttribute.Static) >= 0;
-            const isObjThis = !isStaticContext && objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' &&
+            const isObjThis =
+              !isStaticContext &&
+              objOp &&
+              objOp.kind === OperandKind.Register &&
+              typeof objOp.value === 'string' &&
               (isThisRegister(func, objOp.value) || lexicalThisRegs.has(objOp.value));
-            const isObjParam = objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && paramRegs.has(objOp.value);
-            const isLocalObj = objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && localObjects.has(objOp.value);
+            const isObjParam =
+              objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && paramRegs.has(objOp.value);
+            const isLocalObj =
+              objOp && objOp.kind === OperandKind.Register && typeof objOp.value === 'string' && localObjects.has(objOp.value);
 
-            const propName = keyOp && keyOp.kind === OperandKind.Register && typeof keyOp.value === 'string'
-              ? getPropertyNameOfRegister(func, keyOp.value, constantPool)
-              : undefined;
+            const propName =
+              keyOp && keyOp.kind === OperandKind.Register && typeof keyOp.value === 'string'
+                ? getPropertyNameOfRegister(func, keyOp.value, constantPool)
+                : undefined;
 
-            const isBuiltin = propName && (
-              standardBuiltins.has(propName) ||
-              ctx.module.exports.some(e => e.exportedName === propName || e.localName === propName) ||
-              ctx.module.imports.some(i => i.localName === propName || i.importedName === propName)
-            );
+            const isBuiltin =
+              propName &&
+              (standardBuiltins.has(propName) ||
+                ctx.module.exports.some((e) => e.exportedName === propName || e.localName === propName) ||
+                ctx.module.imports.some((i) => i.localName === propName || i.importedName === propName));
 
             if (!isObjThis && !isObjParam && !isLocalObj && propName && !isBuiltin) {
               changed = true;
               nodesTransformed++;
-              
+
               // Find or add hashed property name to constant pool deterministically
               const propHash = hashString(propName, ctx.profile.seed);
               const hashedName = `hash_${propHash}`;
-              let cpIndex = constantPool.findIndex(c => c.kind === ConstantKind.String && c.value === hashedName);
+              let cpIndex = constantPool.findIndex((c) => c.kind === ConstantKind.String && c.value === hashedName);
               if (cpIndex === -1) {
                 cpIndex = constantPool.length;
                 constantPool.push({
                   index: cpIndex,
                   kind: ConstantKind.String,
-                  value: hashedName
+                  value: hashedName,
                 });
               }
 
@@ -301,7 +388,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 name: `ns_virt_temp_${tempReg}`,
                 register: tempReg,
                 type: IRType.String,
-                isCaptured: false
+                isCaptured: false,
               });
 
               // 1. Load the hashed name constant into tempReg
@@ -309,7 +396,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 opcode: OpCode.LoadConst,
                 operands: [{ kind: OperandKind.ConstantIndex, value: cpIndex }],
                 result: tempReg,
-                sourceLocation: inst.sourceLocation
+                sourceLocation: inst.sourceLocation,
               });
 
               // Replace PropGet/PropSet with ComputedGet/ComputedSet using the tempReg
@@ -321,7 +408,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 ...inst,
                 opcode: inst.opcode === OpCode.PropGet ? OpCode.ComputedGet : OpCode.ComputedSet,
                 operands: ops,
-                metadata: { namespaceVirtualization: true }
+                metadata: { namespaceVirtualization: true },
               });
             } else {
               newInstructions.push(inst);
@@ -332,24 +419,26 @@ export class NamespaceVirtualizationPass implements TransformPass {
         }
         return changed ? { ...block, instructions: newInstructions } : block;
       });
-      return changed ? {
-        ...func,
-        locals: [...func.locals, ...addedLocals],
-        blocks: newBlocks
-      } : func;
+      return changed
+        ? {
+            ...func,
+            locals: [...func.locals, ...addedLocals],
+            blocks: newBlocks,
+          }
+        : func;
     });
 
     const newModule: IRModule = {
       ...ctx.module,
       functions: newFunctions,
-      constantPool
+      constantPool,
     };
 
     return {
       module: newModule,
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

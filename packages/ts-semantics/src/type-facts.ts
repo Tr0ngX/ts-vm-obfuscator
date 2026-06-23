@@ -11,13 +11,13 @@ function getSourceLocation(node: ts.Node): SourceLocation {
     line,
     column: character,
     offset: start,
-    length: node.getEnd() - start
+    length: node.getEnd() - start,
   };
 }
 
 export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChecker): TypeFact[] {
   const facts: TypeFact[] = [];
-  
+
   function visit(node: ts.Node) {
     if (
       ts.isVariableDeclaration(node) ||
@@ -39,7 +39,7 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
         if (symbol) {
           const type = checker.getTypeOfSymbolAtLocation(symbol, node);
           const typeText = checker.typeToString(type, node, ts.TypeFormatFlags.NoTruncation);
-          
+
           let kind = TypeFactKind.Variable;
           if (ts.isFunctionDeclaration(node)) kind = TypeFactKind.Function;
           else if (ts.isClassDeclaration(node)) kind = TypeFactKind.Class;
@@ -57,20 +57,20 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
           let isAmbient = false;
           if (ts.canHaveModifiers(node)) {
             const modifiers = ts.getModifiers(node);
-            isExported = modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
-            isAmbient = modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false;
+            isExported = modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+            isAmbient = modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false;
           }
 
           let isGeneric = false;
           const typeParameters: string[] = [];
           const constraints: string[] = [];
-          
+
           if ('typeParameters' in node) {
             const nodeWithTP = node as { typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration> };
             const tps = nodeWithTP.typeParameters;
             if (tps) {
               isGeneric = true;
-              tps.forEach(tp => {
+              tps.forEach((tp) => {
                 typeParameters.push(tp.name.text);
                 if (tp.constraint) {
                   constraints.push(tp.constraint.getText());
@@ -83,7 +83,7 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
           if (ts.canHaveDecorators(node)) {
             const decs = ts.getDecorators(node);
             if (decs) {
-              decs.forEach(d => decorators.push(d.expression.getText()));
+              decs.forEach((d) => decorators.push(d.expression.getText()));
             }
           }
 
@@ -99,15 +99,15 @@ export function extractTypeFacts(sourceFile: ts.SourceFile, checker: ts.TypeChec
             sourceLocation: getSourceLocation(node),
             isExported,
             isAmbient,
-            decorators
+            decorators,
           });
         }
       }
     }
-    
+
     ts.forEachChild(node, visit);
   }
-  
+
   visit(sourceFile);
   return facts;
 }

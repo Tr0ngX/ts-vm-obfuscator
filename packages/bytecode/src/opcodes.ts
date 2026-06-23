@@ -6,7 +6,7 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
   const reverse = new Map<number, OpCode>();
 
   const rng = new SeededRandom(seed);
-  
+
   const opcodes: OpCode[] = [];
   for (const key in OpCode) {
     if (!Number.isNaN(Number(key))) {

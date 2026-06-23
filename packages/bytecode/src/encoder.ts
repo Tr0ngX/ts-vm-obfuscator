@@ -50,7 +50,7 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
     }
 
     if (config.stealthDispatch) {
-      const delta = (mappedOp - currentHandlerIdx + 256) & 0xFF;
+      const delta = (mappedOp - currentHandlerIdx + 256) & 0xff;
       bytes.push(delta);
       currentHandlerIdx = isTerminator(inst.opcode) ? 0 : mappedOp;
     } else {
@@ -91,17 +91,17 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
         // LEB128 Encoding
         let v = val;
         do {
-          let byte = v & 0x7F;
+          let byte = v & 0x7f;
           v >>>= 7;
           if (v !== 0) byte |= 0x80;
           bytes.push(byte);
         } while (v !== 0);
       } else {
         // Fixed 4-byte
-        const b0 = val & 0xFF;
-        const b1 = (val >> 8) & 0xFF;
-        const b2 = (val >> 16) & 0xFF;
-        const b3 = (val >> 24) & 0xFF;
+        const b0 = val & 0xff;
+        const b1 = (val >> 8) & 0xff;
+        const b2 = (val >> 16) & 0xff;
+        const b3 = (val >> 24) & 0xff;
         bytes.push(b0, b1, b2, b3);
       }
     }
@@ -111,8 +111,8 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
   if (config.rollingKeys) {
     for (let pc = 0; pc < resultBytes.length; pc++) {
       const rawVal = resultBytes[pc]!;
-      const offsetVal = (rawVal + pc) & 0xFF;
-      const rollingKey = ((config.seed ^ (pc * 0x9E3779B9)) >>> 8) & 0xFF;
+      const offsetVal = (rawVal + pc) & 0xff;
+      const rollingKey = ((config.seed ^ (pc * 0x9e3779b9)) >>> 8) & 0xff;
       resultBytes[pc] = offsetVal ^ rollingKey;
     }
   }
@@ -142,14 +142,18 @@ function operandKindToNum(kind: OperandKind | number): number {
   }
 }
 
-export function encodeConstantPool(constants: readonly ConstantPoolEntry[], scheme: ConstantEncodingScheme, seed: number): EncodedConstant[] {
+export function encodeConstantPool(
+  constants: readonly ConstantPoolEntry[],
+  scheme: ConstantEncodingScheme,
+  seed: number,
+): EncodedConstant[] {
   return constants.map((c, index) => {
     if (scheme === ConstantEncodingScheme.XorRotate && typeof c.value === 'string') {
-      let stringSeed = (seed ^ (index * 0x9E3779B9)) & 0xffffffff;
+      let stringSeed = (seed ^ (index * 0x9e3779b9)) & 0xffffffff;
       if (c.expectedPathHash !== undefined) {
         stringSeed = (stringSeed ^ c.expectedPathHash) & 0xffffffff;
       }
-      
+
       // Deriving 16-byte key using LCG
       const keyBytes = new Uint8Array(16);
       let s = stringSeed;
@@ -157,7 +161,7 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
         s = Math.imul(s, 1664525) + 1013904223;
         keyBytes[i] = (s >>> 16) & 0xff;
       }
-      
+
       // KSA
       const S = new Uint8Array(256);
       for (let i = 0; i < 256; i++) S[i] = i;
@@ -168,7 +172,7 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
         S[i] = S[j]!;
         S[j] = temp;
       }
-      
+
       // PRGA with drop-256 for stronger security
       let ri = 0;
       j = 0;
@@ -179,7 +183,7 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
         S[ri] = S[j]!;
         S[j] = temp;
       }
-      
+
       let encoded = '';
       for (let i = 0; i < c.value.length; i++) {
         ri = (ri + 1) & 0xff;
@@ -190,7 +194,7 @@ export function encodeConstantPool(constants: readonly ConstantPoolEntry[], sche
         const keystreamByte = S[(S[ri]! + S[j]!) & 0xff]!;
         encoded += String.fromCharCode(c.value.charCodeAt(i) ^ keystreamByte);
       }
-      
+
       return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: 0 };
     }
     return { index, kind: c.kind, value: c.value, encodedBytes: new Uint8Array(), decodingKey: 0 };

@@ -1,4 +1,13 @@
-import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, BasicBlock, Instruction, Register } from '@tsvm/shared';
+import type {
+  TransformPass,
+  TransformContext,
+  TransformResult,
+  IRModule,
+  IRFunction,
+  BasicBlock,
+  Instruction,
+  Register,
+} from '@tsvm/shared';
 import { OpCode, OperandKind, ConstantKind, IRType } from '@tsvm/shared';
 import { getMaxRegister } from '../utils.js';
 
@@ -9,15 +18,15 @@ export class DecoratorAwareLoweringPass implements TransformPass {
   execute(ctx: TransformContext): TransformResult {
     let nodesTransformed = 0;
 
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       if (!func.isVirtualized) return func;
 
       const nextReg = getMaxRegister(func);
       let tempIndex = 0;
       const addedLocals: any[] = [];
 
-      const newBlocks = func.blocks.map(block => {
-        const newInsts = block.instructions.flatMap(inst => {
+      const newBlocks = func.blocks.map((block) => {
+        const newInsts = block.instructions.flatMap((inst) => {
           if ((inst.opcode === OpCode.Call || inst.opcode === OpCode.CallMethod) && inst.operands.length > 0) {
             const firstOp = inst.operands[0]!;
             if (firstOp.kind === OperandKind.Register && ctx.rng.nextFloat() < 0.15) {
@@ -29,23 +38,20 @@ export class DecoratorAwareLoweringPass implements TransformPass {
                 name: `decorator_temp_${tempReg}`,
                 register: tempReg,
                 type: IRType.Any,
-                isCaptured: false
+                isCaptured: false,
               });
 
               const moveInst: Instruction = {
                 opcode: OpCode.Move,
                 operands: [
                   { kind: OperandKind.Register, value: firstOp.value },
-                  { kind: OperandKind.Register, value: tempReg }
-                ]
+                  { kind: OperandKind.Register, value: tempReg },
+                ],
               };
 
               const updatedInst: Instruction = {
                 ...inst,
-                operands: [
-                  { kind: OperandKind.Register, value: tempReg },
-                  ...inst.operands.slice(1)
-                ]
+                operands: [{ kind: OperandKind.Register, value: tempReg }, ...inst.operands.slice(1)],
               };
 
               return [moveInst, updatedInst];
@@ -56,14 +62,14 @@ export class DecoratorAwareLoweringPass implements TransformPass {
 
         return {
           ...block,
-          instructions: newInsts
+          instructions: newInsts,
         };
       });
 
       return {
         ...func,
         locals: [...func.locals, ...addedLocals],
-        blocks: newBlocks
+        blocks: newBlocks,
       };
     });
 
@@ -71,7 +77,7 @@ export class DecoratorAwareLoweringPass implements TransformPass {
       module: { ...ctx.module, functions: newFunctions },
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

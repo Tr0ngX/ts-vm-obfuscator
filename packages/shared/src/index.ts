@@ -253,7 +253,7 @@ export enum OpCode {
   LoadCapture = 0x07,
   StoreCapture = 0x08,
   LoadThis = 0x09,
-  LoadNewTarget = 0x0A,
+  LoadNewTarget = 0x0a,
 
   // Arithmetic
   Add = 0x10,
@@ -266,8 +266,8 @@ export enum OpCode {
   BitOr = 0x17,
   BitXor = 0x18,
   Shl = 0x19,
-  Shr = 0x1A,
-  UShr = 0x1B,
+  Shr = 0x1a,
+  UShr = 0x1b,
 
   // Comparison
   Eq = 0x20,
@@ -298,11 +298,11 @@ export enum OpCode {
   CellNew = 0x47,
   CellGet = 0x48,
   CellSet = 0x49,
-  EnvGet = 0x4A,
-  CallWithArray = 0x4B,
-  CallMethodWithArray = 0x4C,
-  NewWithArray = 0x4D,
-  RestArgs = 0x4E,
+  EnvGet = 0x4a,
+  CallWithArray = 0x4b,
+  CallMethodWithArray = 0x4c,
+  NewWithArray = 0x4d,
+  RestArgs = 0x4e,
 
   // Object/Array
   PropGet = 0x50,
@@ -315,12 +315,12 @@ export enum OpCode {
   SpreadIntoArray = 0x57,
   Delete = 0x58,
   PrivateGet = 0x59,
-  PrivateSet = 0x5A,
-  PrivateIn = 0x5B,
-  SuperPropGet = 0x5C,
-  SuperPropSet = 0x5D,
-  SuperCall = 0x5E,
-  SuperCallWithArray = 0x5F,
+  PrivateSet = 0x5a,
+  PrivateIn = 0x5b,
+  SuperPropGet = 0x5c,
+  SuperPropSet = 0x5d,
+  SuperCall = 0x5e,
+  SuperCallWithArray = 0x5f,
 
   // Special
   Phi = 0x60,
@@ -333,14 +333,14 @@ export enum OpCode {
   Await = 0x67,
   Debugger = 0x68,
   YieldStar = 0x69,
-  GeneratorNew = 0x6A,
+  GeneratorNew = 0x6a,
 
   // VM-specific
-  Nop = 0xF0,
-  Halt = 0xF1,
-  Trap = 0xF2,
-  GetEntropy = 0xF3,
-  SuperInstruction = 0xFE,
+  Nop = 0xf0,
+  Halt = 0xf1,
+  Trap = 0xf2,
+  GetEntropy = 0xf3,
+  SuperInstruction = 0xfe,
 }
 
 export enum OperandKind {
@@ -531,7 +531,7 @@ export interface TransformPass {
 // §6  Bytecode Module
 // ─────────────────────────────────────────────────────────────
 
-export const BYTECODE_MAGIC = 0x54534F42; // 'TSOB'
+export const BYTECODE_MAGIC = 0x54534f42; // 'TSOB'
 export const BYTECODE_VERSION = 1;
 
 export interface OpcodeMapping {
@@ -755,7 +755,7 @@ export class SeededRandom {
   private state: number;
 
   constructor(seed: number) {
-    this.state = seed & 0x7FFFFFFF;
+    this.state = seed & 0x7fffffff;
     if (this.state === 0) {
       this.state = 1;
     }
@@ -823,7 +823,7 @@ export class SeededRandom {
 
   /** Restore from snapshot. */
   restore(state: number): void {
-    this.state = state & 0x7FFFFFFF;
+    this.state = state & 0x7fffffff;
     if (this.state === 0) {
       this.state = 1;
     }
@@ -858,20 +858,12 @@ export type PipelineEventHandler = (event: PipelineEvent) => void;
 // ─────────────────────────────────────────────────────────────
 
 export type DeepReadonly<T> = {
-  readonly [P in keyof T]: T[P] extends (infer U)[]
-    ? readonly DeepReadonly<U>[]
-    : T[P] extends object
-      ? DeepReadonly<T[P]>
-      : T[P];
+  readonly [P in keyof T]: T[P] extends (infer U)[] ? readonly DeepReadonly<U>[] : T[P] extends object ? DeepReadonly<T[P]> : T[P];
 };
 
 /** Mutable version of an IR node for builders. */
 export type Mutable<T> = {
-  -readonly [P in keyof T]: T[P] extends readonly (infer U)[]
-    ? U[]
-    : T[P] extends ReadonlyMap<infer K, infer V>
-      ? Map<K, V>
-      : T[P];
+  -readonly [P in keyof T]: T[P] extends readonly (infer U)[] ? U[] : T[P] extends ReadonlyMap<infer K, infer V> ? Map<K, V> : T[P];
 };
 
 export interface BuildManifest {

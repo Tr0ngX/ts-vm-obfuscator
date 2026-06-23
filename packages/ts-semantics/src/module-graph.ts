@@ -8,17 +8,17 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
   const dependencyEdges: DependencyEdge[] = [];
   const entries: string[] = [];
 
-  const sourceFiles = program.getSourceFiles().filter(sf => !sf.isDeclarationFile && !sf.fileName.includes('node_modules'));
+  const sourceFiles = program.getSourceFiles().filter((sf) => !sf.isDeclarationFile && !sf.fileName.includes('node_modules'));
 
   // First pass: create ModuleInfo for each file
   for (const sf of sourceFiles) {
     const filePath = sf.fileName;
     const typeFacts = extractTypeFacts(sf, checker);
-    
+
     // Find exports and imports
     const exports: ExportedSymbol[] = [];
     const imports: ImportedSymbol[] = [];
-    
+
     let hasJSX = false;
     let hasDecorators = false;
 
@@ -34,7 +34,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
       if (ts.isImportDeclaration(node)) {
         const moduleSpecifier = (node.moduleSpecifier as ts.StringLiteral).text;
         const isTypeOnly = node.importClause?.isTypeOnly ?? false;
-        
+
         if (node.importClause) {
           if (node.importClause.name) {
             // Default import
@@ -43,19 +43,19 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
               importedName: 'default',
               moduleSpecifier,
               kind: 'default',
-              isTypeOnly
+              isTypeOnly,
             });
           }
           if (node.importClause.namedBindings) {
             if (ts.isNamedImports(node.importClause.namedBindings)) {
               // Named imports
-              node.importClause.namedBindings.elements.forEach(el => {
+              node.importClause.namedBindings.elements.forEach((el) => {
                 imports.push({
                   localName: el.name.text,
                   importedName: el.propertyName ? el.propertyName.text : el.name.text,
                   moduleSpecifier,
                   kind: 'named',
-                  isTypeOnly: isTypeOnly || el.isTypeOnly
+                  isTypeOnly: isTypeOnly || el.isTypeOnly,
                 });
               });
             } else if (ts.isNamespaceImport(node.importClause.namedBindings)) {
@@ -65,7 +65,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
                 importedName: '*',
                 moduleSpecifier,
                 kind: 'namespace',
-                isTypeOnly
+                isTypeOnly,
               });
             }
           }
@@ -76,7 +76,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
             importedName: '',
             moduleSpecifier,
             kind: 'side_effect',
-            isTypeOnly: false
+            isTypeOnly: false,
           });
         }
       }
@@ -90,7 +90,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
             toModule: moduleSpecifier, // Will resolve properly later if needed
             symbols: [],
             isTypeOnly: false,
-            isDynamic: true
+            isDynamic: true,
           });
         }
       }
@@ -99,7 +99,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
       if (ts.isExportDeclaration(node)) {
         const isTypeOnly = node.isTypeOnly;
         if (node.exportClause && ts.isNamedExports(node.exportClause)) {
-          node.exportClause.elements.forEach(el => {
+          node.exportClause.elements.forEach((el) => {
             exports.push({
               localName: el.propertyName ? el.propertyName.text : el.name.text,
               exportedName: el.name.text,
@@ -107,17 +107,17 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
               isTypeOnly: isTypeOnly || el.isTypeOnly,
               isDefault: el.name.text === 'default',
               isReExport: !!node.moduleSpecifier,
-              sourceModule: node.moduleSpecifier ? (node.moduleSpecifier as ts.StringLiteral).text : undefined
+              sourceModule: node.moduleSpecifier ? (node.moduleSpecifier as ts.StringLiteral).text : undefined,
             });
           });
         }
-      } else if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
-        const isDefault = ts.getModifiers(node)!.some(m => m.kind === ts.SyntaxKind.DefaultKeyword);
+      } else if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+        const isDefault = ts.getModifiers(node)!.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
         let name = 'default';
         if (!isDefault && (node as ts.NamedDeclaration).name && ts.isIdentifier((node as ts.NamedDeclaration).name!)) {
           name = ((node as ts.NamedDeclaration).name as ts.Identifier).text;
         } else if (!isDefault && ts.isVariableStatement(node)) {
-          node.declarationList.declarations.forEach(d => {
+          node.declarationList.declarations.forEach((d) => {
             if (ts.isIdentifier(d.name)) {
               exports.push({
                 localName: d.name.text,
@@ -125,7 +125,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
                 kind: TypeFactKind.Variable,
                 isTypeOnly: false,
                 isDefault: false,
-                isReExport: false
+                isReExport: false,
               });
             }
           });
@@ -139,7 +139,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
             kind: TypeFactKind.Function, // Approximate
             isTypeOnly: ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node),
             isDefault,
-            isReExport: false
+            isReExport: false,
           });
         }
       }
@@ -160,17 +160,17 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
       isDeclarationFile: sf.isDeclarationFile,
       hasJSX,
       hasDecorators,
-      byteSize: sf.text.length
+      byteSize: sf.text.length,
     });
   }
 
   // Second pass: build edges
   for (const [filePath, mod] of modules.entries()) {
-    const targetMap = new Map<string, { symbols: string[], isTypeOnly: boolean }>();
-    
+    const targetMap = new Map<string, { symbols: string[]; isTypeOnly: boolean }>();
+
     for (const imp of mod.imports) {
       // Simplified resolution - TS Compiler API resolveModuleName could be used for robustness
-      const target = imp.moduleSpecifier; 
+      const target = imp.moduleSpecifier;
       if (!targetMap.has(target)) {
         targetMap.set(target, { symbols: [], isTypeOnly: true });
       }
@@ -185,7 +185,7 @@ export function buildModuleGraph(program: ts.Program, checker: ts.TypeChecker) {
         toModule: target,
         symbols: info.symbols,
         isTypeOnly: info.isTypeOnly,
-        isDynamic: false
+        isDynamic: false,
       });
     }
   }

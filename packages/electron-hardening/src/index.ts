@@ -17,17 +17,10 @@ const ELECTRON_IPC_PROPERTIES: ReadonlySet<string> = new Set([
 ]);
 
 /** BrowserWindow security settings that must not be tampered with at runtime. */
-const ELECTRON_CONTEXT_ISOLATION_PROPERTIES: ReadonlySet<string> = new Set([
-  'nodeIntegration',
-  'contextIsolation',
-  'webPreferences',
-]);
+const ELECTRON_CONTEXT_ISOLATION_PROPERTIES: ReadonlySet<string> = new Set(['nodeIntegration', 'contextIsolation', 'webPreferences']);
 
 /** Union of all sensitive property names for fast membership testing. */
-const ALL_SENSITIVE_PROPERTIES: ReadonlySet<string> = new Set([
-  ...ELECTRON_IPC_PROPERTIES,
-  ...ELECTRON_CONTEXT_ISOLATION_PROPERTIES,
-]);
+const ALL_SENSITIVE_PROPERTIES: ReadonlySet<string> = new Set([...ELECTRON_IPC_PROPERTIES, ...ELECTRON_CONTEXT_ISOLATION_PROPERTIES]);
 
 // ─────────────────────────────────────────────────────────────
 // Guard injection helpers
@@ -37,9 +30,7 @@ const ALL_SENSITIVE_PROPERTIES: ReadonlySet<string> = new Set([
  * Classifies a sensitive property name into a hardening category.
  * Returns `null` when the name is not sensitive.
  */
-function classifySensitiveProperty(
-  name: string,
-): 'ipc_protection' | 'context_isolation' | null {
+function classifySensitiveProperty(name: string): 'ipc_protection' | 'context_isolation' | null {
   if (ELECTRON_IPC_PROPERTIES.has(name)) {
     return 'ipc_protection';
   }
@@ -94,10 +85,7 @@ function resolvePropertyName(
     if (constOperand.kind !== OperandKind.ConstantIndex) {
       return null;
     }
-    const poolIndex =
-      typeof constOperand.value === 'number'
-        ? constOperand.value
-        : Number.parseInt(constOperand.value as string, 10);
+    const poolIndex = typeof constOperand.value === 'number' ? constOperand.value : Number.parseInt(constOperand.value as string, 10);
     if (Number.isNaN(poolIndex)) {
       return null;
     }
@@ -147,9 +135,7 @@ function buildGuardSequence(
 
   const loadPropertyName: Instruction = {
     opcode: OpCode.LoadConst,
-    operands: [
-      { kind: OperandKind.Immediate, value: propertyName },
-    ],
+    operands: [{ kind: OperandKind.Immediate, value: propertyName }],
     result: guardRegister,
     metadata: {
       electronHardened: true,
@@ -159,9 +145,7 @@ function buildGuardSequence(
 
   const callIntegrityCheck: Instruction = {
     opcode: OpCode.Call,
-    operands: [
-      { kind: OperandKind.Register, value: guardRegister },
-    ],
+    operands: [{ kind: OperandKind.Register, value: guardRegister }],
     metadata: {
       electronHardened: true,
       guardRole: 'integrity_check_invoke',
@@ -193,25 +177,17 @@ function buildGuardSequence(
  */
 export function applyElectronHardening(module: IRModule): IRModule {
   let hardenCount = 0;
-  const newFunctions = module.functions.map(func => {
+  const newFunctions = module.functions.map((func) => {
     let changed = false;
-    const newBlocks = func.blocks.map(block => {
+    const newBlocks = func.blocks.map((block) => {
       const newInstructions: Instruction[] = [];
       for (const inst of block.instructions) {
         if (inst.opcode === OpCode.PropGet) {
-          const propertyName = resolvePropertyName(
-            inst,
-            newInstructions,
-            module.constantPool,
-          );
+          const propertyName = resolvePropertyName(inst, newInstructions, module.constantPool);
           if (propertyName !== null && ALL_SENSITIVE_PROPERTIES.has(propertyName)) {
             const reason = classifySensitiveProperty(propertyName);
             if (reason !== null) {
-              const guardInstructions = buildGuardSequence(
-                reason,
-                propertyName,
-                hardenCount,
-              );
+              const guardInstructions = buildGuardSequence(reason, propertyName, hardenCount);
               for (const guardInst of guardInstructions) {
                 newInstructions.push(guardInst);
               }

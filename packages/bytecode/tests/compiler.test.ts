@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { compileToBytecode } from '../src/compiler.js';
 import { decodeBytecode } from '../src/decoder.js';
-import { ConstantEncodingScheme, FunctionAttribute, ImmediateEncodingScheme, IRType, OperandKind, OpCode, type IRModule, type Instruction, type VMBuildConfig } from '@tsvm/shared';
+import {
+  ConstantEncodingScheme,
+  FunctionAttribute,
+  ImmediateEncodingScheme,
+  IRType,
+  OperandKind,
+  OpCode,
+  type IRModule,
+  type Instruction,
+  type VMBuildConfig,
+} from '@tsvm/shared';
 
 function makeSimpleModule(instructions: Instruction[], seed = 7): IRModule {
   return {
@@ -13,39 +23,38 @@ function makeSimpleModule(instructions: Instruction[], seed = 7): IRModule {
         name: 'testFunc',
         params: [],
         returnType: IRType.Any,
-          blocks: [
-            {
-              id: 'b0',
-              label: 'entry',
-              instructions,
-              terminator: { kind: 'return', targets: [], returnValue: 'r0' },
-              predecessors: [],
-              successors: [],
-              phiNodes: [],
-            },
-          ],
-          locals: [],
-          isVirtualized: true,
-          isExported: false,
-          attributes: [],
-          capturedVariables: [],
-        },
-      ],
-      globals: [],
-      imports: [],
-      exports: [],
-      constantPool: [],
-      metadata: {
-        sourceFile: 'test.ts',
-        originalByteSize: 0,
-        functionCount: 1,
-        blockCount: 1,
-        instructionCount: instructions.length,
-        buildTimestamp: 0,
+        blocks: [
+          {
+            id: 'b0',
+            label: 'entry',
+            instructions,
+            terminator: { kind: 'return', targets: [], returnValue: 'r0' },
+            predecessors: [],
+            successors: [],
+            phiNodes: [],
+          },
+        ],
+        locals: [],
+        isVirtualized: true,
+        isExported: false,
+        attributes: [],
+        capturedVariables: [],
       },
-    };
-  }
-
+    ],
+    globals: [],
+    imports: [],
+    exports: [],
+    constantPool: [],
+    metadata: {
+      sourceFile: 'test.ts',
+      originalByteSize: 0,
+      functionCount: 1,
+      blockCount: 1,
+      instructionCount: instructions.length,
+      buildTimestamp: 0,
+    },
+  };
+}
 
 function makeConfig(overrides: Partial<VMBuildConfig> = {}): VMBuildConfig {
   return {
@@ -166,10 +175,37 @@ describe('Bytecode Compiler', () => {
 
     const testInstructions: Instruction[] = [
       { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-      { opcode: OpCode.Move, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r1' }] },
-      { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r2' },
-      { opcode: OpCode.Sub, operands: [{ kind: OperandKind.Register, value: 'r2' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r3' },
-      { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: 'r3' }, { kind: OperandKind.Register, value: 'r0' }], result: 'r4' },
+      {
+        opcode: OpCode.Move,
+        operands: [
+          { kind: OperandKind.Register, value: 'r0' },
+          { kind: OperandKind.Register, value: 'r1' },
+        ],
+      },
+      {
+        opcode: OpCode.Add,
+        operands: [
+          { kind: OperandKind.Register, value: 'r0' },
+          { kind: OperandKind.Register, value: 'r1' },
+        ],
+        result: 'r2',
+      },
+      {
+        opcode: OpCode.Sub,
+        operands: [
+          { kind: OperandKind.Register, value: 'r2' },
+          { kind: OperandKind.Register, value: 'r1' },
+        ],
+        result: 'r3',
+      },
+      {
+        opcode: OpCode.Mul,
+        operands: [
+          { kind: OperandKind.Register, value: 'r3' },
+          { kind: OperandKind.Register, value: 'r0' },
+        ],
+        result: 'r4',
+      },
       { opcode: OpCode.GetEntropy, operands: [], result: 'r5' },
       { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: 'r5' }], result: 'r6' },
     ];
@@ -203,9 +239,7 @@ describe('Bytecode Compiler', () => {
 
     it('round-trips single instruction', () => {
       const config = makeConfig();
-      const insts: Instruction[] = [
-        { opcode: OpCode.Nop, operands: [] },
-      ];
+      const insts: Instruction[] = [{ opcode: OpCode.Nop, operands: [] }];
       const module = makeSimpleModule(insts, config.seed);
       const compiled = compileToBytecode(module, config);
       const fn = compiled.functions[0]!;
@@ -219,8 +253,8 @@ describe('Bytecode Compiler', () => {
       const config = makeConfig();
       const insts: Instruction[] = [
         { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 42 }], result: 'r0' },
-        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0xFF }], result: 'r1' },
-        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0xFFFF }], result: 'r2' },
+        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0xff }], result: 'r1' },
+        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0xffff }], result: 'r2' },
       ];
       const module = makeSimpleModule(insts, config.seed);
       const compiled = compileToBytecode(module, config);

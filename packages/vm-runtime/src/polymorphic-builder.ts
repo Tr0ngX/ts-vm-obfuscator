@@ -41,72 +41,172 @@ function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a:
   if (op === 'add') {
     // All verified: a+b identity variants
     switch (choice) {
-      case 0: expr = `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`; break;         // a+b = (a^b) + 2*(a&b)
-      case 1: expr = `(((${a}) | (${b})) + ((${a}) & (${b})))`; break;             // a+b = (a|b) + (a&b)
-      case 2: expr = `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`; break;         // a+b = 2*(a|b) - (a^b)
-      case 3: expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`; break;   // a+b = (a^~b) + 2*(a|b) + 1
-      case 4: expr = `(((${a}) - (-(${b}))))`; break;                               // a+b = a - (-b)
-      case 5: expr = `(((${a}) - ~(${b})) - 1)`; break;                            // a+b = a - ~b - 1, since ~b = -(b+1)
-      case 6: expr = `(~(~(${a}) - (${b})))`; break;                               // a+b = ~(~a - b), since ~(~a-b) = a+b
-      case 7: expr = `((((${a}) + (${b})) | 0))`; break;                           // a+b with int coercion
-      case 8: expr = `((${a}) * 2 - (${a}) + (${b}))`; break;                      // 2a - a + b = a + b
-      default: expr = `((${a}) + (${b}))`; break;
+      case 0:
+        expr = `(((${a}) ^ (${b})) + 2 * ((${a}) & (${b})))`;
+        break; // a+b = (a^b) + 2*(a&b)
+      case 1:
+        expr = `(((${a}) | (${b})) + ((${a}) & (${b})))`;
+        break; // a+b = (a|b) + (a&b)
+      case 2:
+        expr = `(2 * ((${a}) | (${b})) - ((${a}) ^ (${b})))`;
+        break; // a+b = 2*(a|b) - (a^b)
+      case 3:
+        expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) | (${b})) + 1)`;
+        break; // a+b = (a^~b) + 2*(a|b) + 1
+      case 4:
+        expr = `(((${a}) - (-(${b}))))`;
+        break; // a+b = a - (-b)
+      case 5:
+        expr = `(((${a}) - ~(${b})) - 1)`;
+        break; // a+b = a - ~b - 1, since ~b = -(b+1)
+      case 6:
+        expr = `(~(~(${a}) - (${b})))`;
+        break; // a+b = ~(~a - b), since ~(~a-b) = a+b
+      case 7:
+        expr = `((((${a}) + (${b})) | 0))`;
+        break; // a+b with int coercion
+      case 8:
+        expr = `((${a}) * 2 - (${a}) + (${b}))`;
+        break; // 2a - a + b = a + b
+      default:
+        expr = `((${a}) + (${b}))`;
+        break;
     }
   } else if (op === 'sub') {
     // All verified: a-b identity variants
     switch (choice) {
-      case 0: expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`; break;  // a-b via complement add
-      case 1: expr = `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`; break;           // a-b = (a&~b) - (~a&b)
-      case 2: expr = `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`; break;           // a-b via complement or
-      case 3: expr = `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`; break;        // a-b = (a^b) - 2*(~a&b)
-      case 4: expr = `((${a}) + (-(${b})))`; break;                                 // a-b = a + (-b)
-      case 5: expr = `(~((${b}) - (${a}) - 1))`; break;                            // a-b = ~(b-a-1), since ~x = -(x+1)
-      case 6: expr = `((${a}) + (~(${b})) + 1)`; break;                            // a-b = a + ~b + 1 (two's complement)
-      case 7: expr = `(((${a}) | 0) - ((${b}) | 0))`; break;                       // a-b with int coercion
-      case 8: expr = `(~(~(${a}) + (${b})))`; break;                               // a-b = ~(~a+b), since ~(~a+b) = -(~a+b+1) = a-b
-      default: expr = `((${a}) - (${b}))`; break;
+      case 0:
+        expr = `(((${a}) ^ ~(${b})) + 2 * ((${a}) & ~(${b})) + 1)`;
+        break; // a-b via complement add
+      case 1:
+        expr = `(((${a}) & ~(${b})) - (~(${a}) & (${b})))`;
+        break; // a-b = (a&~b) - (~a&b)
+      case 2:
+        expr = `(((${a}) | ~(${b})) - (~(${a}) | (${b})))`;
+        break; // a-b via complement or
+      case 3:
+        expr = `(((${a}) ^ (${b})) - 2 * (~(${a}) & (${b})))`;
+        break; // a-b = (a^b) - 2*(~a&b)
+      case 4:
+        expr = `((${a}) + (-(${b})))`;
+        break; // a-b = a + (-b)
+      case 5:
+        expr = `(~((${b}) - (${a}) - 1))`;
+        break; // a-b = ~(b-a-1), since ~x = -(x+1)
+      case 6:
+        expr = `((${a}) + (~(${b})) + 1)`;
+        break; // a-b = a + ~b + 1 (two's complement)
+      case 7:
+        expr = `(((${a}) | 0) - ((${b}) | 0))`;
+        break; // a-b with int coercion
+      case 8:
+        expr = `(~(~(${a}) + (${b})))`;
+        break; // a-b = ~(~a+b), since ~(~a+b) = -(~a+b+1) = a-b
+      default:
+        expr = `((${a}) - (${b}))`;
+        break;
     }
   } else if (op === 'and') {
     // All verified: a&b identity variants
     switch (choice) {
-      case 0: expr = `(((${a}) | (${b})) - ((${a}) ^ (${b})))`; break;             // a&b = (a|b) - (a^b)
-      case 1: expr = `((((${a}) + (${b})) - ((${a}) ^ (${b}))) >> 1)`; break;      // a&b = ((a+b) - (a^b)) / 2
-      case 2: expr = `(~(~(${a}) | ~(${b})))`; break;                              // De Morgan: a&b = ~(~a|~b)
-      case 3: expr = `((${a}) & (${b}))`; break;                                    // identity
-      case 4: expr = `(((${a}) | (${b})) & ~((${a}) ^ (${b})))`; break;            // a&b = (a|b) & ~(a^b)
-      case 5: expr = `(((${a}) + (${b}) - ((${a}) | (${b}))))`; break;             // a&b = a+b - (a|b)
-      case 6: expr = `((${a}) - ((${a}) & ~(${b})))`; break;                       // a&b = a - (a&~b)
-      case 7: expr = `((${b}) - (~(${a}) & (${b})))`; break;                       // a&b = b - (~a&b)
-      case 8: expr = `((${a}) ^ ((${a}) ^ ((${a}) & (${b}))))`; break;             // a ^ a ^ (a&b) = a&b
-      default: expr = `((${a}) & (${b}))`; break;
+      case 0:
+        expr = `(((${a}) | (${b})) - ((${a}) ^ (${b})))`;
+        break; // a&b = (a|b) - (a^b)
+      case 1:
+        expr = `((((${a}) + (${b})) - ((${a}) ^ (${b}))) >> 1)`;
+        break; // a&b = ((a+b) - (a^b)) / 2
+      case 2:
+        expr = `(~(~(${a}) | ~(${b})))`;
+        break; // De Morgan: a&b = ~(~a|~b)
+      case 3:
+        expr = `((${a}) & (${b}))`;
+        break; // identity
+      case 4:
+        expr = `(((${a}) | (${b})) & ~((${a}) ^ (${b})))`;
+        break; // a&b = (a|b) & ~(a^b)
+      case 5:
+        expr = `(((${a}) + (${b}) - ((${a}) | (${b}))))`;
+        break; // a&b = a+b - (a|b)
+      case 6:
+        expr = `((${a}) - ((${a}) & ~(${b})))`;
+        break; // a&b = a - (a&~b)
+      case 7:
+        expr = `((${b}) - (~(${a}) & (${b})))`;
+        break; // a&b = b - (~a&b)
+      case 8:
+        expr = `((${a}) ^ ((${a}) ^ ((${a}) & (${b}))))`;
+        break; // a ^ a ^ (a&b) = a&b
+      default:
+        expr = `((${a}) & (${b}))`;
+        break;
     }
   } else if (op === 'or') {
     // All verified: a|b identity variants
     switch (choice) {
-      case 0: expr = `(((${a}) & (${b})) + ((${a}) ^ (${b})))`; break;             // a|b = (a&b) + (a^b)
-      case 1: expr = `(((${a}) ^ (${b})) | ((${a}) & (${b})))`; break;             // a|b = (a^b) | (a&b) (disjoint)
-      case 2: expr = `(~(~(${a}) & ~(${b})))`; break;                              // De Morgan: a|b = ~(~a&~b)
-      case 3: expr = `((${a}) | (${b}))`; break;                                    // identity
-      case 4: expr = `(((${a}) + (${b})) - ((${a}) & (${b})))`; break;             // a|b = a+b - (a&b)
-      case 5: expr = `(((${a}) ^ (${b})) + ((${a}) & (${b})))`; break;             // a|b = (a^b) + (a&b) (same as case 0)
-      case 6: expr = `((${a}) + ((${b}) & ~(${a})))`; break;                       // a|b = a + (b&~a)
-      case 7: expr = `((${b}) + ((${a}) & ~(${b})))`; break;                       // a|b = b + (a&~b)
-      case 8: expr = `((${a}) ^ ((${a}) ^ ((${a}) | (${b}))))`; break;             // a ^ a ^ (a|b) = a|b
-      default: expr = `((${a}) | (${b}))`; break;
+      case 0:
+        expr = `(((${a}) & (${b})) + ((${a}) ^ (${b})))`;
+        break; // a|b = (a&b) + (a^b)
+      case 1:
+        expr = `(((${a}) ^ (${b})) | ((${a}) & (${b})))`;
+        break; // a|b = (a^b) | (a&b) (disjoint)
+      case 2:
+        expr = `(~(~(${a}) & ~(${b})))`;
+        break; // De Morgan: a|b = ~(~a&~b)
+      case 3:
+        expr = `((${a}) | (${b}))`;
+        break; // identity
+      case 4:
+        expr = `(((${a}) + (${b})) - ((${a}) & (${b})))`;
+        break; // a|b = a+b - (a&b)
+      case 5:
+        expr = `(((${a}) ^ (${b})) + ((${a}) & (${b})))`;
+        break; // a|b = (a^b) + (a&b) (same as case 0)
+      case 6:
+        expr = `((${a}) + ((${b}) & ~(${a})))`;
+        break; // a|b = a + (b&~a)
+      case 7:
+        expr = `((${b}) + ((${a}) & ~(${b})))`;
+        break; // a|b = b + (a&~b)
+      case 8:
+        expr = `((${a}) ^ ((${a}) ^ ((${a}) | (${b}))))`;
+        break; // a ^ a ^ (a|b) = a|b
+      default:
+        expr = `((${a}) | (${b}))`;
+        break;
     }
   } else {
     // XOR: All verified via bit-level truth tables
     switch (choice) {
-      case 0: expr = `(((${a}) | (${b})) - ((${a}) & (${b})))`; break;             // a^b = (a|b) - (a&b)
-      case 1: expr = `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`; break;         // a^b = a+b - 2*(a&b)
-      case 2: expr = `(~(((${a}) | ~(${b})) & (~(${a}) | (${b}))))`; break;        // FIX: ~XNOR = XOR
-      case 3: expr = `((${a}) ^ (${b}))`; break;                                    // identity
-      case 4: expr = `(~(${a}) ^ ~(${b}))`; break;                                  // ~a ^ ~b = a ^ b
-      case 5: expr = `(2 * ((${a}) | (${b})) - (${a}) - (${b}))`; break;           // 2*(a|b) - a - b = a^b
-      case 6: expr = `(((${a}) | (${b})) ^ ((${a}) & (${b})))`; break;             // (a|b) ^ (a&b) = a^b
-      case 7: expr = `((~(${a}) & (${b})) | ((${a}) & ~(${b})))`; break;           // textbook XOR definition
-      case 8: expr = `((${a}) - (${b}) + 2 * (~(${a}) & (${b})))`; break;          // a^b = (a-b) + 2*(~a&b)
-      default: expr = `((${a}) ^ (${b}))`; break;
+      case 0:
+        expr = `(((${a}) | (${b})) - ((${a}) & (${b})))`;
+        break; // a^b = (a|b) - (a&b)
+      case 1:
+        expr = `(((${a}) + (${b})) - 2 * ((${a}) & (${b})))`;
+        break; // a^b = a+b - 2*(a&b)
+      case 2:
+        expr = `(~(((${a}) | ~(${b})) & (~(${a}) | (${b}))))`;
+        break; // FIX: ~XNOR = XOR
+      case 3:
+        expr = `((${a}) ^ (${b}))`;
+        break; // identity
+      case 4:
+        expr = `(~(${a}) ^ ~(${b}))`;
+        break; // ~a ^ ~b = a ^ b
+      case 5:
+        expr = `(2 * ((${a}) | (${b})) - (${a}) - (${b}))`;
+        break; // 2*(a|b) - a - b = a^b
+      case 6:
+        expr = `(((${a}) | (${b})) ^ ((${a}) & (${b})))`;
+        break; // (a|b) ^ (a&b) = a^b
+      case 7:
+        expr = `((~(${a}) & (${b})) | ((${a}) & ~(${b})))`;
+        break; // textbook XOR definition
+      case 8:
+        expr = `((${a}) - (${b}) + 2 * (~(${a}) & (${b})))`;
+        break; // a^b = (a-b) + 2*(~a&b)
+      default:
+        expr = `((${a}) ^ (${b}))`;
+        break;
     }
   }
 
@@ -122,7 +222,7 @@ function mutateArithmeticExpression(op: 'add' | 'sub' | 'and' | 'or' | 'xor', a:
  * Uses number-theoretic invariants that hold for all integers.
  */
 function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; alwaysTrue: boolean } {
-  const rng = new SeededRandom(seed ^ varIdx ^ 0xDEAD);
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xdead);
   const choice = rng.nextRange(0, 7);
   // Local variable name to avoid collisions
   const pVar = `_op${rng.nextRange(100, 999)}`;
@@ -138,19 +238,28 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
       return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) % 4 !== 2; })()`, alwaysTrue: true };
     case 2:
       // (x | (x-1)) >= (x-1) is always true for non-negative x
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | (${pVar} - 1)) >= (${pVar} - 1); })()`, alwaysTrue: true };
+      return {
+        expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | (${pVar} - 1)) >= (${pVar} - 1); })()`,
+        alwaysTrue: true,
+      };
     case 3:
       // x*x >= 0 is always true for real numbers (JS: always true for finite values)
       return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) >= 0; })()`, alwaysTrue: true };
     case 4:
       // (x & 1) + ((x >> 1) & 1) < 3 is always true (max value is 2)
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`, alwaysTrue: true };
+      return {
+        expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`,
+        alwaysTrue: true,
+      };
     case 5:
       // SMT Solver Killer: x^2 % 4 is always 0 or 1, never 3.
       return { expr: `(function(){ var ${pVar} = (${runtimeVal} & 255); return (${pVar} * ${pVar} & 3) !== 3; })()`, alwaysTrue: true };
     case 6:
       // SMT Solver Killer 2: (31 * x)^2 % 3 is always 0 or 1, never 2.
-      return { expr: `(function(){ var ${pVar} = (${runtimeVal} & 255) * 31; return (${pVar} * ${pVar}) % 3 !== 2; })()`, alwaysTrue: true };
+      return {
+        expr: `(function(){ var ${pVar} = (${runtimeVal} & 255) * 31; return (${pVar} * ${pVar}) % 3 !== 2; })()`,
+        alwaysTrue: true,
+      };
     default:
       // (x | 0) === (x | 0) is always true (reflexivity + int coercion)
       return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | 0) === ${pVar}; })()`, alwaysTrue: true };
@@ -163,7 +272,7 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
  * This forces symbolic execution engines to explore dead branches.
  */
 function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, ctx: any): string {
-  const rng = new SeededRandom(seed ^ varIdx ^ 0xCAFE);
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xcafe);
   const numBlocks = rng.nextRange(1, 2);
   let code = '';
 
@@ -192,7 +301,7 @@ function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, 
  * This defeats signature-based handler matching across builds.
  */
 function generateSignaturePollution(seed: number, varIdx: number): string {
-  const rng = new SeededRandom(seed ^ varIdx ^ 0xB0B0);
+  const rng = new SeededRandom(seed ^ varIdx ^ 0xb0b0);
   const numDecls = rng.nextRange(2, 4);
   let code = '';
 
@@ -201,13 +310,13 @@ function generateSignaturePollution(seed: number, varIdx: number): string {
     const choice = rng.nextRange(0, 3);
     switch (choice) {
       case 0:
-        code += `  var ${varName} = (${rng.nextRange(1, 0xFFFF)} ^ ctx.pc) | 0;\n`;
+        code += `  var ${varName} = (${rng.nextRange(1, 0xffff)} ^ ctx.pc) | 0;\n`;
         break;
       case 1:
         code += `  var ${varName} = (ctx.pc * ${rng.nextRange(2, 7)} + ${rng.nextRange(1, 100)}) & 0xFF;\n`;
         break;
       case 2:
-        code += `  var ${varName} = ~(ctx.pc ^ ${rng.nextRange(1, 0xFFFF)}) >>> 0;\n`;
+        code += `  var ${varName} = ~(ctx.pc ^ ${rng.nextRange(1, 0xffff)}) >>> 0;\n`;
         break;
       default:
         code += `  var ${varName} = ((ctx.pc >> ${rng.nextRange(1, 4)}) + ${rng.nextRange(1, 50)}) | 0;\n`;
@@ -428,7 +537,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     throw new Error(`No target function found at index ${targetFnIndex}`);
   }
 
-  const exportedFunctions = module.functions.filter(f => f.isEntryPoint);
+  const exportedFunctions = module.functions.filter((f) => f.isEntryPoint);
   const concealRuntimeStrings = !!config.stealthDispatch || !!config.tamperDetection || !!config.junkInsertion;
   const stringRng = new SeededRandom(config.seed ^ 0x3d7f19);
   const keyBytes: number[] = [];
@@ -462,7 +571,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
     return `${top.getRuntimeString}(${index})`;
   };
-  const runtimeStringBootstrap = concealRuntimeStrings ? `
+  const runtimeStringBootstrap = concealRuntimeStrings
+    ? `
   const ${top.runtimeStrings} = ${JSON.stringify(encodedRuntimeStrings)};
   const ${top.runtimeStringCache} = Object.create(null);
   const _strKey = ${JSON.stringify(keyBytes)};
@@ -500,7 +610,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   if (!${top.opaquePredicate}(${top.seed})) {
     ${top.junkSink}(${top.seed});
   }
-  ` : '';
+  `
+    : '';
 
   function isVariableLengthOpcode(opcode: number): boolean {
     return (
@@ -511,8 +622,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       opcode === 0x55 || // OpCode.ObjectNew
       opcode === 0x56 || // OpCode.Spread
       opcode === 0x57 || // OpCode.SpreadIntoArray
-      opcode === 0x5E || // OpCode.SuperCall
-      opcode === 0xFE    // OpCode.SuperInstruction
+      opcode === 0x5e || // OpCode.SuperCall
+      opcode === 0xfe // OpCode.SuperInstruction
     );
   }
 
@@ -546,9 +657,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     const fnNames: string[] = [];
 
     for (let vIdx = 0; vIdx < numVariants; vIdx++) {
-      const fnName = isParanoid 
-        ? `${names.nextHandlerName(canonical)}_${vIdx}`
-        : names.nextHandlerName(canonical);
+      const fnName = isParanoid ? `${names.nextHandlerName(canonical)}_${vIdx}` : names.nextHandlerName(canonical);
       fnNames.push(fnName);
 
       // Randomize junk skip & junk statements per variant
@@ -558,9 +667,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       if (config.junkInsertion) {
         const numJunk = (canonical * 7 + config.seed) % 4;
         for (let i = 0; i < numJunk; i++) {
-          junkSkip += config.rollingKeys
-            ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n`
-            : '  ctx.pc++;\n';
+          junkSkip += config.rollingKeys ? `  let __junk_${vIdx}_${i} = ${top.readByte}(ctx);\n` : '  ctx.pc++;\n';
         }
       }
 
@@ -570,11 +677,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       const argsVar = isParanoid ? `_args_${vIdx}` : 'args';
       const valVar = isParanoid ? `_val_${vIdx}` : 'val';
       const kindNumVar = isParanoid ? `_kind_${vIdx}` : 'kindNum';
-      
-      const myAdvanceArg = config.rollingKeys ? `
+
+      const myAdvanceArg = config.rollingKeys
+        ? `
         let ${kindNumVar} = ${top.readByte}(ctx);
         let ${valVar} = 0;
-        ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
+        ${
+          config.immediateEncoding === ImmediateEncodingScheme.VariableLength
+            ? `
           let shift = 0;
           let b;
           do {
@@ -582,17 +692,22 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
             ${valVar} |= (b & 0x7F) << shift;
             shift += 7;
           } while (b & 0x80);
-        ` : `
+        `
+            : `
           let b0 = ${top.readByte}(ctx);
           let b1 = ${top.readByte}(ctx);
           let b2 = ${top.readByte}(ctx);
           let b3 = ${top.readByte}(ctx);
           ${valVar} = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
-        `}
-      ` : `
+        `
+        }
+      `
+        : `
         let ${kindNumVar} = ctx.bytecode[ctx.pc++];
         let ${valVar} = 0;
-        ${config.immediateEncoding === ImmediateEncodingScheme.VariableLength ? `
+        ${
+          config.immediateEncoding === ImmediateEncodingScheme.VariableLength
+            ? `
           let shift = 0;
           let b;
           do {
@@ -600,14 +715,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
             ${valVar} |= (b & 0x7F) << shift;
             shift += 7;
           } while (b & 0x80);
-        ` : `
+        `
+            : `
           let b0 = ctx.bytecode[ctx.pc];
           let b1 = ctx.bytecode[ctx.pc + 1];
           let b2 = ctx.bytecode[ctx.pc + 2];
           let b3 = ctx.bytecode[ctx.pc + 3];
           ctx.pc += 4;
           ${valVar} = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
-        `}
+        `
+        }
       `;
 
       if (isVarLength) {
@@ -644,34 +761,59 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       }
 
       const junkLogic = config.stealthDispatch ? generateJunkStatements(mySeed, canonical, names, mulConst, addConst) : '';
-      
+
       // Threaded VM dispatch
       let nextOpLogic = '';
-      if (canonical !== OpCode.Halt && canonical !== OpCode.Return && canonical !== OpCode.ReturnVoid && canonical !== OpCode.Throw && canonical !== OpCode.Trap && canonical !== OpCode.Await && canonical !== OpCode.Yield && canonical !== OpCode.YieldStar) {
+      if (
+        canonical !== OpCode.Halt &&
+        canonical !== OpCode.Return &&
+        canonical !== OpCode.ReturnVoid &&
+        canonical !== OpCode.Throw &&
+        canonical !== OpCode.Trap &&
+        canonical !== OpCode.Await &&
+        canonical !== OpCode.Yield &&
+        canonical !== OpCode.YieldStar
+      ) {
         if (config.runtimeHardening === 'paranoid') {
           nextOpLogic = `
             if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
             let nextOp = ${top.readByte}(ctx);
-            ${config.stealthDispatch ? `
+            ${
+              config.stealthDispatch
+                ? `
               nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
               ctx.${ctx.currentHandlerIdx} = nextOp;
-            ` : ''}
-            ${config.rollingKeys ? `
+            `
+                : ''
+            }
+            ${
+              config.rollingKeys
+                ? `
               ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
-            ` : ''}
+            `
+                : ''
+            }
             return makeRouteToken(ctx, nextOp);
           `;
         } else {
           nextOpLogic = `
             if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return null;
             let nextOp = ${top.readByte}(ctx);
-            ${config.stealthDispatch ? `
+            ${
+              config.stealthDispatch
+                ? `
               nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
               ctx.${ctx.currentHandlerIdx} = nextOp;
-            ` : ''}
-            ${config.rollingKeys ? `
+            `
+                : ''
+            }
+            ${
+              config.rollingKeys
+                ? `
               ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
-            ` : ''}
+            `
+                : ''
+            }
             return ${locals.dispatchBank}[nextOp];
           `;
         }
@@ -730,7 +872,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         sigPollution = generateSignaturePollution(mySeed, vIdx);
       }
 
-      handlerDeclarations.push(`function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${regSetup}${sigPollution}${junkLogic}\n${opaqueDeadCode}${variantBody}\n${nextOpLogic}\n}`);
+      handlerDeclarations.push(
+        `function ${fnName}(ctx) {\n${currentOpcodeTracker}${junkSkip}\n${regSetup}${sigPollution}${junkLogic}\n${opaqueDeadCode}${variantBody}\n${nextOpLogic}\n}`,
+      );
     }
 
     declaredOpcodes.push(canonical);
@@ -740,44 +884,62 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const readArgs = '${readArgs}';
 
-  declareHandler(OpCode.Trap, `
+  declareHandler(
+    OpCode.Trap,
+    `
     ctx.regs = [];
     ctx.pc = 999999;
     ctx.running = false;
     debugger;
     throw new Error(${runtimeStringRef('VM Integrity Violation at PC ')} + (${ctxRef('pc')} - 1));
-  `);
+  `,
+  );
 
-  declareHandler(OpCode.LoadConst, `
+  declareHandler(
+    OpCode.LoadConst,
+    `
     ${readArgs}
     ${regRef('args[1]')} = (kinds[0] === 2) ? ${top.getCP}(ctx, args[0]) : args[0];
-  `);
+  `,
+  );
   declareHandler(OpCode.LoadLocal, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
   declareHandler(OpCode.StoreLocal, `${readArgs} ctx.regs[args[0]] = ctx.regs[args[1]];`);
   declareHandler(OpCode.Move, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]];`);
-  declareHandler(OpCode.LoadGlobal, `
+  declareHandler(
+    OpCode.LoadGlobal,
+    `
     ${readArgs}
     var propName = ctx.regs[args[0]];
     var globalVal = ${ctxRef('globalScope')}[propName];
     ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
       ? ${top.result}[propName]
       : globalVal;
-  `);
-  declareHandler(OpCode.StoreGlobal, `
+  `,
+  );
+  declareHandler(
+    OpCode.StoreGlobal,
+    `
     ${readArgs}
     var propName = ctx.regs[args[0]];
     ${ctxRef('globalScope')}[propName] = ${regRef('args[1]')};
-  `);
+  `,
+  );
   declareHandler(OpCode.LoadThis, `${readArgs} ${regRef('args[0]')} = ${ctxRef('thisArg')};`);
   declareHandler(OpCode.LoadNewTarget, `${readArgs} ${regRef('args[0]')} = ${ctxRef('newTarget')};`);
-  
-  declareHandler(OpCode.Add, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : (ctx.regs[args[0]] + ctx.regs[args[1]]);`);
-  declareHandler(OpCode.Sub, `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? __SUB_EXPR__ : (ctx.regs[args[0]] - ctx.regs[args[1]]);`);
+
+  declareHandler(
+    OpCode.Add,
+    `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : (ctx.regs[args[0]] + ctx.regs[args[1]]);`,
+  );
+  declareHandler(
+    OpCode.Sub,
+    `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? __SUB_EXPR__ : (ctx.regs[args[0]] - ctx.regs[args[1]]);`,
+  );
   declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
   declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
   declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
   declareHandler(OpCode.Neg, `${readArgs} ctx.regs[args[1]] = -ctx.regs[args[0]];`);
-  
+
   declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] & ctx.regs[args[1]]);`);
   declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] | ctx.regs[args[1]]);`);
   declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] ^ ctx.regs[args[1]]);`);
@@ -785,14 +947,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.Shr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >> ctx.regs[args[1]];`);
   declareHandler(OpCode.UShr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >>> ctx.regs[args[1]];`);
   declareHandler(OpCode.Not, `${readArgs} ctx.regs[args[1]] = !ctx.regs[args[0]];`);
-  
+
   declareHandler(OpCode.Eq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] == ctx.regs[args[1]];`);
   declareHandler(OpCode.StrictEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] === ctx.regs[args[1]];`);
   declareHandler(OpCode.Lt, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] < ctx.regs[args[1]];`);
   declareHandler(OpCode.LtEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] <= ctx.regs[args[1]];`);
   declareHandler(OpCode.Gt, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] > ctx.regs[args[1]];`);
   declareHandler(OpCode.GtEq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >= ctx.regs[args[1]];`);
-  
+
   declareHandler(OpCode.TypeOf, `${readArgs} ctx.regs[args[1]] = typeof ctx.regs[args[0]];`);
   declareHandler(OpCode.InstanceOf, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] instanceof ctx.regs[args[1]];`);
   declareHandler(OpCode.In, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] in ctx.regs[args[1]];`);
@@ -808,11 +970,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.CellSet, `${readArgs} ctx.regs[args[0]].v = ctx.regs[args[1]];`);
   declareHandler(OpCode.EnvGet, `${readArgs} ${regRef('args[1]')} = ${ctxRef('env')}[args[0]];`);
   declareHandler(OpCode.RestArgs, `${readArgs} ${regRef('args[1]')} = ${ctxRef('fnArgs')}.slice(${regRef('args[0]')});`);
-  declareHandler(OpCode.ClosureNew, `
+  declareHandler(
+    OpCode.ClosureNew,
+    `
     ${readArgs}
     ${regRef('args[2]')} = ${top.getExecutorById}(${top.getCP}(ctx, args[0]), ${regRef('args[1]')});
-  `);
-  declareHandler(OpCode.Spread, `
+  `,
+  );
+  declareHandler(
+    OpCode.Spread,
+    `
     ${readArgs}
     var spreadTarget = ${regRef('args[0]')};
     var spreadSource = ${regRef('args[1]')};
@@ -832,8 +999,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         spreadTarget[spreadKey] = spreadSource[spreadKey];
       }
     }
-  `);
-  declareHandler(OpCode.SpreadIntoArray, `
+  `,
+  );
+  declareHandler(
+    OpCode.SpreadIntoArray,
+    `
     ${readArgs}
     var indexedSpreadTarget = ${regRef('args[0]')};
     var indexedSpreadSource = ${regRef('args[1]')};
@@ -849,9 +1019,12 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       indexedSpreadCount++;
     }
     ${regRef('args[3]')} = indexedSpreadCount;
-  `);
-  
-  declareHandler(OpCode.CallMethod, `
+  `,
+  );
+
+  declareHandler(
+    OpCode.CallMethod,
+    `
     ${readArgs}
     var obj = ${regRef('args[0]')};
     var method = obj[ctx.regs[args[1]]];
@@ -860,8 +1033,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       aa.push(${regRef('args[ci]')});
     }
     ${regRef('args[args.length - 1]')} = ${top.nativeApply}.call(method, obj, aa);
-  `);
-  declareHandler(OpCode.Call, `
+  `,
+  );
+  declareHandler(
+    OpCode.Call,
+    `
     ${readArgs}
     var fn = ${regRef('args[0]')};
     if (typeof fn === 'undefined' || fn === null) {
@@ -872,19 +1048,28 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       ab.push(${regRef('args[ci2]')});
     }
     ${regRef('args[args.length - 1]')} = ${top.nativeApply}.call(fn, null, ab);
-  `);
-  declareHandler(OpCode.CallWithArray, `
+  `,
+  );
+  declareHandler(
+    OpCode.CallWithArray,
+    `
     ${readArgs}
     var fnArray = ctx.regs[args[0]];
     ctx.regs[args[2]] = ${top.nativeApply}.call(fnArray, null, ctx.regs[args[1]]);
-  `);
-  declareHandler(OpCode.CallMethodWithArray, `
+  `,
+  );
+  declareHandler(
+    OpCode.CallMethodWithArray,
+    `
     ${readArgs}
     var methodObj = ctx.regs[args[0]];
     var methodFn = methodObj[ctx.regs[args[1]]];
     ctx.regs[args[3]] = ${top.nativeApply}.call(methodFn, methodObj, ctx.regs[args[2]]);
-  `);
-  declareHandler(OpCode.New, `
+  `,
+  );
+  declareHandler(
+    OpCode.New,
+    `
     ${readArgs}
     var ctor = ctx.regs[args[0]];
     var ctorArgs = [];
@@ -894,84 +1079,123 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ctx.regs[args[args.length - 1]] = typeof Reflect !== 'undefined' && Reflect.construct
       ? Reflect.construct(ctor, ctorArgs)
       : new (${top.nativeApply}.call((cleanIntrinsics.Function || Function).prototype.bind, ctor, [null].concat(ctorArgs)))();
-  `);
-  declareHandler(OpCode.NewWithArray, `
+  `,
+  );
+  declareHandler(
+    OpCode.NewWithArray,
+    `
     ${readArgs}
     var ctorArray = ctx.regs[args[0]];
     var ctorArrayArgs = ctx.regs[args[1]];
     ctx.regs[args[2]] = typeof Reflect !== 'undefined' && Reflect.construct
       ? Reflect.construct(ctorArray, ctorArrayArgs)
       : new (${top.nativeApply}.call((cleanIntrinsics.Function || Function).prototype.bind, ctorArray, [null].concat(ctorArrayArgs)))();
-  `);
-  
-  declareHandler(OpCode.Jmp, `${readArgs} ${ctxRef('pc')} = (kinds[0] === 0) ? ctx.regs[args[0]] : args[0];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
-  declareHandler(OpCode.JmpIf, `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
-  declareHandler(OpCode.JmpIfNot, `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`);
-  
-  declareHandler(OpCode.Return, `${readArgs} ${ctxRef('returnValue')} = args.length > 0 ? ${regRef('args[0]')} : undefined; ${ctxRef('running')} = false;`);
+  `,
+  );
+
+  declareHandler(
+    OpCode.Jmp,
+    `${readArgs} ${ctxRef('pc')} = (kinds[0] === 0) ? ctx.regs[args[0]] : args[0];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`,
+  );
+  declareHandler(
+    OpCode.JmpIf,
+    `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`,
+  );
+  declareHandler(
+    OpCode.JmpIfNot,
+    `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`,
+  );
+
+  declareHandler(
+    OpCode.Return,
+    `${readArgs} ${ctxRef('returnValue')} = args.length > 0 ? ${regRef('args[0]')} : undefined; ${ctxRef('running')} = false;`,
+  );
   declareHandler(OpCode.ReturnVoid, `${readArgs} ${ctxRef('returnValue')} = undefined; ${ctxRef('running')} = false;`);
   declareHandler(OpCode.Throw, `${readArgs} throw (args.length > 0 ? ${regRef('args[0]')} : undefined);`);
-  declareHandler(OpCode.TryCatchBegin, `
+  declareHandler(
+    OpCode.TryCatchBegin,
+    `
     ${readArgs}
     ${ctxRef('tryFrames')}.push({
       ${frame.catchPc}: args[0],
       ${frame.endPc}: args[1],
       ${frame.exceptionReg}: args[2],
     });
-  `);
+  `,
+  );
   declareHandler(OpCode.TryCatchEnd, `${readArgs} if (${ctxRef('tryFrames')}.length > 0) { ${ctxRef('tryFrames')}.pop(); }`);
-  declareHandler(OpCode.Await, `
+  declareHandler(
+    OpCode.Await,
+    `
     ${readArgs}
     ${ctxRef('awaitPromise')} = Promise.resolve(${regRef('args[0]')});
     ${ctxRef('resumeReg')} = args[1];
     ${ctxRef('resumeMode')} = 'await';
     ${ctxRef('running')} = false;
     ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
-  `);
+  `,
+  );
   declareHandler(OpCode.Nop, `${readArgs} /* Junk */`);
   declareHandler(OpCode.Halt, `${ctxRef('running')} = false;`);
 
-  declareHandler(OpCode.PrivateGet, `
+  declareHandler(
+    OpCode.PrivateGet,
+    `
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
     var p = ${top.weakMapGet}.call(${top.privateData}, obj);
     if (!p || !(key in p)) throw new TypeError(${runtimeStringRef('Cannot read private member')});
     ctx.regs[args[2]] = p[key];
-  `);
-  declareHandler(OpCode.PrivateSet, `
+  `,
+  );
+  declareHandler(
+    OpCode.PrivateSet,
+    `
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
     var p = ${top.weakMapGet}.call(${top.privateData}, obj);
     if (!p) { p = {}; ${top.weakMapSet}.call(${top.privateData}, obj, p); }
     p[key] = ctx.regs[args[2]];
-  `);
-  declareHandler(OpCode.PrivateIn, `
+  `,
+  );
+  declareHandler(
+    OpCode.PrivateIn,
+    `
     ${readArgs}
     var obj = ctx.regs[args[0]];
     var key = ctx.regs[args[1]];
     var p = ${top.weakMapGet}.call(${top.privateData}, obj);
     ctx.regs[args[2]] = p ? (key in p) : false;
-  `);
+  `,
+  );
 
-  declareHandler(OpCode.SuperPropGet, `
+  declareHandler(
+    OpCode.SuperPropGet,
+    `
     ${readArgs}
     var isStatic = typeof ${ctxRef('thisArg')} === 'function';
     var superProto = isStatic 
       ? ${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')})
       : ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')}));
     ctx.regs[args[1]] = superProto[ctx.regs[args[0]]];
-  `);
-  declareHandler(OpCode.SuperPropSet, `
+  `,
+  );
+  declareHandler(
+    OpCode.SuperPropSet,
+    `
     ${readArgs}
     var isStatic = typeof ${ctxRef('thisArg')} === 'function';
     var superProto = isStatic 
       ? ${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')})
       : ${top.objectObj}.getPrototypeOf(${top.objectObj}.getPrototypeOf(${ctxRef('thisArg')}));
     superProto[ctx.regs[args[0]]] = ctx.regs[args[1]];
-  `);
-  declareHandler(OpCode.SuperCall, `
+  `,
+  );
+  declareHandler(
+    OpCode.SuperCall,
+    `
     ${readArgs}
     if (!${top.reflectObj} || !${top.reflectObj}.construct) {
       throw new TypeError('Reflect.construct is required for super()');
@@ -983,8 +1207,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     }
     ${ctxRef('thisArg')} = ${top.reflectObj}.construct(superCtor, aa, ${ctxRef('newTarget')});
     ctx.regs[args[args.length - 1]] = ${ctxRef('thisArg')};
-  `);
-  declareHandler(OpCode.SuperCallWithArray, `
+  `,
+  );
+  declareHandler(
+    OpCode.SuperCallWithArray,
+    `
     ${readArgs}
     if (!${top.reflectObj} || !${top.reflectObj}.construct) {
       throw new TypeError('Reflect.construct is required for super()');
@@ -992,28 +1219,37 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var superCtor = ${top.objectObj}.getPrototypeOf(${ctxRef('newTarget')});
     ${ctxRef('thisArg')} = ${top.reflectObj}.construct(superCtor, ctx.regs[args[0]], ${ctxRef('newTarget')});
     ctx.regs[args[1]] = ${ctxRef('thisArg')};
-  `);
+  `,
+  );
 
-  declareHandler(OpCode.Yield, `
+  declareHandler(
+    OpCode.Yield,
+    `
     ${readArgs}
     ${ctxRef('resumeReg')} = args[1];
     ${ctxRef('resumeMode')} = 'yield';
     ${ctxRef('resumeValue')} = ctx.regs[args[0]];
     ${ctxRef('running')} = false;
     ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
-  `);
-  declareHandler(OpCode.YieldStar, `
+  `,
+  );
+  declareHandler(
+    OpCode.YieldStar,
+    `
     ${readArgs}
     ${ctxRef('resumeReg')} = args[1];
     ${ctxRef('resumeMode')} = 'yieldStar';
     ${ctxRef('resumeValue')} = ctx.regs[args[0]];
     ${ctxRef('running')} = false;
     ${config.rollingKeys ? `ctx.${ctx.pathHash} = 0;` : ''}
-  `);
+  `,
+  );
 
   // GetEntropy: Fast VM-internal entropy source (replaces expensive Date.now() reflection)
   // Derives entropy from rolling VM state blended with environmental sources securely
-  declareHandler(OpCode.GetEntropy, `
+  declareHandler(
+    OpCode.GetEntropy,
+    `
     ${readArgs}
     var t = 0;
     try {
@@ -1032,7 +1268,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var entropy = (ctx.${ctx.rollingState} ^ (${ctxRef('pc')} * 2654435761) ^ tBits ^ rBits) >>> 0;
     entropy = (entropy ^ (entropy >>> 16)) & 0xFF;
     ctx.regs[args[0]] = entropy;
-  `);
+  `,
+  );
 
   const superRng = new SeededRandom(config.seed);
   const superIds = superRng.shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -1040,7 +1277,9 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   const getEntropyMulId = superIds[1]!;
   const loadConstAddId = superIds[2]!;
 
-  declareHandler(OpCode.SuperInstruction, `
+  declareHandler(
+    OpCode.SuperInstruction,
+    `
     ${readArgs}
     var patternId = args[0];
     if (patternId === ${loadConstMulId}) {
@@ -1059,9 +1298,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     } else {
       throw new Error('Invalid Super-Instruction Pattern: ' + patternId);
     }
-  `);
+  `,
+  );
 
-  const antiDebugLogic = config.antiDebug ? `
+  const antiDebugLogic = config.antiDebug
+    ? `
     // Anti-Debug DevTools & Trace Protection (Self-Destruct Trap)
     // ⚠️ WARNING: Contains literal \`debugger;\` statement. This will trigger
     // breakpoints in DevTools. Remove this entire block if distributing to production.
@@ -1077,9 +1318,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         return 'trap';
       }
     });
-  ` : '';
+  `
+    : '';
 
-  const tamperDetectionLogic = config.tamperDetection ? `
+  const tamperDetectionLogic = config.tamperDetection
+    ? `
     // Multi-layer native intrinsics verification (hardened against toString spoofing)
     var _isNative = function(fn) {
       try { 
@@ -1149,7 +1392,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ) {
       selfDestruct(ctx);
     }
-  ` : '';
+  `
+    : '';
 
   const runtimeDispatch = (() => {
     const vOpToHandlerName = new Array(256);
@@ -1200,14 +1444,15 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      }if (dispatchArch === 1) {
+      }
+      if (dispatchArch === 1) {
         // Architecture 1: Bijective Nibble-Swap Permutation Table
-        const saltByte = (config.seed ^ 0xA5F3) & 0xFF;
-        const saltByte2 = ((config.seed >>> 8) ^ 0xC2B1) & 0xFF;
+        const saltByte = (config.seed ^ 0xa5f3) & 0xff;
+        const saltByte2 = ((config.seed >>> 8) ^ 0xc2b1) & 0xff;
         const permTable = new Array(256).fill(`[${trapFnName}]`);
         for (let vOp = 0; vOp < 256; vOp++) {
-          const nibSwap = ((vOp >> 4) | ((vOp & 0xF) << 4)) & 0xFF;
-          const permuted = (nibSwap ^ saltByte ^ saltByte2) & 0xFF;
+          const nibSwap = ((vOp >> 4) | ((vOp & 0xf) << 4)) & 0xff;
+          const permuted = (nibSwap ^ saltByte ^ saltByte2) & 0xff;
           permTable[permuted] = vOpToVariants[vOp];
         }
         return {
@@ -1227,12 +1472,13 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      }if (dispatchArch === 2) {
+      }
+      if (dispatchArch === 2) {
         // Architecture 2: XOR-Scrambled Index Table (bijective XOR permutation)
-        const xorScramble = (config.seed ^ 0x7E3D9F2C) & 0xFF;
+        const xorScramble = (config.seed ^ 0x7e3d9f2c) & 0xff;
         const scrambledTable = new Array(256).fill(`[${trapFnName}]`);
         for (let vOp = 0; vOp < 256; vOp++) {
-          const idx = (vOp ^ xorScramble) & 0xFF;
+          const idx = (vOp ^ xorScramble) & 0xff;
           scrambledTable[idx] = vOpToVariants[vOp];
         }
         return {
@@ -1251,17 +1497,18 @@ ${casesStr}
           `,
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
-      }if (dispatchArch === 3) {
+      }
+      if (dispatchArch === 3) {
         // Architecture 3: Bit-Reversal Permutation Table
         // reverse8(x) reverses the 8 bits of x — bijective on [0,255]
-        const bitRevSalt = (config.seed ^ 0x4B7D) & 0xFF;
+        const bitRevSalt = (config.seed ^ 0x4b7d) & 0xff;
         const bitRevTable = new Array(256).fill(`[${trapFnName}]`);
         for (let vOp = 0; vOp < 256; vOp++) {
           let rev = 0;
           for (let bit = 0; bit < 8; bit++) {
-            if (vOp & (1 << bit)) rev |= (1 << (7 - bit));
+            if (vOp & (1 << bit)) rev |= 1 << (7 - bit);
           }
-          const idx = (rev ^ bitRevSalt) & 0xFF;
+          const idx = (rev ^ bitRevSalt) & 0xff;
           bitRevTable[idx] = vOpToVariants[vOp];
         }
         return {
@@ -1287,17 +1534,17 @@ ${casesStr}
           invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
         };
       }
-        // Architecture 4: Affine Transform (multiply by odd constant + add, mod 256)
-        // f(x) = (x * oddMul + addConst) & 0xFF — bijective since oddMul is coprime to 256
-        const oddMul = ((config.seed & 0x7F) | 1) | 2;  // ensure odd and >= 3
-        const addConst4 = (config.seed >>> 16) & 0xFF;
-        const affineTable = new Array(256).fill(`[${trapFnName}]`);
-        for (let vOp = 0; vOp < 256; vOp++) {
-          const idx = ((vOp * oddMul) + addConst4) & 0xFF;
-          affineTable[idx] = vOpToVariants[vOp];
-        }
-        return {
-          declarations: `
+      // Architecture 4: Affine Transform (multiply by odd constant + add, mod 256)
+      // f(x) = (x * oddMul + addConst) & 0xFF — bijective since oddMul is coprime to 256
+      const oddMul = (config.seed & 0x7f) | 1 | 2; // ensure odd and >= 3
+      const addConst4 = (config.seed >>> 16) & 0xff;
+      const affineTable = new Array(256).fill(`[${trapFnName}]`);
+      for (let vOp = 0; vOp < 256; vOp++) {
+        const idx = (vOp * oddMul + addConst4) & 0xff;
+        affineTable[idx] = vOpToVariants[vOp];
+      }
+      return {
+        declarations: `
   var _afVT = [
     ${affineTable.join(',\n    ')}
   ];
@@ -1310,11 +1557,11 @@ ${casesStr}
     return variants[(((ctx.${ctx.rollingState} >>> 16) ^ (ctx.${ctx.rollingState} & 0xFFFF)) & 0x7FFF) % variants.length];
   }
           `,
-          invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
-        };
+        invoke: `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}));`,
+      };
     }
-      return {
-        declarations: `
+    return {
+      declarations: `
   const ${locals.dispatchBank} = [\n    ${vOpToHandlerName.join(',\n    ')}\n  ];
   function resolveRoute(ctx, token) {
     if (token === null) return null;
@@ -1322,8 +1569,8 @@ ${casesStr}
     return ${locals.dispatchBank}[nextOp];
   }
         `,
-        invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
-      };
+      invoke: `${locals.dispatchBank}[${locals.opByte}](ctx);`,
+    };
   })();
 
   const allBytecodes: number[] = [];
@@ -1331,13 +1578,13 @@ ${casesStr}
   let currentOffset = 0;
 
   for (const fn of module.functions) {
-    const fnSalt = buildRng.nextRange(1, 0xFFFFFFFF);
+    const fnSalt = buildRng.nextRange(1, 0xffffffff);
     functionTable[fn.id] = {
       o: currentOffset,
       l: fn.bytecode.length,
       a: fn.attributes ? [...fn.attributes] : [],
       r: fn.maxRegisters,
-      s: fnSalt
+      s: fnSalt,
     };
     for (let i = 0; i < fn.bytecode.length; i++) {
       allBytecodes.push(fn.bytecode[i]!);
@@ -1346,13 +1593,17 @@ ${casesStr}
   }
 
   const arenaArray = allBytecodes.join(',');
-  const fnTableStr = Object.entries(functionTable).map(([id, info]) => {
-    return `${JSON.stringify(id)}: { o: ${info.o}, l: ${info.l}, a: ${JSON.stringify(info.a)}, r: ${info.r}, s: ${info.s} }`;
-  }).join(',\n    ');
+  const fnTableStr = Object.entries(functionTable)
+    .map(([id, info]) => {
+      return `${JSON.stringify(id)}: { o: ${info.o}, l: ${info.l}, a: ${JSON.stringify(info.a)}, r: ${info.r}, s: ${info.s} }`;
+    })
+    .join(',\n    ');
 
-  const handlerVariantsEntries = Array.from(allHandlerVariants.entries()).map(([canonical, names]) => {
-    return `[${canonical}]: [${names.join(', ')}]`;
-  }).join(',\n    ');
+  const handlerVariantsEntries = Array.from(allHandlerVariants.entries())
+    .map(([canonical, names]) => {
+      return `[${canonical}]: [${names.join(', ')}]`;
+    })
+    .join(',\n    ');
   const handlerVariantsStr = `const handlerVariants = {\n    ${handlerVariantsEntries}\n  };`;
 
   if (config.runtimeHardening === 'paranoid') {
@@ -1543,7 +1794,9 @@ const ${top.vmFunctions} = (function() {
     var pos = ${ctxRef('pc')}++;
     if (pos >= ${ctxRef('bytecode')}.length) return 0;
     var byte = ${ctxRef('bytecode')}[pos];
-    ${config.rollingKeys ? `
+    ${
+      config.rollingKeys
+        ? `
       var xorVal = ${ctxRef('xorLog')}[pos];
       var rev = ((xorVal & 0xF0) >>> 4) | ((xorVal & 0x0F) << 4);
       rev = ((rev & 0xCC) >>> 2) | ((rev & 0x33) << 2);
@@ -1577,9 +1830,11 @@ const ${top.vmFunctions} = (function() {
          ctx.${ctx.xorLog}[pos] ^= revMask;
       }
       return decoded;
-    ` : `
+    `
+        : `
       return byte;
-    `}
+    `
+    }
   }
 
   ${handlerDeclarations.join('\n\n')}
@@ -1669,11 +1924,15 @@ const ${top.vmFunctions} = (function() {
         if (rawRegs) {
           for (var i = 0; i < rawRegs.length; i++) rawRegs[i] = 0;
         }
-        ${config.rollingKeys ? `
+        ${
+          config.rollingKeys
+            ? `
         if (ctx.${ctx.bytecode} && ctx.${ctx.bytecode}.fill) {
           try { ctx.${ctx.bytecode}.fill(0); } catch(e) {}
         }
-        ` : ''}
+        `
+            : ''
+        }
         ctx.${ctx.bytecode} = new Uint8Array(0);
         // Detach env reference without destroying shared envArr
         ctx.${ctx.env} = [];
@@ -1701,13 +1960,21 @@ const ${top.vmFunctions} = (function() {
     ${tamperDetectionLogic}
     if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
     let ${locals.opByte} = ${top.readByte}(ctx);
-    ${config.stealthDispatch ? `
+    ${
+      config.stealthDispatch
+        ? `
       ${locals.opByte} = (ctx.${ctx.currentHandlerIdx} + ${locals.opByte}) % 256;
       ctx.${ctx.currentHandlerIdx} = ${locals.opByte};
-    ` : ''}
-    ${config.rollingKeys ? `
+    `
+        : ''
+    }
+    ${
+      config.rollingKeys
+        ? `
       ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + ${locals.opByte}) & 0xFFFFFFFF;
-    ` : ''}
+    `
+        : ''
+    }
     let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
     while(handler && ${ctxRef('running')} && !ctx.poisoned) {
@@ -1755,13 +2022,21 @@ const ${top.vmFunctions} = (function() {
             handler = null;
           } else {
             let nextOp = ${top.readByte}(ctx);
-            ${config.stealthDispatch ? `
+            ${
+              config.stealthDispatch
+                ? `
               nextOp = (ctx.${ctx.currentHandlerIdx} + nextOp) % 256;
               ctx.${ctx.currentHandlerIdx} = nextOp;
-            ` : ''}
-            ${config.rollingKeys ? `
+            `
+                : ''
+            }
+            ${
+              config.rollingKeys
+                ? `
               ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + nextOp) & 0xFFFFFFFF;
-            ` : ''}
+            `
+                : ''
+            }
             if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
               handler = resolveRoute(ctx, makeRouteToken(ctx, nextOp));
             } else {
@@ -2011,7 +2286,7 @@ const ${top.vmFunctions} = (function() {
   }
 
   var ${top.result} = {};
-${exportedFunctions.map(fn => `  ${top.result}[${JSON.stringify(fn.name)}] = ${top.getExecutorById}(${JSON.stringify(fn.id)});`).join('\n')}
+${exportedFunctions.map((fn) => `  ${top.result}[${JSON.stringify(fn.name)}] = ${top.getExecutorById}(${JSON.stringify(fn.id)});`).join('\n')}
   if (typeof Object.freeze === 'function') {
     Object.freeze(${top.result});
   }
@@ -2019,7 +2294,7 @@ ${exportedFunctions.map(fn => `  ${top.result}[${JSON.stringify(fn.name)}] = ${t
 })();
 
 if (typeof module !== 'undefined' && module.exports) {
-${exportedFunctions.map(fn => `  module.exports[${JSON.stringify(fn.name)}] = ${top.vmFunctions}[${JSON.stringify(fn.name)}];`).join('\n')}
+${exportedFunctions.map((fn) => `  module.exports[${JSON.stringify(fn.name)}] = ${top.vmFunctions}[${JSON.stringify(fn.name)}];`).join('\n')}
 }
   `.trim();
 
@@ -2030,6 +2305,6 @@ ${exportedFunctions.map(fn => `  module.exports[${JSON.stringify(fn.name)}] = ${
     constantDecoder: 'function decode() {}',
     bytecodePayload: targetFn.bytecode,
     entryBootstrap: 'function boot() {}',
-    fullSource: sourceCode
+    fullSource: sourceCode,
   };
 }

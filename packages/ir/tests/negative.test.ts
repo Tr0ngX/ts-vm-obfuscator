@@ -37,15 +37,13 @@ function createGraph(): ProjectSemanticGraph {
 describe('IR Negative Tests', () => {
   it('rejects eval syntax with error', () => {
     const filePath = path.join(__dirname, 'fixtures', 'debugger-blocked.ts');
-    expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
-      /Unsupported AST in IR builder/
-    );
+    expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(/Unsupported AST in IR builder/);
   });
 
   it('gracefully handles empty function body (zero blocks)', () => {
     const filePath = path.join(__dirname, 'fixtures', 'complex-structures.ts');
     const mod = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
-    const emptyBody = mod.functions.find(f => f.name === 'complexStructures');
+    const emptyBody = mod.functions.find((f) => f.name === 'complexStructures');
     expect(emptyBody).toBeDefined();
     expect(emptyBody!.blocks.length).toBeGreaterThan(0);
   });
@@ -53,8 +51,8 @@ describe('IR Negative Tests', () => {
   it('handles nested function virtualization with correct scope', () => {
     const filePath = path.join(__dirname, 'fixtures', 'nested-closures.ts');
     const mod = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
-    const outer = mod.functions.find(f => f.name === 'nestedCounter');
-    const inner = mod.functions.find(f => f.name !== 'nestedCounter');
+    const outer = mod.functions.find((f) => f.name === 'nestedCounter');
+    const inner = mod.functions.find((f) => f.name !== 'nestedCounter');
     expect(outer).toBeDefined();
     expect(inner).toBeDefined();
     expect(inner!.capturedVariables).toContain('counter');
@@ -72,6 +70,6 @@ describe('IR Negative Tests', () => {
       forceVirtualizeAll: false,
     });
     expect(mod.functions.length).toBeGreaterThan(0);
-    expect(mod.functions.every(f => f.blocks.length > 0)).toBe(true);
+    expect(mod.functions.every((f) => f.blocks.length > 0)).toBe(true);
   });
 });

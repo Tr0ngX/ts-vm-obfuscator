@@ -59,7 +59,7 @@ export class RegisterCompactingPass implements TransformPass {
   readonly priority = 90;
 
   execute(ctx: TransformContext): TransformResult {
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       if (!func.isVirtualized) return func;
       const usedRegs = collectUsedRegisters(func);
       const compactMap = buildCompactMap(usedRegs);
@@ -78,32 +78,30 @@ export class RegisterCompactingPass implements TransformPass {
   private rewriteRegisters(func: IRFunction, map: Map<string, string>): IRFunction {
     return {
       ...func,
-      params: func.params.map(p => ({
+      params: func.params.map((p) => ({
         ...p,
         register: mapReg(p.register, map) as Register,
       })),
-      locals: func.locals.map(l => ({
+      locals: func.locals.map((l) => ({
         ...l,
         register: mapReg(l.register, map) as Register,
       })),
-      blocks: func.blocks.map(block => ({
+      blocks: func.blocks.map((block) => ({
         ...block,
-        phiNodes: (block.phiNodes ?? []).map(phi => ({
+        phiNodes: (block.phiNodes ?? []).map((phi) => ({
           ...phi,
           result: mapReg(phi.result, map) as Register,
-          incoming: phi.incoming.map(inc => ({
+          incoming: phi.incoming.map((inc) => ({
             ...inc,
             register: mapReg(inc.register, map) as Register,
           })),
         })),
-        instructions: block.instructions.map(inst => ({
+        instructions: block.instructions.map((inst) => ({
           ...inst,
           result: mapReg(inst.result, map) as Register | undefined,
-          operands: inst.operands.map(op => ({
+          operands: inst.operands.map((op) => ({
             ...op,
-            value: op.kind === OperandKind.Register
-              ? mapOperandValue(op.value, map)
-              : op.value,
+            value: op.kind === OperandKind.Register ? mapOperandValue(op.value, map) : op.value,
           })),
         })),
         terminator: {

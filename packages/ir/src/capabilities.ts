@@ -73,10 +73,12 @@ function hasLexicalThisProvider(node: ts.ArrowFunction): boolean {
   let current: ts.Node | undefined = node.parent;
   while (current) {
     // Method, constructor, getter, setter provide their own `this`
-    if (ts.isMethodDeclaration(current) ||
-        ts.isConstructorDeclaration(current) ||
-        ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current)) {
+    if (
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current)
+    ) {
       return true;
     }
     // Regular function declaration/expression provides its own `this`
@@ -84,8 +86,7 @@ function hasLexicalThisProvider(node: ts.ArrowFunction): boolean {
       return true;
     }
     // Class property initializer — arrow in property position gets class `this`
-    if (ts.isPropertyDeclaration(current) &&
-        (ts.isClassDeclaration(current.parent) || ts.isClassExpression(current.parent))) {
+    if (ts.isPropertyDeclaration(current) && (ts.isClassDeclaration(current.parent) || ts.isClassExpression(current.parent))) {
       return true;
     }
     // Reached top of file without finding a provider
@@ -115,9 +116,7 @@ function hasLexicalNewTargetProvider(node: ts.ArrowFunction): boolean {
       continue;
     }
     // Methods, getters, setters cannot be `new`-called
-    if (ts.isMethodDeclaration(current) ||
-        ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current)) {
+    if (ts.isMethodDeclaration(current) || ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
       return false;
     }
     // Reached top of file
@@ -137,9 +136,9 @@ function analyzeClassSupport(node: ts.ClassDeclaration | ts.ClassExpression): st
       reasons.add('class uses parameter properties');
     }
     if (
-      (ts.isMethodDeclaration(current) || ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current))
-      && current.name
-      && ts.isPrivateIdentifier(current.name)
+      (ts.isMethodDeclaration(current) || ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) &&
+      current.name &&
+      ts.isPrivateIdentifier(current.name)
     ) {
       reasons.add('class uses unsupported private methods or accessors');
     }
@@ -166,7 +165,7 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
       reasons.add(`contains ${ts.SyntaxKind[current.kind]}`);
       if (tier === 'vm_safe') {
         tier = 'js_lowered';
-      } 
+      }
     }
 
     if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
@@ -198,7 +197,12 @@ function analyzeFunctionNode(node: SupportedFunctionNode, sourceFile: ts.SourceF
       }
     }
 
-    if (ts.isMetaProperty(current) && current.keywordToken === ts.SyntaxKind.NewKeyword && current.name.text === 'target' && ts.isArrowFunction(node)) {
+    if (
+      ts.isMetaProperty(current) &&
+      current.keywordToken === ts.SyntaxKind.NewKeyword &&
+      current.name.text === 'target' &&
+      ts.isArrowFunction(node)
+    ) {
       syntaxKinds.add('MetaProperty');
       if (!hasLexicalNewTargetProvider(node)) {
         reasons.add('uses lexical new.target in arrow function without an enclosing constructor/function context');

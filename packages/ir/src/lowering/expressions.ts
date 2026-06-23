@@ -9,7 +9,7 @@ export function lowerConditionalExpression(
   self: IASTLowering,
   conditionReg: Register,
   whenTrue: () => Register,
-  whenFalse: () => Register
+  whenFalse: () => Register,
 ): Register {
   const tempReg = self.createTempLocal('expr');
   const trueBlock = self.fnBuilder.createBlock('expr_true');
@@ -55,10 +55,14 @@ export function lowerNullishCoalesce(self: IASTLowering, leftReg: Register, righ
   const nullConst = self.emitConstant(ConstantKind.Null, null);
   const undefConst = self.emitConstant(ConstantKind.Undefined, null);
   const isNullReg = self.fnBuilder.allocRegister();
-  self.currentBlock.addInstruction(OpCode.StrictEq, [
-    { kind: OperandKind.Register, value: leftReg },
-    { kind: OperandKind.Register, value: nullConst },
-  ], isNullReg);
+  self.currentBlock.addInstruction(
+    OpCode.StrictEq,
+    [
+      { kind: OperandKind.Register, value: leftReg },
+      { kind: OperandKind.Register, value: nullConst },
+    ],
+    isNullReg,
+  );
 
   const rhsBlock = self.fnBuilder.createBlock('nullish_rhs');
   const undefCheckBlock = self.fnBuilder.createBlock('nullish_undef');
@@ -71,10 +75,14 @@ export function lowerNullishCoalesce(self: IASTLowering, leftReg: Register, righ
 
   self.currentBlock = undefCheckBlock;
   const isUndefReg = self.fnBuilder.allocRegister();
-  self.currentBlock.addInstruction(OpCode.StrictEq, [
-    { kind: OperandKind.Register, value: leftReg },
-    { kind: OperandKind.Register, value: undefConst },
-  ], isUndefReg);
+  self.currentBlock.addInstruction(
+    OpCode.StrictEq,
+    [
+      { kind: OperandKind.Register, value: leftReg },
+      { kind: OperandKind.Register, value: undefConst },
+    ],
+    isUndefReg,
+  );
   rhsBlock.addPredecessor(self.currentBlock.id);
   endBlock.addPredecessor(self.currentBlock.id);
   self.currentBlock.setTerminator({ kind: 'branch', condition: isUndefReg, targets: [rhsBlock.id, endBlock.id] });
@@ -100,19 +108,27 @@ export function lowerTemplateExpression(self: IASTLowering, expr: ts.TemplateExp
   for (const span of expr.templateSpans) {
     const valueReg = visitExpression(self, span.expression);
     const combinedValue = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(OpCode.Add, [
-      { kind: OperandKind.Register, value: accReg },
-      { kind: OperandKind.Register, value: valueReg },
-    ], combinedValue);
+    self.currentBlock.addInstruction(
+      OpCode.Add,
+      [
+        { kind: OperandKind.Register, value: accReg },
+        { kind: OperandKind.Register, value: valueReg },
+      ],
+      combinedValue,
+    );
     accReg = combinedValue;
 
     if (span.literal.text.length > 0) {
       const literalReg = self.emitConstant(ConstantKind.String, span.literal.text);
       const combinedLiteral = self.fnBuilder.allocRegister();
-      self.currentBlock.addInstruction(OpCode.Add, [
-        { kind: OperandKind.Register, value: accReg },
-        { kind: OperandKind.Register, value: literalReg },
-      ], combinedLiteral);
+      self.currentBlock.addInstruction(
+        OpCode.Add,
+        [
+          { kind: OperandKind.Register, value: accReg },
+          { kind: OperandKind.Register, value: literalReg },
+        ],
+        combinedLiteral,
+      );
       accReg = combinedLiteral;
     }
   }
@@ -134,7 +150,11 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
   }
   if (ts.isBigIntLiteral(expr)) {
     const bigintGlobalReg = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(OpCode.LoadGlobal, [{ kind: OperandKind.Register, value: self.emitConstant(ConstantKind.String, 'BigInt') }], bigintGlobalReg);
+    self.currentBlock.addInstruction(
+      OpCode.LoadGlobal,
+      [{ kind: OperandKind.Register, value: self.emitConstant(ConstantKind.String, 'BigInt') }],
+      bigintGlobalReg,
+    );
 
     const valReg = self.emitConstant(ConstantKind.String, expr.text);
     const resReg = self.fnBuilder.allocRegister();
@@ -142,9 +162,9 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       OpCode.Call,
       [
         { kind: OperandKind.Register, value: bigintGlobalReg },
-        { kind: OperandKind.Register, value: valReg }
+        { kind: OperandKind.Register, value: valReg },
       ],
-      resReg
+      resReg,
     );
     return resReg;
   }
@@ -155,17 +175,25 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     const flags = rawText.slice(lastSlashIndex + 1);
 
     const objectGlobalReg = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(OpCode.LoadGlobal, [{ kind: OperandKind.Register, value: self.emitConstant(ConstantKind.String, 'RegExp') }], objectGlobalReg);
+    self.currentBlock.addInstruction(
+      OpCode.LoadGlobal,
+      [{ kind: OperandKind.Register, value: self.emitConstant(ConstantKind.String, 'RegExp') }],
+      objectGlobalReg,
+    );
 
     const patternReg = self.emitConstant(ConstantKind.String, pattern);
     const flagsReg = self.emitConstant(ConstantKind.String, flags);
 
     const resReg = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(OpCode.New, [
-      { kind: OperandKind.Register, value: objectGlobalReg },
-      { kind: OperandKind.Register, value: patternReg },
-      { kind: OperandKind.Register, value: flagsReg }
-    ], resReg);
+    self.currentBlock.addInstruction(
+      OpCode.New,
+      [
+        { kind: OperandKind.Register, value: objectGlobalReg },
+        { kind: OperandKind.Register, value: patternReg },
+        { kind: OperandKind.Register, value: flagsReg },
+      ],
+      resReg,
+    );
     return resReg;
   }
   if (ts.isTemplateExpression(expr)) {
@@ -177,33 +205,19 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     }
     const awaitedSourceReg = visitExpression(self, expr.expression);
     const awaitedValueReg = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(
-      OpCode.Await,
-      [{ kind: OperandKind.Register, value: awaitedSourceReg }],
-      awaitedValueReg,
-    );
+    self.currentBlock.addInstruction(OpCode.Await, [{ kind: OperandKind.Register, value: awaitedSourceReg }], awaitedValueReg);
     return awaitedValueReg;
   }
   if (ts.isYieldExpression(expr)) {
     if (!self.isGenerator) {
       self.failUnsupported(expr, 'yield outside generator is not supported');
     }
-    const yieldedValueReg = expr.expression
-      ? visitExpression(self, expr.expression)
-      : self.emitConstant(ConstantKind.Undefined, null);
+    const yieldedValueReg = expr.expression ? visitExpression(self, expr.expression) : self.emitConstant(ConstantKind.Undefined, null);
     const resReg = self.fnBuilder.allocRegister();
     if (expr.asteriskToken) {
-      self.currentBlock.addInstruction(
-        OpCode.YieldStar,
-        [{ kind: OperandKind.Register, value: yieldedValueReg }],
-        resReg,
-      );
+      self.currentBlock.addInstruction(OpCode.YieldStar, [{ kind: OperandKind.Register, value: yieldedValueReg }], resReg);
     } else {
-      self.currentBlock.addInstruction(
-        OpCode.Yield,
-        [{ kind: OperandKind.Register, value: yieldedValueReg }],
-        resReg,
-      );
+      self.currentBlock.addInstruction(OpCode.Yield, [{ kind: OperandKind.Register, value: yieldedValueReg }], resReg);
     }
     return resReg;
   }
@@ -212,7 +226,11 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
   if (expr.kind === ts.SyntaxKind.FalseKeyword) return self.emitConstant(ConstantKind.Boolean, false);
   if (expr.kind === ts.SyntaxKind.ThisKeyword) {
     if (ts.isArrowFunction(self.node) && (self.scope.has(LEXICAL_THIS_CAPTURE) || self.outerCaptureBindings.has(LEXICAL_THIS_CAPTURE))) {
-      return self.resolveLexicalCapture(LEXICAL_THIS_CAPTURE, expr, 'lexical this in arrow function requires an enclosing function context');
+      return self.resolveLexicalCapture(
+        LEXICAL_THIS_CAPTURE,
+        expr,
+        'lexical this in arrow function requires an enclosing function context',
+      );
     }
     const thisReg = self.fnBuilder.allocRegister();
     self.currentBlock.addInstruction(OpCode.LoadThis, [], thisReg);
@@ -220,7 +238,10 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
   }
   if (ts.isMetaProperty(expr)) {
     if (expr.keywordToken === ts.SyntaxKind.NewKeyword && expr.name.text === 'target') {
-      if (ts.isArrowFunction(self.node) && (self.scope.has(LEXICAL_NEW_TARGET_CAPTURE) || self.outerCaptureBindings.has(LEXICAL_NEW_TARGET_CAPTURE))) {
+      if (
+        ts.isArrowFunction(self.node) &&
+        (self.scope.has(LEXICAL_NEW_TARGET_CAPTURE) || self.outerCaptureBindings.has(LEXICAL_NEW_TARGET_CAPTURE))
+      ) {
         return self.resolveLexicalCapture(
           LEXICAL_NEW_TARGET_CAPTURE,
           expr,
@@ -233,7 +254,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     }
     self.failUnsupported(expr, 'meta property is not supported');
   }
-  
+
   if (ts.isIdentifier(expr)) {
     return self.resolveVar(expr.text);
   }
@@ -247,7 +268,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       () => visitExpression(self, expr.whenFalse),
     );
   }
-  
+
   if (ts.isBinaryExpression(expr)) {
     if (
       expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
@@ -256,10 +277,20 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     ) {
       const leftReg = visitExpression(self, expr.left);
       if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
-        return lowerConditionalExpression(self, leftReg, () => visitExpression(self, expr.right), () => leftReg);
+        return lowerConditionalExpression(
+          self,
+          leftReg,
+          () => visitExpression(self, expr.right),
+          () => leftReg,
+        );
       }
       if (expr.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
-        return lowerConditionalExpression(self, leftReg, () => leftReg, () => visitExpression(self, expr.right));
+        return lowerConditionalExpression(
+          self,
+          leftReg,
+          () => leftReg,
+          () => visitExpression(self, expr.right),
+        );
       }
       return lowerNullishCoalesce(self, leftReg, expr.right);
     }
@@ -268,19 +299,26 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       self.storeValue(expr.left, valueReg);
       return valueReg;
     }
-    
+
     if (expr.operatorToken.kind === ts.SyntaxKind.InKeyword && ts.isPrivateIdentifier(expr.left)) {
       const leftReg = self.resolvePrivateIdentifierRegister(expr.left);
       const rightReg = visitExpression(self, expr.right);
       const resReg = self.fnBuilder.allocRegister();
-      self.currentBlock.addInstruction(OpCode.PrivateIn, [{ kind: OperandKind.Register, value: rightReg }, { kind: OperandKind.Register, value: leftReg }], resReg);
+      self.currentBlock.addInstruction(
+        OpCode.PrivateIn,
+        [
+          { kind: OperandKind.Register, value: rightReg },
+          { kind: OperandKind.Register, value: leftReg },
+        ],
+        resReg,
+      );
       return resReg;
     }
 
     const leftReg = visitExpression(self, expr.left);
     const rightReg = visitExpression(self, expr.right);
     const resReg = self.fnBuilder.allocRegister();
-    
+
     const opMap: Record<number, OpCode> = {
       [ts.SyntaxKind.PlusToken]: OpCode.Add,
       [ts.SyntaxKind.MinusToken]: OpCode.Sub,
@@ -304,8 +342,9 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       [ts.SyntaxKind.InKeyword]: OpCode.In,
       [ts.SyntaxKind.InstanceOfKeyword]: OpCode.InstanceOf,
     };
-    
-    const isCompound = expr.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken && expr.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken;
+
+    const isCompound =
+      expr.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken && expr.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken;
     if (isCompound) {
       const cmpMap: Record<number, OpCode> = {
         [ts.SyntaxKind.PlusEqualsToken]: OpCode.Add,
@@ -322,24 +361,41 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       };
       const opc = cmpMap[expr.operatorToken.kind] || OpCode.Add;
       const leftValueReg = self.readValue(expr.left);
-      self.currentBlock.addInstruction(opc, [{ kind: OperandKind.Register, value: leftValueReg }, { kind: OperandKind.Register, value: rightReg }], resReg);
+      self.currentBlock.addInstruction(
+        opc,
+        [
+          { kind: OperandKind.Register, value: leftValueReg },
+          { kind: OperandKind.Register, value: rightReg },
+        ],
+        resReg,
+      );
       self.storeValue(expr.left, resReg);
       return resReg;
     }
-    
+
     if (opMap[expr.operatorToken.kind]) {
-      self.currentBlock.addInstruction(opMap[expr.operatorToken.kind]!, [{ kind: OperandKind.Register, value: leftReg }, { kind: OperandKind.Register, value: rightReg }], resReg);
-      
-      if (expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+      self.currentBlock.addInstruction(
+        opMap[expr.operatorToken.kind]!,
+        [
+          { kind: OperandKind.Register, value: leftReg },
+          { kind: OperandKind.Register, value: rightReg },
+        ],
+        resReg,
+      );
+
+      if (
+        expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken ||
+        expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken
+      ) {
         const notReg = self.fnBuilder.allocRegister();
         self.currentBlock.addInstruction(OpCode.Not, [{ kind: OperandKind.Register, value: resReg }], notReg);
         return notReg;
       }
-      
+
       return resReg;
     }
   }
-  
+
   if (ts.isPropertyAccessExpression(expr)) {
     if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
       const propReg = self.emitConstant(ConstantKind.String, expr.name.text);
@@ -352,11 +408,25 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     const resReg = self.fnBuilder.allocRegister();
     if (ts.isPrivateIdentifier(expr.name)) {
       const privateKeyReg = self.resolvePrivateIdentifierRegister(expr.name);
-      self.currentBlock.addInstruction(OpCode.PrivateGet, [{ kind: OperandKind.Register, value: objReg }, { kind: OperandKind.Register, value: privateKeyReg }], resReg);
+      self.currentBlock.addInstruction(
+        OpCode.PrivateGet,
+        [
+          { kind: OperandKind.Register, value: objReg },
+          { kind: OperandKind.Register, value: privateKeyReg },
+        ],
+        resReg,
+      );
       return resReg;
     }
     const propReg = self.emitConstant(ConstantKind.String, expr.name.text);
-    self.currentBlock.addInstruction(OpCode.PropGet, [{ kind: OperandKind.Register, value: objReg }, { kind: OperandKind.Register, value: propReg }], resReg);
+    self.currentBlock.addInstruction(
+      OpCode.PropGet,
+      [
+        { kind: OperandKind.Register, value: objReg },
+        { kind: OperandKind.Register, value: propReg },
+      ],
+      resReg,
+    );
     return resReg;
   }
 
@@ -367,10 +437,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     const objReg = visitExpression(self, expr.expression);
     const indexReg = visitExpression(self, expr.argumentExpression);
     const resReg = self.fnBuilder.allocRegister();
-    self.currentBlock.addInstruction(OpCode.ComputedGet, [
-      { kind: OperandKind.Register, value: objReg },
-      { kind: OperandKind.Register, value: indexReg },
-    ], resReg);
+    self.currentBlock.addInstruction(
+      OpCode.ComputedGet,
+      [
+        { kind: OperandKind.Register, value: objReg },
+        { kind: OperandKind.Register, value: indexReg },
+      ],
+      resReg,
+    );
     return resReg;
   }
 
@@ -406,14 +480,11 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       }
       const currentIndexReg = self.loadFromLocal(indexLocal);
       const valueReg = visitExpression(self, element);
-      self.currentBlock.addInstruction(
-        OpCode.ComputedSet,
-        [
-          { kind: OperandKind.Register, value: arrayReg },
-          { kind: OperandKind.Register, value: currentIndexReg },
-          { kind: OperandKind.Register, value: valueReg },
-        ],
-      );
+      self.currentBlock.addInstruction(OpCode.ComputedSet, [
+        { kind: OperandKind.Register, value: arrayReg },
+        { kind: OperandKind.Register, value: currentIndexReg },
+        { kind: OperandKind.Register, value: valueReg },
+      ]);
       const nextIndexReg = self.fnBuilder.allocRegister();
       self.currentBlock.addInstruction(
         OpCode.Add,
@@ -427,14 +498,11 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     });
 
     const finalLengthReg = self.loadFromLocal(indexLocal);
-    self.currentBlock.addInstruction(
-      OpCode.PropSet,
-      [
-        { kind: OperandKind.Register, value: arrayReg },
-        { kind: OperandKind.Register, value: lengthKeyReg },
-        { kind: OperandKind.Register, value: finalLengthReg },
-      ],
-    );
+    self.currentBlock.addInstruction(OpCode.PropSet, [
+      { kind: OperandKind.Register, value: arrayReg },
+      { kind: OperandKind.Register, value: lengthKeyReg },
+      { kind: OperandKind.Register, value: finalLengthReg },
+    ]);
 
     return arrayReg;
   }
@@ -514,7 +582,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
             { kind: OperandKind.Register, value: nameReg },
             { kind: OperandKind.Register, value: descriptorReg },
           ],
-          self.fnBuilder.allocRegister()
+          self.fnBuilder.allocRegister(),
         );
         continue;
       }
@@ -531,11 +599,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     if (hasSpread) {
       const argArrayReg = self.materializeArgumentArray(expr.arguments);
       if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
-        self.currentBlock.addInstruction(
-          OpCode.SuperCallWithArray,
-          [{ kind: OperandKind.Register, value: argArrayReg }],
-          resReg,
-        );
+        self.currentBlock.addInstruction(OpCode.SuperCallWithArray, [{ kind: OperandKind.Register, value: argArrayReg }], resReg);
         if (self.instanceFieldsToInitialize) {
           self.emitInstanceFieldInitializers(self.instanceFieldsToInitialize);
         }
@@ -555,9 +619,9 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
               { kind: OperandKind.Register, value: fnReg },
               { kind: OperandKind.Register, value: applyReg },
               { kind: OperandKind.Register, value: thisReg },
-              { kind: OperandKind.Register, value: argArrayReg }
+              { kind: OperandKind.Register, value: argArrayReg },
             ],
-            resReg
+            resReg,
           );
           return resReg;
         }
@@ -585,17 +649,17 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       );
       return resReg;
     }
-    const args = expr.arguments.map(a => visitExpression(self, a));
-    
+    const args = expr.arguments.map((a) => visitExpression(self, a));
+
     if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
-      const ops: Operand[] = args.map(a => ({ kind: OperandKind.Register, value: a } as Operand));
+      const ops: Operand[] = args.map((a) => ({ kind: OperandKind.Register, value: a }) as Operand);
       self.currentBlock.addInstruction(OpCode.SuperCall, ops, resReg);
       if (self.instanceFieldsToInitialize) {
         self.emitInstanceFieldInitializers(self.instanceFieldsToInitialize);
       }
       return resReg;
     }
-    
+
     if (ts.isPropertyAccessExpression(expr.expression)) {
       if (expr.expression.expression.kind === ts.SyntaxKind.SuperKeyword) {
         const propReg = self.emitConstant(ConstantKind.String, expr.expression.name.text);
@@ -608,7 +672,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
           { kind: OperandKind.Register, value: fnReg },
           { kind: OperandKind.Register, value: callReg },
           { kind: OperandKind.Register, value: thisReg },
-          ...args.map(a => ({ kind: OperandKind.Register, value: a } as Operand))
+          ...args.map((a) => ({ kind: OperandKind.Register, value: a }) as Operand),
         ];
         self.currentBlock.addInstruction(OpCode.CallMethod, ops, resReg);
         return resReg;
@@ -618,14 +682,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       const ops: Operand[] = [
         { kind: OperandKind.Register, value: objReg },
         { kind: OperandKind.Register, value: propReg },
-        ...args.map(a => ({ kind: OperandKind.Register, value: a } as Operand))
+        ...args.map((a) => ({ kind: OperandKind.Register, value: a }) as Operand),
       ];
       self.currentBlock.addInstruction(OpCode.CallMethod, ops, resReg);
     } else {
       const calleeReg = visitExpression(self, expr.expression);
       const ops: Operand[] = [
         { kind: OperandKind.Register, value: calleeReg },
-        ...args.map(a => ({ kind: OperandKind.Register, value: a } as Operand))
+        ...args.map((a) => ({ kind: OperandKind.Register, value: a }) as Operand),
       ];
       self.currentBlock.addInstruction(OpCode.Call, ops, resReg);
     }
@@ -651,7 +715,7 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     const args = argsList.map((arg) => visitExpression(self, arg));
     const ops: Operand[] = [
       { kind: OperandKind.Register, value: calleeReg },
-      ...args.map((arg) => ({ kind: OperandKind.Register, value: arg } as Operand)),
+      ...args.map((arg) => ({ kind: OperandKind.Register, value: arg }) as Operand),
     ];
     self.currentBlock.addInstruction(OpCode.New, ops, resReg);
     return resReg;
@@ -671,7 +735,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
         const vReg = self.resolveVar(expr.operand.text);
         const oneReg = self.emitConstant(ConstantKind.Number, 1);
         const resReg = self.fnBuilder.allocRegister();
-        self.currentBlock.addInstruction(OpCode.Add, [{ kind: OperandKind.Register, value: vReg }, { kind: OperandKind.Register, value: oneReg }], resReg);
+        self.currentBlock.addInstruction(
+          OpCode.Add,
+          [
+            { kind: OperandKind.Register, value: vReg },
+            { kind: OperandKind.Register, value: oneReg },
+          ],
+          resReg,
+        );
         self.storeValue(expr.operand, resReg);
         return vReg;
       }
@@ -688,7 +759,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
     } else if (expr.operator === ts.SyntaxKind.TildeToken) {
       const notReg = self.fnBuilder.allocRegister();
       self.currentBlock.addInstruction(OpCode.Not, [{ kind: OperandKind.Register, value: operandReg }], notReg);
-      self.currentBlock.addInstruction(OpCode.BitXor, [{ kind: OperandKind.Register, value: operandReg }, { kind: OperandKind.Register, value: notReg }], resReg);
+      self.currentBlock.addInstruction(
+        OpCode.BitXor,
+        [
+          { kind: OperandKind.Register, value: operandReg },
+          { kind: OperandKind.Register, value: notReg },
+        ],
+        resReg,
+      );
     } else {
       self.failUnsupported(expr, 'Unsupported prefix unary operator');
     }
@@ -709,11 +787,16 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       const resReg = self.fnBuilder.allocRegister();
       self.currentBlock.addInstruction(OpCode.Delete, [
         { kind: OperandKind.Register, value: objReg },
-        { kind: OperandKind.Register, value: propReg }
+        { kind: OperandKind.Register, value: propReg },
       ]);
-      self.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: self.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg);
+      self.currentBlock.addInstruction(
+        OpCode.LoadConst,
+        [{ kind: OperandKind.ConstantIndex, value: self.modBuilder.addConstant(ConstantKind.Boolean, true) }],
+        resReg,
+      );
       return resReg;
-    }if (ts.isElementAccessExpression(expr.expression)) {
+    }
+    if (ts.isElementAccessExpression(expr.expression)) {
       if (!expr.expression.argumentExpression) {
         self.failUnsupported(expr.expression, 'Element access requires an index expression');
       }
@@ -722,9 +805,13 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       const resReg = self.fnBuilder.allocRegister();
       self.currentBlock.addInstruction(OpCode.Delete, [
         { kind: OperandKind.Register, value: objReg },
-        { kind: OperandKind.Register, value: propReg }
+        { kind: OperandKind.Register, value: propReg },
       ]);
-      self.currentBlock.addInstruction(OpCode.LoadConst, [{ kind: OperandKind.ConstantIndex, value: self.modBuilder.addConstant(ConstantKind.Boolean, true) }], resReg);
+      self.currentBlock.addInstruction(
+        OpCode.LoadConst,
+        [{ kind: OperandKind.ConstantIndex, value: self.modBuilder.addConstant(ConstantKind.Boolean, true) }],
+        resReg,
+      );
       return resReg;
     }
     self.failUnsupported(expr, 'Unsupported delete target');

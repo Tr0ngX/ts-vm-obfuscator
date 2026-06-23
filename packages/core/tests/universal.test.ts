@@ -40,7 +40,7 @@ describe('universal profile', () => {
 
     const bundlePath = path.join(outDir, `${result.vmBundles![0]!.buildId}.mjs`);
     await fs.writeFile(bundlePath, result.vmBundles![0]!.fullSource, 'utf-8');
-    const imported = await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`) as Record<string, (...args: any[]) => any>;
+    const imported = (await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`)) as Record<string, (...args: any[]) => any>;
 
     expect(imported.vmAdd(2, 3)).toBe(5);
     expect(imported.vmArrow(4, 5)).toBe(21);

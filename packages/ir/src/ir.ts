@@ -1,7 +1,17 @@
 import type {
-  IRModule, IRFunction, IRGlobal, IRImport, IRExport,
-  ConstantPoolEntry, BasicBlock, Instruction, TerminatorInstruction,
-  Operand, IRParam, IRLocal, Register
+  IRModule,
+  IRFunction,
+  IRGlobal,
+  IRImport,
+  IRExport,
+  ConstantPoolEntry,
+  BasicBlock,
+  Instruction,
+  TerminatorInstruction,
+  Operand,
+  IRParam,
+  IRLocal,
+  Register,
 } from '@tsvm/shared';
 import type { OpCode, IRType, ConstantKind, FunctionAttribute } from '@tsvm/shared';
 
@@ -67,8 +77,8 @@ export class IRModuleBuilder {
         functionCount: this.functions.length,
         blockCount,
         instructionCount,
-        buildTimestamp: Date.now()
-      }
+        buildTimestamp: Date.now(),
+      },
     };
   }
 
@@ -86,7 +96,11 @@ export class IRFunctionBuilder {
   private nextRegId = 0;
   private nextBlockId = 0;
 
-  constructor(public readonly id: string, public readonly name: string, public readonly returnType: IRType) {}
+  constructor(
+    public readonly id: string,
+    public readonly name: string,
+    public readonly returnType: IRType,
+  ) {}
 
   addParam(name: string, type: IRType, isRest = false, defaultValue?: number): Register {
     const reg = this.allocRegister();
@@ -141,7 +155,7 @@ export class IRFunctionBuilder {
       isVirtualized,
       isExported,
       attributes: this.attributes,
-      capturedVariables: this.capturedVariables
+      capturedVariables: this.capturedVariables,
     };
   }
 }
@@ -152,7 +166,10 @@ export class BasicBlockBuilder {
   private predecessors: string[] = [];
   private successors: string[] = [];
 
-  constructor(public readonly id: string, public readonly label: string) {}
+  constructor(
+    public readonly id: string,
+    public readonly label: string,
+  ) {}
 
   addInstruction(opcode: OpCode, operands: Operand[], result?: Register) {
     this.instructions.push({ opcode, operands, result });
@@ -192,7 +209,7 @@ export class BasicBlockBuilder {
       terminator: this.terminator,
       predecessors: this.predecessors,
       successors: this.successors,
-      phiNodes: []
+      phiNodes: [],
     };
   }
 }
@@ -201,6 +218,11 @@ export function createInstruction(opcode: OpCode, operands: Operand[], result?: 
   return { opcode, operands, result };
 }
 
-export function createTerminator(kind: TerminatorInstruction['kind'], targets: string[], condition?: Register, returnValue?: Register): TerminatorInstruction {
+export function createTerminator(
+  kind: TerminatorInstruction['kind'],
+  targets: string[],
+  condition?: Register,
+  returnValue?: Register,
+): TerminatorInstruction {
   return { kind, targets, condition, returnValue };
 }

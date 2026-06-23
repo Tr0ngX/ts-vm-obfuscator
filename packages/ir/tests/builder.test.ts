@@ -94,7 +94,7 @@ describe('IR builder', () => {
     const filePath = path.join(__dirname, 'fixtures', 'debugger-blocked.ts');
 
     expect(() => lowerToIR(createModuleInfo(filePath), createGraph(), filePath)).toThrowError(
-      /Unsupported AST in IR builder: .* at .*debugger-blocked\.ts:\d+:\d+ near /
+      /Unsupported AST in IR builder: .* at .*debugger-blocked\.ts:\d+:\d+ near /,
     );
   });
 
@@ -293,7 +293,9 @@ describe('IR builder', () => {
     expect(nestedLexicalThis!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).toContain(OpCode.EnvGet);
     expect(nestedLexicalThis!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).not.toContain(OpCode.LoadThis);
     expect(nestedLexicalNewTarget!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).toContain(OpCode.EnvGet);
-    expect(nestedLexicalNewTarget!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).not.toContain(OpCode.LoadNewTarget);
+    expect(nestedLexicalNewTarget!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode))).not.toContain(
+      OpCode.LoadNewTarget,
+    );
 
     const unsupportedFilePath = path.join(__dirname, 'fixtures', 'this-arrow-unsupported.ts');
     const unsupportedReports = analyzeFunctionCapabilities(unsupportedFilePath);
@@ -362,4 +364,3 @@ describe('IR builder', () => {
     expect(opcodes).toContain(OpCode.Delete);
   });
 });
-

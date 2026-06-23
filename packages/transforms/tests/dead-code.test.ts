@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
-import { type IRModule, IRType, OperandKind, OpCode, SeededRandom, type TransformContext, type ObfuscationProfile, ConstantKind, type ProjectSemanticGraph } from '@tsvm/shared';
+import {
+  type IRModule,
+  IRType,
+  OperandKind,
+  OpCode,
+  SeededRandom,
+  type TransformContext,
+  type ObfuscationProfile,
+  ConstantKind,
+  type ProjectSemanticGraph,
+} from '@tsvm/shared';
 
 const mockProfile: ObfuscationProfile = {
   name: 'generic',
@@ -16,9 +26,7 @@ const mockProfile: ObfuscationProfile = {
     tamperDetection: false,
     rollingKeys: false,
   },
-  transforms: [
-    { name: 'DeadCodeInjectionPass', enabled: true },
-  ],
+  transforms: [{ name: 'DeadCodeInjectionPass', enabled: true }],
 };
 
 describe('DeadCodeInjectionPass', () => {
@@ -307,16 +315,16 @@ describe('DeadCodeInjectionPass', () => {
         globals: [],
         imports: [],
         exports: [],
-      constantPool: [{ index: 0, kind: ConstantKind.Number, value: 0 }],
-      metadata: {
-        sourceFile: 'dead-code-seed.ts',
-        buildTimestamp: 0,
-        blockCount: 1,
-        functionCount: 1,
-        instructionCount: 5,
-        originalByteSize: 100,
-      },
-    };
+        constantPool: [{ index: 0, kind: ConstantKind.Number, value: 0 }],
+        metadata: {
+          sourceFile: 'dead-code-seed.ts',
+          buildTimestamp: 0,
+          blockCount: 1,
+          functionCount: 1,
+          instructionCount: 5,
+          originalByteSize: 100,
+        },
+      };
 
       const ctx: TransformContext = {
         module: mod,

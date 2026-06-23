@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FunctionAttribute, IRType, ReactZoneSafety, type IRFunction } from '@tsvm/shared';
 import { checkReactSafety, collectReactComponentInfo, createReactSafetyDiagnostics, enforceReactProfile } from '../src/index.js';
 
-function createFunction(
-  name: string,
-  attributes: FunctionAttribute[] = [],
-  isVirtualized = true,
-): IRFunction {
+function createFunction(name: string, attributes: FunctionAttribute[] = [], isVirtualized = true): IRFunction {
   return {
     id: `${name}-id`,
     name,

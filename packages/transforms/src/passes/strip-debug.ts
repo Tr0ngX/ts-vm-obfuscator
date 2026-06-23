@@ -8,11 +8,11 @@ export class StripDebugPass implements TransformPass {
   execute(ctx: TransformContext): TransformResult {
     let nodesTransformed = 0;
 
-    const newFunctions = ctx.module.functions.map(func => {
+    const newFunctions = ctx.module.functions.map((func) => {
       if (!func.isVirtualized) return func;
 
       let changed = false;
-      const newBlocks = func.blocks.map(block => {
+      const newBlocks = func.blocks.map((block) => {
         const stringRegs = new Map<Register, string>();
         const globalRegs = new Map<Register, string>();
         const newInstructions: Instruction[] = [];
@@ -20,7 +20,7 @@ export class StripDebugPass implements TransformPass {
         for (const inst of block.instructions) {
           if (inst.opcode === OpCode.LoadConst) {
             const cpIdx = inst.operands[0]!.value as number;
-            const cpEntry = ctx.module.constantPool.find(c => c.index === cpIdx);
+            const cpEntry = ctx.module.constantPool.find((c) => c.index === cpIdx);
             if (cpEntry && cpEntry.kind === ConstantKind.String) {
               stringRegs.set(inst.result!, cpEntry.value as string);
             }
@@ -36,20 +36,20 @@ export class StripDebugPass implements TransformPass {
               // Strip this console call
               changed = true;
               nodesTransformed++;
-              
-              // We must preserve the result register to keep SSA valid, 
+
+              // We must preserve the result register to keep SSA valid,
               // just load 'undefined' into it instead of making the call.
               if (inst.result) {
                 // Find or create 'undefined' in ConstantPool
                 // For simplicity, we just emit Nop, since the return of console.log is usually unused,
                 // but if we need strict safety, we should emit an undefined.
-                // However, TSXobf VM ignores undefined return assignments cleanly if we just Nop it, 
+                // However, TSXobf VM ignores undefined return assignments cleanly if we just Nop it,
                 // but let's be safe.
                 newInstructions.push({
                   ...inst,
                   opcode: OpCode.Nop,
                   operands: [],
-                  result: undefined // drop result
+                  result: undefined, // drop result
                 });
               } else {
                 newInstructions.push({ ...inst, opcode: OpCode.Nop, operands: [] });
@@ -57,13 +57,13 @@ export class StripDebugPass implements TransformPass {
               continue;
             }
           }
-          
+
           newInstructions.push(inst);
         }
-        
+
         return changed ? { ...block, instructions: newInstructions } : block;
       });
-      
+
       return changed ? { ...func, blocks: newBlocks } : func;
     });
 
@@ -71,7 +71,7 @@ export class StripDebugPass implements TransformPass {
       module: { ...ctx.module, functions: newFunctions },
       symbolsRenamed: 0,
       nodesTransformed,
-      diagnostics: []
+      diagnostics: [],
     };
   }
 }

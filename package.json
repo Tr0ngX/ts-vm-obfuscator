@@ -16,6 +16,7 @@
     "lint": "biome check --write .",
     "lint:ci": "biome ci .",
     "format": "biome format --write .",
+    "format:check": "biome format .",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
     "typecheck": "turbo run typecheck",

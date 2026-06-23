@@ -21,11 +21,7 @@
  *   - Polymorphic: opcode mapping, encoding, handler layout all randomized per build
  */
 
-import {
-  DiagnosticSeverity,
-  ImmediateEncodingScheme,
-  ConstantEncodingScheme,
-} from '@tsvm/shared';
+import { DiagnosticSeverity, ImmediateEncodingScheme, ConstantEncodingScheme } from '@tsvm/shared';
 import type {
   ObfuscationProfile,
   ProjectSemanticGraph,
@@ -129,9 +125,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
         name: 'react-safe',
         target: 'react',
         transforms: baseTransforms.map((t) =>
-          t.name === 'FunctionVirtualizationPass'
-            ? { ...t, options: { excludeComponents: true, excludeHooks: true } }
-            : t,
+          t.name === 'FunctionVirtualizationPass' ? { ...t, options: { excludeComponents: true, excludeHooks: true } } : t,
         ),
         virtualization: {
           mode: 'annotated',
@@ -174,9 +168,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
       return {
         name: 'library-safe',
         target: 'library',
-        transforms: baseTransforms.map((t) =>
-          t.name === 'FunctionVirtualizationPass' ? { ...t, enabled: false } : t,
-        ),
+        transforms: baseTransforms.map((t) => (t.name === 'FunctionVirtualizationPass' ? { ...t, enabled: false } : t)),
         virtualization: {
           mode: 'none',
           annotations: [],
@@ -335,22 +327,15 @@ export class ObfuscationPipeline {
         functionReports = [];
       }
       for (const [filePath, moduleInfo] of semanticGraph.modules) {
-        const universalTopLevelReports =
-          this.options.profile.target === 'universal'
-            ? analyzeTopLevelFunctionCapabilities(filePath)
-            : [];
+        const universalTopLevelReports = this.options.profile.target === 'universal' ? analyzeTopLevelFunctionCapabilities(filePath) : [];
         if (functionReports) {
           functionReports.push(...analyzeFunctionCapabilities(filePath));
         }
         const forcedVmSafeFunctionNames = new Set(
-          universalTopLevelReports
-            .filter((report) => report.tier === 'vm_safe')
-            .map((report) => report.functionName),
+          universalTopLevelReports.filter((report) => report.tier === 'vm_safe').map((report) => report.functionName),
         );
         const skippedJsLoweredFunctionNames = new Set(
-          universalTopLevelReports
-            .filter((report) => report.tier === 'js_lowered')
-            .map((report) => report.functionName),
+          universalTopLevelReports.filter((report) => report.tier === 'js_lowered').map((report) => report.functionName),
         );
         const unsupportedTopLevelReports = universalTopLevelReports.filter((report) => report.tier === 'unsupported');
         for (const report of unsupportedTopLevelReports) {
@@ -364,9 +349,8 @@ export class ObfuscationPipeline {
           forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program',
           forceVirtualizeFunctionNames: forcedVmSafeFunctionNames,
           skipTopLevelFunctionNames: skippedJsLoweredFunctionNames,
-          compatibilityFallback: this.options.profile.target === 'universal'
-            ? false
-            : this.options.profile.virtualization.compatibilityFallback,
+          compatibilityFallback:
+            this.options.profile.target === 'universal' ? false : this.options.profile.virtualization.compatibilityFallback,
           diagnostics: this.diagnostics,
         });
         irModules.push(irModule);
@@ -448,11 +432,7 @@ export class ObfuscationPipeline {
           bytecodeSourceFiles.set(bcModule.buildId, irModule.sourceFile);
         }
       }
-      this.emit(
-        'bytecode_compilation' as PipelineStage,
-        `Compiled ${bytecodeModules.length} bytecode modules`,
-        Date.now() - t0,
-      );
+      this.emit('bytecode_compilation' as PipelineStage, `Compiled ${bytecodeModules.length} bytecode modules`, Date.now() - t0);
     } catch (error: unknown) {
       this.emitError('bytecode_compilation' as PipelineStage, 'Bytecode compilation failed', error);
       return this.failResult(buildId, startTime, { semanticGraph, irModules });

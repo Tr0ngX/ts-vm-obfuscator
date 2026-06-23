@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { buildVMRuntime } from '../src/polymorphic-builder.js';
-import { type BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme, type ModuleInfo, type ProjectSemanticGraph } from '@tsvm/shared';
+import {
+  type BytecodeModule,
+  OpCode,
+  ImmediateEncodingScheme,
+  ConstantEncodingScheme,
+  type ModuleInfo,
+  type ProjectSemanticGraph,
+} from '@tsvm/shared';
 import { lowerToIR } from '../../ir/src/builder.js';
 import { compileToBytecode } from '../../bytecode/src/compiler.js';
 import path from 'path';
@@ -59,7 +66,7 @@ describe('VM Runtime', () => {
 
   it('should emit handlers for array and object allocations', () => {
     const dummyModule: BytecodeModule = {
-      magic: 0x54534F42,
+      magic: 0x54534f42,
       version: 1,
       buildId: 'alloc-test',
       opcodeMapping: {
@@ -108,7 +115,7 @@ describe('VM Runtime', () => {
 
   it('should emit a ClosureNew handler backed by the VM function table', () => {
     const dummyModule: BytecodeModule = {
-      magic: 0x54534F42,
+      magic: 0x54534f42,
       version: 1,
       buildId: 'closure-test',
       opcodeMapping: {
@@ -169,7 +176,7 @@ describe('VM Runtime', () => {
 
   it('should conceal canonical handler naming and direct raw-op dispatch in stealth mode', () => {
     const dummyModule: BytecodeModule = {
-      magic: 0x54534F42,
+      magic: 0x54534f42,
       version: 1,
       buildId: 'stealth-shape',
       opcodeMapping: {
@@ -338,7 +345,7 @@ describe('VM Runtime', () => {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
       const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
-      console.error("DUMPED FAILED SOURCE TO", dumpPath, "due to error:", e);
+      console.error('DUMPED FAILED SOURCE TO', dumpPath, 'due to error:', e);
       fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
@@ -357,7 +364,7 @@ describe('VM Runtime', () => {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
       const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
-      console.error("DUMPED FAILED STEALTH SOURCE TO", dumpPath, "due to error:", e);
+      console.error('DUMPED FAILED STEALTH SOURCE TO', dumpPath, 'due to error:', e);
       fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
@@ -438,7 +445,7 @@ describe('VM Runtime', () => {
       new Function('module', bundle.fullSource)(moduleShim);
     } catch (e) {
       const dumpPath = path.join(tmpdir(), `tsvm-failed-${Date.now()}.js`);
-      console.error("DUMPED FAILED CLASSPACK SOURCE TO", dumpPath, "due to error:", e);
+      console.error('DUMPED FAILED CLASSPACK SOURCE TO', dumpPath, 'due to error:', e);
       fs.writeFileSync(dumpPath, bundle.fullSource);
       throw e;
     }
@@ -456,7 +463,7 @@ describe('VM Runtime', () => {
     const bundle = buildVMRuntime(bytecode, createVMConfig(79));
 
     expect(bundle.fullSource).toContain('Reflect.construct(superCtor');
-    expect(bundle.fullSource).not.toContain("superCtor.apply(ctx.thisArg");
+    expect(bundle.fullSource).not.toContain('superCtor.apply(ctx.thisArg');
     expect(bundle.fullSource).toContain('cleanIntrinsics.WeakMap || WeakMap');
     expect(bundle.fullSource).toContain('new VMWeakMap()');
     expect(bundle.fullSource).not.toContain('#value');
@@ -528,9 +535,9 @@ describe('VM Runtime', () => {
               return { value: i++, done: false };
             }
             return { value: undefined, done: true };
-          }
+          },
         };
-      }
+      },
     };
 
     await expect(moduleShim.exports.testAsyncLoop(asyncIterable)).resolves.toBe(6);
@@ -538,23 +545,28 @@ describe('VM Runtime', () => {
 
   it('should inject anti-debug and tamper logic when enabled', () => {
     const dummyModule: BytecodeModule = {
-      magic: 0x54534F42,
+      magic: 0x54534f42,
       version: 1,
       buildId: 'test1234',
       opcodeMapping: {
         seed: 42,
         forward: new Map([[OpCode.Return, 0]]),
-        reverse: new Map([[0, OpCode.Return]])
+        reverse: new Map([[0, OpCode.Return]]),
       },
       constantPool: [],
-      functions: [{
-        id: 'f1', name: 'targetFunc',
-        paramCount: 0, localCount: 0, maxRegisters: 2,
-        bytecode: new Uint8Array([0, 1]), // Dummy
-        isEntryPoint: true
-      }],
+      functions: [
+        {
+          id: 'f1',
+          name: 'targetFunc',
+          paramCount: 0,
+          localCount: 0,
+          maxRegisters: 2,
+          bytecode: new Uint8Array([0, 1]), // Dummy
+          isEntryPoint: true,
+        },
+      ],
       entryPointIndex: 0,
-      metadata: { buildTimestamp: 0, buildId: 'test1234', sourceHash: 'a', profile: 'generic' }
+      metadata: { buildTimestamp: 0, buildId: 'test1234', sourceHash: 'a', profile: 'generic' },
     };
 
     const bundle = buildVMRuntime(dummyModule, {
@@ -569,7 +581,7 @@ describe('VM Runtime', () => {
       tamperDetection: true,
       antiDebug: true,
       junkInsertion: true,
-      rollingKeys: true
+      rollingKeys: true,
     });
 
     expect(bundle.fullSource).toContain('performance.now()');
