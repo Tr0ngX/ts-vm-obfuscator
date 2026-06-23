@@ -8,7 +8,7 @@ import type {
   Operand,
   ConstantPoolEntry,
 } from '@tsvm/shared';
-import { FunctionAttribute, OpCode, OperandKind, SeededRandom } from '@tsvm/shared';
+import { FunctionAttribute, OpCode, OperandKind, SeededRandom, ImmediateEncodingScheme } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
 
@@ -231,7 +231,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
   for (const irFn of irModule.functions) {
     if (irFn.isVirtualized) {
       const paramCount = irFn.params.length;
-      const maxRegs = Math.max(collectMaxRegisterIndex(irFn), paramCount);
+      const maxRegs = Math.max(collectMaxRegisterIndex(irFn) + 1, paramCount);
       const regIds = Array.from({ length: maxRegs - paramCount }, (_, i) => i + paramCount);
       const shuffledRegIds = rng.shuffle([...regIds]);
 
@@ -265,10 +265,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
             if (op.kind === OperandKind.Register) {
               return { ...op, value: mapReg(op.value) };
             }
-            if (op.kind === OperandKind.ConstantIndex) {
-              return { ...op };
-            }
-            return op;
+            return { ...op };
           });
 
           return {
@@ -297,16 +294,43 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               ],
             });
           } else if (block.terminator.kind === 'return') {
-            const ops = block.terminator.returnValue ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }] : [];
-            flatInsts.push({
-              opcode: OpCode.Return,
-              operands: ops,
-            });
+            if (block.terminator.returnValue) {
+              flatInsts.push({
+                opcode: OpCode.Return,
+                operands: [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }],
+              });
+            } else {
+              flatInsts.push({
+                opcode: OpCode.ReturnVoid,
+                operands: [],
+              });
+            }
           } else if (block.terminator.kind === 'throw') {
-            const ops = block.terminator.returnValue ? [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }] : [];
+            if (block.terminator.returnValue) {
+              flatInsts.push({
+                opcode: OpCode.Throw,
+                operands: [{ kind: OperandKind.Register, value: mapReg(block.terminator.returnValue) }],
+              });
+            } else {
+              flatInsts.push({
+                opcode: OpCode.ReturnVoid,
+                operands: [],
+              });
+            }
+          } else if (block.terminator.kind === 'unreachable') {
             flatInsts.push({
-              opcode: OpCode.Throw,
-              operands: ops,
+              opcode: OpCode.Halt,
+              operands: [],
+            });
+          } else if (block.terminator.kind === 'switch') {
+            flatInsts.push({
+              opcode: OpCode.Halt,
+              operands: [],
+            });
+          } else if (block.terminator.kind === 'dynamic_jmp') {
+            flatInsts.push({
+              opcode: OpCode.Halt,
+              operands: [],
             });
           }
         }
@@ -390,8 +414,11 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
     // Resolve block label offsets using Fixed-Point Iteration (Two-Pass)
     const instByteOffset: number[] = new Array(flatInsts.length).fill(0);
     let changed = true;
+    let iterations = 0;
+    const MAX_ITERATIONS = 100;
 
-    while (changed) {
+    while (changed && iterations < MAX_ITERATIONS) {
+      iterations++;
       changed = false;
       let currentOffset = 0;
 
@@ -433,14 +460,14 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
           let val = 0;
           if (op.kind === OperandKind.BlockLabel) {
             const targetIdx = blockInstIndices.get(op.value as string)!;
-            val = instByteOffset[targetIdx] || 0;
+            val = instByteOffset[targetIdx] ?? 0;
           } else if (typeof op.value === 'string' && op.value.startsWith('r')) {
             val = Number.parseInt(op.value.substring(1), 10);
           } else if (typeof op.value === 'number') {
             val = op.value;
           }
 
-          if (config.immediateEncoding === 1) {
+          if (config.immediateEncoding === ImmediateEncodingScheme.VariableLength) {
             // VariableLength
             let v = val;
             do {
