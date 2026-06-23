@@ -310,7 +310,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
             operands: [{ kind: OperandKind.Register, value: targetReg }],
           },
         ],
-        terminator: { kind: 'dynamic_jmp' as unknown as TerminatorInstruction['kind'], targets: [] },
+        terminator: { kind: 'dynamic_jmp', targets: [] },
         predecessors: [entryBlockId, ...caseBlocks.map((b) => b.id)],
         successors: [],
         phiNodes: [],

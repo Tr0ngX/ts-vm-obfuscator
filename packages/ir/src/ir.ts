@@ -15,6 +15,10 @@ import type {
 } from '@tsvm/shared';
 import type { OpCode, IRType, ConstantKind, FunctionAttribute } from '@tsvm/shared';
 
+function r(id: number): Register {
+  return `r${id}` as Register;
+}
+
 export class IRModuleBuilder {
   private functions: IRFunction[] = [];
   private globals: IRGlobal[] = [];
@@ -127,7 +131,7 @@ export class IRFunctionBuilder {
   }
 
   allocRegister(): Register {
-    return `r${this.nextRegId++}` as Register;
+    return r(this.nextRegId++);
   }
 
   createBlock(label: string): BasicBlockBuilder {

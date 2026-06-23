@@ -1,6 +1,10 @@
 import type { Instruction, OpcodeMapping, EncodedConstant, ConstantPoolEntry, BytecodeModule } from '@tsvm/shared';
 import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, OpCode, ConstantKind } from '@tsvm/shared';
 
+function assertOpCode(value: number): OpCode {
+  return value as OpCode;
+}
+
 import type { VMBuildConfig } from '@tsvm/shared';
 
 function numToOperandKind(kind: number): OperandKind {
@@ -178,7 +182,7 @@ export function decodeBytecode(bytes: Uint8Array, mapping: OpcodeMapping, config
     }
 
     const canonicalOp = mapping.reverse.get(mappedOp);
-    const opcode = canonicalOp ?? (mappedOp as OpCode);
+    const opcode = canonicalOp ?? assertOpCode(mappedOp);
 
     const numJunk = config.junkInsertion ? (opcode * 7 + config.seed) % 4 : 0;
     offset.pos += numJunk;

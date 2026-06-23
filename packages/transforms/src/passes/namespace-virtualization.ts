@@ -212,10 +212,13 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 }
               }
             } else if (inst.result) {
-              const srcOp = inst.operands[0];
-              const isSrcReg = srcOp && srcOp.kind === OperandKind.Register && typeof srcOp.value === 'string';
-
-              if ((inst.opcode === OpCode.PropGet || inst.opcode === OpCode.ComputedGet) && isSrcReg && paramRegs.has(srcOp.value)) {
+              const srcOp = inst.operands[0]!;
+              if (
+                (inst.opcode === OpCode.PropGet || inst.opcode === OpCode.ComputedGet) &&
+                srcOp.kind === OperandKind.Register &&
+                typeof srcOp.value === 'string' &&
+                paramRegs.has(srcOp.value)
+              ) {
                 paramRegs.add(inst.result);
               } else if (
                 inst.opcode === OpCode.Call ||

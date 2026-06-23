@@ -338,7 +338,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
               index: newIdx,
               expectedPathHash: config.rollingKeys ? expectedPathHash : undefined,
             });
-            (op as unknown as { value: number }).value = newIdx;
+            op.value = newIdx;
           }
         }
         if (isTerminator(inst.opcode)) {
@@ -382,7 +382,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       for (const op of inst.operands) {
         if (op.kind === OperandKind.ConstantIndex) {
           const dupIdx = op.value as number;
-          (op as unknown as { value: number }).value = duplicatedToShuffled.get(dupIdx) ?? dupIdx;
+          op.value = duplicatedToShuffled.get(dupIdx) ?? dupIdx;
         }
       }
     }
@@ -403,11 +403,11 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
 
         const inst = flatInsts[i]!;
 
-        let mappedOp = inst.mappedOp !== undefined ? inst.mappedOp : inst.opcode;
-        const forward = mapping.forward.get(inst.opcode);
+        let mappedOp: number = inst.mappedOp ?? inst.opcode;
         if (inst.mappedOp === undefined) {
+          const forward = mapping.forward.get(inst.opcode);
           if (Array.isArray(forward)) mappedOp = forward[0]!;
-          else if (forward !== undefined) mappedOp = forward as number;
+          else if (typeof forward === 'number') mappedOp = forward;
         }
 
         let size = 1; // opcode
@@ -462,23 +462,23 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         if (inst.opcode === OpCode.Jmp) {
           if (ops[0]!.kind === OperandKind.BlockLabel || (typeof ops[0]!.value === 'string' && blockInstIndices.has(ops[0]!.value))) {
             const targetIdx = blockInstIndices.get(ops[0]!.value as string)!;
-            (ops[0] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
-            (ops[0] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+            ops[0]!.value = instByteOffset[targetIdx]!;
+            ops[0]!.kind = OperandKind.Immediate;
           }
         } else if (inst.opcode === OpCode.JmpIf || inst.opcode === OpCode.JmpIfNot) {
           const targetTrueIdx = blockInstIndices.get(ops[1]!.value as string)!;
           const targetFalseIdx = blockInstIndices.get(ops[2]!.value as string)!;
-          (ops[1] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetTrueIdx]!;
-          (ops[1] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
-          (ops[2] as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetFalseIdx]!;
-          (ops[2] as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+          ops[1]!.value = instByteOffset[targetTrueIdx]!;
+          ops[1]!.kind = OperandKind.Immediate;
+          ops[2]!.value = instByteOffset[targetFalseIdx]!;
+          ops[2]!.kind = OperandKind.Immediate;
         }
       } else {
         for (const op of inst.operands) {
           if (op.kind === OperandKind.BlockLabel) {
             const targetIdx = blockInstIndices.get(op.value as string)!;
-            (op as unknown as { value: number; kind: OperandKind }).value = instByteOffset[targetIdx]!;
-            (op as unknown as { value: number; kind: OperandKind }).kind = OperandKind.Immediate;
+            op.value = instByteOffset[targetIdx]!;
+            op.kind = OperandKind.Immediate;
           }
         }
       }

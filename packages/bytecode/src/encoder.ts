@@ -38,14 +38,14 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
   let currentHandlerIdx = 0;
 
   for (const inst of instructions) {
-    let mappedOp = (inst as { mappedOp?: number }).mappedOp ?? inst.opcode;
-    if ((inst as { mappedOp?: number }).mappedOp === undefined) {
+    let mappedOp: number = inst.mappedOp ?? inst.opcode;
+    if (inst.mappedOp === undefined) {
       const forward = mapping.forward.get(inst.opcode);
       if (Array.isArray(forward)) {
         if (!rng) throw new Error('SeededRandom required when opcodeMap is provided');
         mappedOp = forward[Math.floor(rng.next() * forward.length)];
-      } else if (forward !== undefined) {
-        mappedOp = forward as number;
+      } else if (typeof forward === 'number') {
+        mappedOp = forward;
       }
     }
 

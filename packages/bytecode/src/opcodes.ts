@@ -7,12 +7,9 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
 
   const rng = new SeededRandom(seed);
 
-  const opcodes: OpCode[] = [];
-  for (const key in OpCode) {
-    if (!Number.isNaN(Number(key))) {
-      opcodes.push(Number(key) as OpCode);
-    }
-  }
+  const opcodes = Object.values(OpCode).filter(
+    (v): v is OpCode => typeof v === 'number'
+  );
 
   const availableSlots: number[] = [];
   for (let i = 0; i < 256; i++) {

@@ -352,8 +352,8 @@ export enum OperandKind {
 }
 
 export interface Operand {
-  readonly kind: OperandKind;
-  readonly value: number | string;
+  kind: OperandKind;
+  value: number | string;
 }
 
 export interface PhiNode {
@@ -371,7 +371,7 @@ export interface Instruction {
 }
 
 export interface TerminatorInstruction {
-  readonly kind: 'jump' | 'branch' | 'return' | 'throw' | 'switch' | 'unreachable';
+  readonly kind: 'jump' | 'branch' | 'return' | 'throw' | 'switch' | 'unreachable' | 'dynamic_jmp';
   readonly targets: readonly string[];
   readonly condition?: Register;
   readonly returnValue?: Register;
