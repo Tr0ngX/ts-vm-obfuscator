@@ -70,16 +70,24 @@ Traditional obfuscators modify the Abstract Syntax Tree (AST) of the target Java
 
 ### Option A: Quick Install from npm (Recommended)
 
+You can run the obfuscator directly using `npx` (which downloads and runs the CLI on the fly) or install it globally via `npm`:
+
 ```bash
+# Run on-demand using npx
 npx @tsvm/cli -p tsconfig.json --out dist-obf
-```
 
-Or install globally:
-
-```bash
+# Or install globally and run
 npm install -g @tsvm/cli
 ts-obfuscate -p tsconfig.json --out dist-obf
 ```
+
+#### Smart Profile Auto-Detection
+
+By default, the `--profile` option is set to `auto`. When running without a specified profile, **TSXobf** automatically analyzes your project's `package.json` configurations (searching upwards from your target `tsconfig.json` directory) to apply the most optimal profile:
+- **`react`**: Automatically selected if `react`, `react-dom`, or `react-native` are found in project dependencies.
+- **`electron`**: Automatically selected if `electron`, `electron-builder`, or `electron-packager` are present.
+- **`library`**: Automatically selected for public libraries (having `types`, `exports`, or `main` fields without `"private": true`).
+- **`generic`**: Default fallback profile for standard applications.
 
 ### Option B: Build from Source
 
@@ -111,7 +119,7 @@ node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf 
 ```
 
 The protected production files will be built and output into the `dist-obf/` directory with a timestamped build signature (e.g., `build_1779526130061_index_ts.js`).
-Supported profiles: `default` (alias of `generic`), `generic`, `react`, `electron`, `library`.
+Supported profiles: `auto` (default, smart auto-detect), `generic`, `react`, `electron`, `library`, `universal`.
 
 Runtime backends:
 - `--runtime js` is the default and uses the generated JavaScript VM runtime.

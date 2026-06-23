@@ -58,9 +58,9 @@ If you need to understand what the repo "does", read these in order:
 ## npm Packages Published
 
 All 11 packages published to `@tsvm/*` on npmjs.com:
-- `@tsvm/shared@0.1.0`, `@tsvm/bytecode@0.1.1`, `@tsvm/ir@0.1.1`, `@tsvm/ts-semantics@0.1.1`
-- `@tsvm/transforms@0.1.1`, `@tsvm/vm-runtime@0.1.1`, `@tsvm/react-safe@0.1.1`, `@tsvm/electron-hardening@0.1.1`
-- `@tsvm/wasm-runtime@0.1.1`, `@tsvm/core@0.1.1`, `@tsvm/cli@0.1.2`
+- `@tsvm/shared@0.1.3`, `@tsvm/bytecode@0.1.3`, `@tsvm/ir@0.1.3`, `@tsvm/ts-semantics@0.1.3`
+- `@tsvm/transforms@0.1.3`, `@tsvm/vm-runtime@0.1.3`, `@tsvm/react-safe@0.1.3`, `@tsvm/electron-hardening@0.1.3`
+- `@tsvm/wasm-runtime@0.1.3`, `@tsvm/core@0.1.3`, `@tsvm/cli@0.1.3`
 
 **Use `pnpm publish` (not `npm publish`)** for future releases — pnpm auto-replaces `workspace:*` with real version ranges. Always bump versions in dependency order.
 

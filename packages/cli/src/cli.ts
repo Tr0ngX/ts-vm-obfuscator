@@ -5,6 +5,7 @@ import ora from 'ora';
 import path from 'path';
 import fs from 'fs/promises';
 import { pathToFileURL } from 'url';
+import { createRequire } from 'module';
 import { ObfuscationPipeline, createDefaultProfile } from '@tsvm/core';
 import type { ObfuscationProfile } from '@tsvm/shared';
 import {
@@ -15,7 +16,11 @@ import {
   resolveRuntimeHardening,
   parseSeed,
   resolveProfileTarget,
+  detectProfileFromProjectSync,
 } from './options.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json');
 
 export function createCliProfile(
   profileOption: string,
@@ -23,8 +28,9 @@ export function createCliProfile(
   runtimeOption?: string,
   hardeningOption?: string,
   flags: { readonly debugVm?: boolean; readonly paranoid?: boolean } = {},
+  tsconfigPath?: string,
 ): ObfuscationProfile {
-  const target = resolveProfileTarget(profileOption);
+  const target = resolveProfileTarget(profileOption, tsconfigPath);
   const seed = parseSeed(seedOption);
   const baseProfile = createDefaultProfile(target);
   const runtimeBackend = parseRuntimeBackend(runtimeOption);
@@ -103,10 +109,10 @@ Output:
   CI:     Use --seed for reproducible builds.
 `,
     )
-    .version('0.1.0')
+    .version(pkg.version)
     .requiredOption('-p, --project <path>', 'path to tsconfig.json')
     .option('-o, --out <dir>', 'output directory (default: dist-obf)', 'dist-obf')
-    .option('--profile <type>', 'obfuscation profile: default, generic, react, electron, library, universal', 'default')
+    .option('--profile <type>', 'obfuscation profile: auto, generic, react, electron, library, universal', 'auto')
     .option('--runtime <backend>', 'VM runtime backend: js, wasm-hybrid (aliases: wasm, hybrid)', 'js')
     .option('--hardening <level>', 'VM hardening: off, stealth, paranoid (aliases: debug, max)', 'stealth')
     .option('--debug-vm', 'alias for --hardening off')
@@ -117,10 +123,19 @@ Output:
       try {
         const tsconfigPath = path.resolve(process.cwd(), options.project);
         const outDir = path.resolve(process.cwd(), options.out);
+
+        let displayTarget = options.profile;
+        if (displayTarget === 'auto' || displayTarget === 'default') {
+          const detected = detectProfileFromProjectSync(tsconfigPath);
+          spinner.info(chalk.blue(`[tsvm] Auto-detected profile: ${detected} (resolved from project dependencies)`));
+          spinner.start('Initializing pipeline...');
+          displayTarget = detected;
+        }
+
         const profile = createCliProfile(options.profile, options.seed, options.runtime, options.hardening, {
           debugVm: options.debugVm,
           paranoid: options.paranoid,
-        });
+        }, tsconfigPath);
 
         const pipeline = new ObfuscationPipeline({
           tsconfigPath,

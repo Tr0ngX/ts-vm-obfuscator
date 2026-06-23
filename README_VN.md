@@ -68,26 +68,49 @@ Các công cụ obfuscator truyền thống chỉ biến đổi cây cú pháp t
 
 ## Hướng Dẫn Bắt Đầu
 
-### 1. Clone Repository
+### Cách A: Cài Đặt Nhanh Từ npm (Khuyến Nghị)
+
+Bạn có thể chạy trực tiếp trình làm rối bằng lệnh `npx` (tự động tải và chạy CLI trên bộ nhớ tạm) hoặc cài đặt toàn cục thông qua `npm`:
+
+```bash
+# Chạy trực tiếp bằng npx
+npx @tsvm/cli -p tsconfig.json --out dist-obf
+
+# Hoặc cài đặt toàn cục và chạy
+npm install -g @tsvm/cli
+ts-obfuscate -p tsconfig.json --out dist-obf
+```
+
+#### Tự Động Nhận Diện Profile Thông Minh (Smart Auto-Detection)
+
+Theo mặc định, tùy chọn `--profile` được thiết lập là `auto`. Khi chạy mà không chỉ định profile cụ thể, **TSXobf** sẽ tự động phân tích cấu hình file `package.json` của dự án mục tiêu (tìm kiếm ngược lên từ thư mục chứa file `tsconfig.json`) để chọn ra profile an toàn và tối ưu nhất:
+- **`react`**: Tự động kích hoạt nếu tìm thấy `react`, `react-dom`, hoặc `react-native` trong các dependency của dự án.
+- **`electron`**: Tự động kích hoạt nếu tìm thấy `electron`, `electron-builder`, hoặc `electron-packager` trong các dependency.
+- **`library`**: Tự động kích hoạt cho các dự án thư viện công cộng (có các trường `types`, `exports`, hoặc `main` và không thiết lập `"private": true`).
+- **`generic`**: Profile dự phòng mặc định cho các ứng dụng thông thường khác.
+
+### Cách B: Biên Dịch Từ Nguồn (Source Code)
+
+#### 1. Clone Repository
 
 ```bash
 git clone https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
 cd ts-vm-obfuscator
 ```
 
-### 2. Cài Đặt Thư Viện
+#### 2. Cài Đặt Thư Viện
 
 ```bash
 pnpm install
 ```
 
-### 3. Build Workspace
+#### 3. Build Workspace
 
 ```bash
 pnpm build
 ```
 
-### 4. Chạy CLI Làm Rối Mã Nguồn
+#### 4. Chạy CLI Làm Rối Mã Nguồn
 
 Cung cấp file cấu hình TypeScript của dự án mục tiêu:
 
@@ -96,7 +119,7 @@ node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf 
 ```
 
 File production đã được bảo vệ sẽ được sinh ra ở thư mục `dist-obf/` với hậu tố thời gian (ví dụ: `build_1779526130061_index_ts.js`).
-Các profile được hỗ trợ: `default` (tương đương `generic`), `generic`, `react`, `electron`, `library`.
+Các profile được hỗ trợ: `auto` (mặc định, tự động nhận diện), `generic`, `react`, `electron`, `library`, `universal`.
 
 Backend runtime:
 - `--runtime js` là mặc định và dùng JavaScript VM runtime được sinh ra.
