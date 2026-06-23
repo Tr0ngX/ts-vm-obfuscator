@@ -479,7 +479,13 @@ describe('Advanced Transforms', () => {
               successors: ['body'],
               instructions: [
                 { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r1' },
-                { opcode: OpCode.Move, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r2' }] },
+                {
+                  opcode: OpCode.Move,
+                  operands: [
+                    { kind: OperandKind.Register, value: 'r0' },
+                    { kind: OperandKind.Register, value: 'r2' },
+                  ],
+                },
               ],
               terminator: { kind: 'jump', targets: ['body'] },
             },
@@ -490,7 +496,14 @@ describe('Advanced Transforms', () => {
               predecessors: ['entry'],
               successors: ['exit'],
               instructions: [
-                { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: 'r1' }, { kind: OperandKind.Register, value: 'r2' }], result: 'r3' },
+                {
+                  opcode: OpCode.Add,
+                  operands: [
+                    { kind: OperandKind.Register, value: 'r1' },
+                    { kind: OperandKind.Register, value: 'r2' },
+                  ],
+                  result: 'r3',
+                },
               ],
               terminator: { kind: 'jump', targets: ['exit'] },
             },
@@ -509,9 +522,7 @@ describe('Advanced Transforms', () => {
       globals: [],
       imports: [],
       exports: [],
-      constantPool: [
-        { index: 0, kind: ConstantKind.Number, value: 0 },
-      ],
+      constantPool: [{ index: 0, kind: ConstantKind.Number, value: 0 }],
       metadata: {
         sourceFile: 'composed-test.ts',
         buildTimestamp: 0,
@@ -529,7 +540,16 @@ describe('Advanced Transforms', () => {
         ...mockProfile,
         vm: { runtimeHardening: 'stealth', seed: 1 },
       } as ObfuscationProfile,
-      semanticGraph: { rootDir: '', modules: new Map(), dependencyEdges: [], entryPoints: [], symbolTable: [], aliases: new Map(), compilerOptions: {}, diagnostics: [] } as ProjectSemanticGraph,
+      semanticGraph: {
+        rootDir: '',
+        modules: new Map(),
+        dependencyEdges: [],
+        entryPoints: [],
+        symbolTable: [],
+        aliases: new Map(),
+        compilerOptions: {},
+        diagnostics: [],
+      } as ProjectSemanticGraph,
       symbolAliases: new Map(),
       diagnostics: [],
       rng,
@@ -542,7 +562,11 @@ describe('Advanced Transforms', () => {
       { name: 'TypeLevelFakePathPass', pass: new TypeLevelFakePathPass() },
     ];
 
-    let result: { module: IRModule; nodesTransformed: number; diagnostics: any[] } = { module: dummyModule, nodesTransformed: 0, diagnostics: [] };
+    let result: { module: IRModule; nodesTransformed: number; diagnostics: any[] } = {
+      module: dummyModule,
+      nodesTransformed: 0,
+      diagnostics: [],
+    };
 
     for (const { name, pass } of passes) {
       const ctx = baseCtx();

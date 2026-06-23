@@ -170,7 +170,9 @@ describe('VM Security', () => {
 
     try {
       // Replace a key intrinsic to trigger tamper detection
-      Math.sin = function fakeSin() { return 0; } as typeof Math.sin;
+      Math.sin = function fakeSin() {
+        return 0;
+      } as typeof Math.sin;
 
       const ir = {
         id: 'tamper-test',
@@ -264,9 +266,7 @@ describe('VM Security', () => {
             {
               id: 'b0',
               label: 'entry',
-              instructions: [
-                { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-              ],
+              instructions: [{ opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' }],
               terminator: { kind: 'return' as const, targets: [], returnValue: 'r0' },
               predecessors: [],
               successors: [],

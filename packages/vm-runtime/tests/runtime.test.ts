@@ -793,7 +793,16 @@ describe('VM Runtime', () => {
     const profiles = [
       { name: 'basic', config: createVMConfig(17) },
       { name: 'stealth', config: createVMConfig(17, { stealthDispatch: true, tamperDetection: true }) },
-      { name: 'paranoid', config: createVMConfig(17, { runtimeHardening: 'paranoid', stealthDispatch: true, tamperDetection: true, rollingKeys: true, junkInsertion: true }) },
+      {
+        name: 'paranoid',
+        config: createVMConfig(17, {
+          runtimeHardening: 'paranoid',
+          stealthDispatch: true,
+          tamperDetection: true,
+          rollingKeys: true,
+          junkInsertion: true,
+        }),
+      },
     ];
 
     const results = profiles.map(({ name, config }) => {

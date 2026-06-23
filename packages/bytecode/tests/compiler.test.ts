@@ -296,10 +296,13 @@ describe('Bytecode Compiler', () => {
       const config = makeConfig({ immediateEncoding: ImmediateEncodingScheme.XorMasked });
       const insts: Instruction[] = [
         { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-        { opcode: OpCode.Move, operands: [
-          { kind: OperandKind.Register, value: 'r0' },
-          { kind: OperandKind.Register, value: 'r1' },
-        ]},
+        {
+          opcode: OpCode.Move,
+          operands: [
+            { kind: OperandKind.Register, value: 'r0' },
+            { kind: OperandKind.Register, value: 'r1' },
+          ],
+        },
       ];
       const module = makeSimpleModule(insts, config.seed);
       const compiled = compileToBytecode(module, config);
@@ -315,9 +318,30 @@ describe('Bytecode Compiler', () => {
     it('round-trips binary arithmetic opcodes alongside their results', () => {
       const config = makeConfig();
       const insts: Instruction[] = [
-        { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r2' },
-        { opcode: OpCode.Sub, operands: [{ kind: OperandKind.Register, value: 'r2' }, { kind: OperandKind.Register, value: 'r0' }], result: 'r3' },
-        { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: 'r3' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r4' },
+        {
+          opcode: OpCode.Add,
+          operands: [
+            { kind: OperandKind.Register, value: 'r0' },
+            { kind: OperandKind.Register, value: 'r1' },
+          ],
+          result: 'r2',
+        },
+        {
+          opcode: OpCode.Sub,
+          operands: [
+            { kind: OperandKind.Register, value: 'r2' },
+            { kind: OperandKind.Register, value: 'r0' },
+          ],
+          result: 'r3',
+        },
+        {
+          opcode: OpCode.Mul,
+          operands: [
+            { kind: OperandKind.Register, value: 'r3' },
+            { kind: OperandKind.Register, value: 'r1' },
+          ],
+          result: 'r4',
+        },
         { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: 'r4' }], result: 'r5' },
       ];
       const module = makeSimpleModule(insts, config.seed);
