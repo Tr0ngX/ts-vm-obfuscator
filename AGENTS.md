@@ -49,11 +49,22 @@ If you need to understand what the repo "does", read these in order:
 - Run tests: `pnpm test`
 - Typecheck workspace: `pnpm typecheck`
 - Start visualizer: `pnpm visualizer`
-- Run CLI against sample project: `node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf`
+- Run CLI against sample project: `node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf` or `npx @tsvm/cli -p examples/basic-ts/tsconfig.json --out dist-obf`
 - Validate semantic equivalence: `node test-pipeline.js`
 - Run high-fidelity timing benchmark: `node --expose-gc run-benchmark.js`
 
-`pnpm test` was passing in this workspace on 2026-05-30 after the threaded VM hardening upgrade. That command runs Vitest, builds the workspace, then runs `node test-pipeline.js`.
+`pnpm test` was passing in this workspace on 2026-06-23. That command runs Vitest, builds the workspace, then runs `node test-pipeline.js`.
+
+## npm Packages Published
+
+All 11 packages published to `@tsvm/*` on npmjs.com:
+- `@tsvm/shared@0.1.0`, `@tsvm/bytecode@0.1.1`, `@tsvm/ir@0.1.1`, `@tsvm/ts-semantics@0.1.1`
+- `@tsvm/transforms@0.1.1`, `@tsvm/vm-runtime@0.1.1`, `@tsvm/react-safe@0.1.1`, `@tsvm/electron-hardening@0.1.1`
+- `@tsvm/wasm-runtime@0.1.1`, `@tsvm/core@0.1.1`, `@tsvm/cli@0.1.2`
+
+**Use `pnpm publish` (not `npm publish`)** for future releases — pnpm auto-replaces `workspace:*` with real version ranges. Always bump versions in dependency order.
+
+Run CLI via npx: `npx @tsvm/cli@latest -p tsconfig.json`
 
 ## How To Change Things Safely
 
