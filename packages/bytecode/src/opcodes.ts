@@ -7,9 +7,7 @@ export function generateRemappedOpcodes(seed: number): OpcodeMapping {
 
   const rng = new SeededRandom(seed);
 
-  const opcodes = Object.values(OpCode).filter(
-    (v): v is OpCode => typeof v === 'number'
-  );
+  const opcodes = Object.values(OpCode).filter((v): v is OpCode => typeof v === 'number');
 
   const availableSlots: number[] = [];
   for (let i = 0; i < 256; i++) {

@@ -98,49 +98,33 @@ describe('Profile Auto-Detection', () => {
   });
 
   it('detects react profile when react is a dependency', () => {
-    fs.writeFileSync(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ dependencies: { react: '^18.0.0' } }),
-    );
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ dependencies: { react: '^18.0.0' } }));
     const tsconfigPath = path.join(tmpDir, 'tsconfig.json');
     expect(detectProfileFromProjectSync(tsconfigPath)).toBe('react');
   });
 
   it('detects electron profile when electron is a devDependency', () => {
-    fs.writeFileSync(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ devDependencies: { electron: '^22.0.0' } }),
-    );
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ devDependencies: { electron: '^22.0.0' } }));
     const tsconfigPath = path.join(tmpDir, 'tsconfig.json');
     expect(detectProfileFromProjectSync(tsconfigPath)).toBe('electron');
   });
 
   it('detects library profile for non-private library projects', () => {
-    fs.writeFileSync(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ main: 'dist/index.js', types: 'dist/index.d.ts' }),
-    );
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ main: 'dist/index.js', types: 'dist/index.d.ts' }));
     const tsconfigPath = path.join(tmpDir, 'tsconfig.json');
     expect(detectProfileFromProjectSync(tsconfigPath)).toBe('library');
   });
 
   it('defaults to generic profile when no specific dependencies match', () => {
-    fs.writeFileSync(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ dependencies: { lodash: '^4.17.21' } }),
-    );
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ dependencies: { lodash: '^4.17.21' } }));
     const tsconfigPath = path.join(tmpDir, 'tsconfig.json');
     expect(detectProfileFromProjectSync(tsconfigPath)).toBe('generic');
   });
 
   it('resolves default and auto option targets using auto-detection', () => {
-    fs.writeFileSync(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ dependencies: { react: '^18.0.0' } }),
-    );
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ dependencies: { react: '^18.0.0' } }));
     const tsconfigPath = path.join(tmpDir, 'tsconfig.json');
     expect(resolveProfileTarget('auto', tsconfigPath)).toBe('react');
     expect(resolveProfileTarget('default', tsconfigPath)).toBe('react');
   });
 });
-

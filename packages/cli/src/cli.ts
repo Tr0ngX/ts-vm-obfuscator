@@ -132,10 +132,17 @@ Output:
           displayTarget = detected;
         }
 
-        const profile = createCliProfile(options.profile, options.seed, options.runtime, options.hardening, {
-          debugVm: options.debugVm,
-          paranoid: options.paranoid,
-        }, tsconfigPath);
+        const profile = createCliProfile(
+          options.profile,
+          options.seed,
+          options.runtime,
+          options.hardening,
+          {
+            debugVm: options.debugVm,
+            paranoid: options.paranoid,
+          },
+          tsconfigPath,
+        );
 
         const pipeline = new ObfuscationPipeline({
           tsconfigPath,

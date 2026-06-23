@@ -122,7 +122,6 @@ export function resolveProfileTarget(profileOption: string, tsconfigPath?: strin
   return target;
 }
 
-
 export function applySeedToProfile<T extends { seed: number; vm: { seed: number } }>(profile: T, seed: number): T {
   return {
     ...profile,
