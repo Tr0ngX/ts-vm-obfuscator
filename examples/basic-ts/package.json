@@ -1,5 +1,6 @@
 {
   "name": "example-basic-ts",
+  "private": true,
   "version": "1.0.0",
   "description": "Basic TypeScript example for ts-vm-obfuscator",
   "main": "dist/index.js",

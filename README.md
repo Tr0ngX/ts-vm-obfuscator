@@ -68,26 +68,41 @@ Traditional obfuscators modify the Abstract Syntax Tree (AST) of the target Java
 
 ## Getting Started
 
-### 1. Clone the Repository
+### Option A: Quick Install from npm (Recommended)
+
+```bash
+npx @tsvm/cli -p tsconfig.json --out dist-obf
+```
+
+Or install globally:
+
+```bash
+npm install -g @tsvm/cli
+ts-obfuscate -p tsconfig.json --out dist-obf
+```
+
+### Option B: Build from Source
+
+#### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/philleyquattro317-arch/ts-vm-obfuscator.git
 cd ts-vm-obfuscator
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 
 ```bash
 pnpm install
 ```
 
-### 3. Compile Workspace
+#### 3. Compile Workspace
 
 ```bash
 pnpm build
 ```
 
-### 4. Run the Obfuscator CLI
+#### 4. Run the Obfuscator CLI
 
 Provide the compiler with the target TypeScript configuration:
 
