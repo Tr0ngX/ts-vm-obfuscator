@@ -35,5 +35,8 @@ taste-skill/
 # Test pipeline output
 dist-orig/
 
+# Local npm config (never commit tokens)
+.npmrc
+
 # Stale junk files
 fnv1a.json
