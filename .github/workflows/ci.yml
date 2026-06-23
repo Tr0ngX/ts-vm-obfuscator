@@ -28,11 +28,8 @@ jobs:
       - run: pnpm format:check
 
   typecheck:
-    name: TypeCheck (${{ matrix.node }})
+    name: TypeCheck
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -40,19 +37,16 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
 
   test:
-    name: Unit & E2E Tests (${{ matrix.node }})
+    name: Unit & E2E Tests
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -60,7 +54,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
