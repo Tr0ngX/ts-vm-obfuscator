@@ -1,11 +1,14 @@
 {
   "name": "@tsvm/ts-semantics",
   "version": "0.1.0",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
   },
-  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

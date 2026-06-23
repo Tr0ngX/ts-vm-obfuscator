@@ -39,33 +39,79 @@ export function createCliProfile(
 export function createProgram() {
   return baseProgram
     .name('ts-obfuscate')
-    .description('TypeScript semantic-aware obfuscator')
+    .description('TypeScript semantic-aware obfuscator — compiles selected functions to custom bytecode inside a polymorphic VM runtime')
     .addHelpText(
       'after',
       `
-
 Examples:
-  $ ts-obfuscate -p examples/basic-ts/tsconfig.json
-  $ ts-obfuscate -p examples/st/tsconfig.json --runtime wasm --hardening max
-  $ ts-obfuscate -p examples/st/tsconfig.json --debug-vm
+  # Basic usage with a TypeScript project
+  $ ts-obfuscate -p tsconfig.json
+  $ ts-obfuscate -p tsconfig.json --out dist-obf
 
-Runtime notes:
-  --runtime js            Stable generated JavaScript VM backend
-  --runtime wasm-hybrid   WASM bootstrap + JS VM semantic executor
-  --hardening stealth     Default production-safe runtime hardening
-  --hardening paranoid    Adds heavier anti-debug probes
-  --debug-vm              Alias for --hardening off
+  # Profile selection
+  $ ts-obfuscate -p tsconfig.json --profile generic    # General purpose (default)
+  $ ts-obfuscate -p tsconfig.json --profile universal  # Full auto: vm-safe + js-lowered tiers
+  $ ts-obfuscate -p tsconfig.json --profile react      # React-safe profile
+  $ ts-obfuscate -p tsconfig.json --profile electron   # Electron-hardened profile
+
+  # Runtime & hardening
+  $ ts-obfuscate -p tsconfig.json --runtime js              # JS VM (default)
+  $ ts-obfuscate -p tsconfig.json --runtime wasm-hybrid     # WASM bootstrap + JS executor
+  $ ts-obfuscate -p tsconfig.json --hardening stealth       # Production-safe (default)
+  $ ts-obfuscate -p tsconfig.json --hardening paranoid      # + anti-debug timing probes
+  $ ts-obfuscate -p tsconfig.json --hardening off           # Debug-friendly (no hardening)
+
+  # Deterministic builds (same seed = same bytecode)
+  $ ts-obfuscate -p tsconfig.json --seed 42
+
+  # Shorthand flags
+  $ ts-obfuscate -p tsconfig.json --debug-vm    # --hardening off
+  $ ts-obfuscate -p tsconfig.json --paranoid     # --hardening paranoid
+
+  # Development flow
+  $ pnpm cli -p examples/basic-ts/tsconfig.json --profile universal
+
+  # Run with npx (after npm publish)
+  $ npx @tsvm/cli -p tsconfig.json
+
+Profiles:
+  generic     General-purpose obfuscation with recommended transforms
+  react       React-safe: hooks, JSX, components stay native
+  electron    Electron-hardened: IPC, contextBridge protections
+  library     Library-safe: preserves public API shape
+  universal   Full automatic: vm-safe + js-lowered tiers, ESM output
+
+Runtime backends:
+  js             Pure JavaScript VM (default, most stable)
+  wasm-hybrid    WASM bootstrap + JS VM semantic executor (aliases: wasm, hybrid)
+
+Hardening levels:
+  off       No hardening, plain VM shape (debug-friendly)
+  stealth   Indirect threaded dispatch, intrinsic snapshots, tamper checks (default)
+  paranoid  All stealth features + anti-debug timing probes
+
+Virtualization:
+  Mark functions with /** @virtualize */ in your TypeScript source.
+  The pipeline compiles only annotated functions to bytecode;
+  everything else stays 100% native.
+
+Output:
+  By default writes to ./dist-obf/ as .js (generic) or .mjs (universal) files.
+  A .report.json file is also generated with per-function tier information.
+
+  AI/CI: Use --out for deterministic output paths.
+  CI:     Use --seed for reproducible builds.
 `,
     )
     .version('0.1.0')
     .requiredOption('-p, --project <path>', 'path to tsconfig.json')
-    .option('-o, --out <dir>', 'output directory', 'dist-obf')
-    .option('--profile <type>', 'obfuscation profile (default, generic, react, electron, library, universal)', 'default')
+    .option('-o, --out <dir>', 'output directory (default: dist-obf)', 'dist-obf')
+    .option('--profile <type>', 'obfuscation profile: default, generic, react, electron, library, universal', 'default')
     .option('--runtime <backend>', 'VM runtime backend: js, wasm-hybrid (aliases: wasm, hybrid)', 'js')
-    .option('--hardening <level>', 'VM hardening level: off, stealth, paranoid (aliases: debug, max)', 'stealth')
-    .option('--debug-vm', 'debug-friendly alias for --hardening off')
-    .option('--paranoid', 'shortcut for --hardening paranoid')
-    .option('--seed <number>', 'random seed for polymorphic generation')
+    .option('--hardening <level>', 'VM hardening: off, stealth, paranoid (aliases: debug, max)', 'stealth')
+    .option('--debug-vm', 'alias for --hardening off')
+    .option('--paranoid', 'alias for --hardening paranoid')
+    .option('--seed <number>', 'random seed for deterministic polymorphic generation')
     .action(async (options) => {
       const spinner = ora('Initializing pipeline...').start();
       try {

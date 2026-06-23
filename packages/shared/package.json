@@ -1,11 +1,14 @@
 {
   "name": "@tsvm/shared",
   "version": "0.1.0",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
   },
-  "private": true,
   "description": "Shared types, interfaces, and utilities for ts-vm-obfuscator pipeline",
   "type": "module",
   "main": "./dist/index.js",

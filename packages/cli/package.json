@@ -1,17 +1,22 @@
 {
   "name": "@tsvm/cli",
   "version": "0.1.0",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
   },
-  "private": true,
   "type": "module",
   "bin": {
     "ts-obfuscate": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsup ./src/cli.ts --format esm --clean",
+    "start": "node ./dist/cli.js",
+    "dev": "tsup ./src/cli.ts --format esm --watch",
     "test": "pnpm --dir ../.. exec vitest run packages/cli/tests/**/*.test.ts --config vitest.config.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
