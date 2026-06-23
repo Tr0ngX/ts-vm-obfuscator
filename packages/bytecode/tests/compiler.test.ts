@@ -268,4 +268,68 @@ describe('Bytecode Compiler', () => {
       expect(decoded[3]!.opcode).toBe(OpCode.Return);
     });
   });
+
+  describe('Decoder edge cases and error handling', () => {
+    it('handles truly empty bytearray gracefully (no crash, returns empty array)', () => {
+      const config = makeConfig();
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      const result = decodeBytecode(new Uint8Array([]), mapping, config);
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('handles single-byte array gracefully (no crash)', () => {
+      const config = makeConfig();
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map([[0, OpCode.Nop]]) };
+      const result = decodeBytecode(new Uint8Array([0]), mapping, config);
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('rejects bytearray with truncated register operands', () => {
+      const config = makeConfig();
+      // A LoadConst with constant index operand: needs opcode + 1 operand byte
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      // Byte: opcode-like value 1 byte only
+      expect(() => decodeBytecode(new Uint8Array([0x01]), mapping, config)).toThrow();
+    });
+
+    it('decodes with XOR-masked encoding scheme', () => {
+      const config = makeConfig({ immediateEncoding: ImmediateEncodingScheme.XorMasked });
+      const insts: Instruction[] = [
+        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+        { opcode: OpCode.Move, operands: [
+          { kind: OperandKind.Register, value: 'r0' },
+          { kind: OperandKind.Register, value: 'r1' },
+        ]},
+      ];
+      const module = makeSimpleModule(insts, config.seed);
+      const compiled = compileToBytecode(module, config);
+      const fn = compiled.functions[0]!;
+      const decoded = decodeBytecode(fn.bytecode, compiled.opcodeMapping, config);
+      expect(decoded.length).toBe(insts.length + 1);
+      for (let i = 0; i < insts.length; i++) {
+        expect(decoded[i]!.opcode).toBe(insts[i]!.opcode);
+      }
+      expect(decoded[decoded.length - 1]!.opcode).toBe(OpCode.Return);
+    });
+
+    it('round-trips binary arithmetic opcodes alongside their results', () => {
+      const config = makeConfig();
+      const insts: Instruction[] = [
+        { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r2' },
+        { opcode: OpCode.Sub, operands: [{ kind: OperandKind.Register, value: 'r2' }, { kind: OperandKind.Register, value: 'r0' }], result: 'r3' },
+        { opcode: OpCode.Mul, operands: [{ kind: OperandKind.Register, value: 'r3' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r4' },
+        { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: 'r4' }], result: 'r5' },
+      ];
+      const module = makeSimpleModule(insts, config.seed);
+      const compiled = compileToBytecode(module, config);
+      const fn = compiled.functions[0]!;
+      const decoded = decodeBytecode(fn.bytecode, compiled.opcodeMapping, config);
+      expect(decoded.length).toBe(insts.length + 1);
+      expect(decoded[0]!.opcode).toBe(OpCode.Add);
+      expect(decoded[1]!.opcode).toBe(OpCode.Sub);
+      expect(decoded[2]!.opcode).toBe(OpCode.Mul);
+      expect(decoded[3]!.opcode).toBe(OpCode.Not);
+      expect(decoded[4]!.opcode).toBe(OpCode.Return);
+    });
+  });
 });

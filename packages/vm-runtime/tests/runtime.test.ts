@@ -769,4 +769,86 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.tryCatchPack(true)).toBe('boom');
     expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
   });
+
+  it('should produce correct results across 5 consecutive executions with rolling key self-modification', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const config = createVMConfig(101, { rollingKeys: true });
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    for (let i = 0; i < 5; i++) {
+      expect(moduleShim.exports.syntaxPack(true, 'bob')).toBe('yes:BOB:bob!:2');
+      expect(moduleShim.exports.syntaxPack(false, null)).toBe('no:ANON:empty:1');
+    }
+  });
+
+  it('should produce identical results under all hardening profiles for the same input', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'syntax-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+
+    const profiles = [
+      { name: 'basic', config: createVMConfig(17) },
+      { name: 'stealth', config: createVMConfig(17, { stealthDispatch: true, tamperDetection: true }) },
+      { name: 'paranoid', config: createVMConfig(17, { runtimeHardening: 'paranoid', stealthDispatch: true, tamperDetection: true, rollingKeys: true, junkInsertion: true }) },
+    ];
+
+    const results = profiles.map(({ name, config }) => {
+      const bytecode = compileToBytecode(ir, config);
+      const bundle = buildVMRuntime(bytecode, config);
+      const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+      new Function('module', bundle.fullSource)(moduleShim);
+      return {
+        name,
+        result1: moduleShim.exports.syntaxPack(true, 'bob') as string,
+        result2: moduleShim.exports.syntaxPack(false, null) as string,
+      };
+    });
+
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]!.result1).toBe(results[0]!.result1);
+      expect(results[i]!.result2).toBe(results[0]!.result2);
+    }
+  });
+
+  it('should produce identical results across multiple seeds with rolling keys disabled', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'control-flow-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+
+    const seeds = [7, 13, 23, 37, 42];
+    const results = seeds.map((seed) => {
+      const config = createVMConfig(seed);
+      const bytecode = compileToBytecode(ir, config);
+      const bundle = buildVMRuntime(bytecode, config);
+      const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+      new Function('module', bundle.fullSource)(moduleShim);
+      return {
+        seed,
+        result6: moduleShim.exports.controlFlowPack(6) as number,
+        result3: moduleShim.exports.controlFlowPack(3) as number,
+      };
+    });
+
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i]!.result6).toBe(results[0]!.result6);
+      expect(results[i]!.result3).toBe(results[0]!.result3);
+    }
+  });
+
+  it('should handle deeply nested expressions and allocation-heavy functions without error', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'expression-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const bytecode = compileToBytecode(ir, createVMConfig(53));
+    const bundle = buildVMRuntime(bytecode, createVMConfig(53));
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    for (let i = 0; i < 10; i++) {
+      expect(moduleShim.exports.expressionPack()).toBe('8:0|2|3|4|6|7:undefined:3,4,5,,6,7:ABC:2020-1-2');
+    }
+  });
 });

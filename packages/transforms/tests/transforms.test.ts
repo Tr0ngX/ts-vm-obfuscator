@@ -454,4 +454,134 @@ describe('Advanced Transforms', () => {
     expect(boundedConstants).toEqual(expect.arrayContaining([3, 4]));
     expect(boundedConstants.some((value) => value === 0x9e3779b9 || value === 0x7fffffff)).toBe(false);
   });
+
+  it('composed transforms (CFF + DeadCode + FakePath) produce structurally valid module', () => {
+    const dummyModule: IRModule = {
+      id: 'composed-test',
+      sourceFile: 'composed-test.ts',
+      functions: [
+        {
+          id: 'func1',
+          name: 'func1',
+          params: [{ name: 'value', register: 'r0', type: IRType.Number }],
+          returnType: IRType.Number,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'entry',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: ['body'],
+              instructions: [
+                { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r1' },
+                { opcode: OpCode.Move, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r2' }] },
+              ],
+              terminator: { kind: 'jump', targets: ['body'] },
+            },
+            {
+              id: 'body',
+              label: 'body',
+              phiNodes: [],
+              predecessors: ['entry'],
+              successors: ['exit'],
+              instructions: [
+                { opcode: OpCode.Add, operands: [{ kind: OperandKind.Register, value: 'r1' }, { kind: OperandKind.Register, value: 'r2' }], result: 'r3' },
+              ],
+              terminator: { kind: 'jump', targets: ['exit'] },
+            },
+            {
+              id: 'exit',
+              label: 'exit',
+              phiNodes: [],
+              predecessors: ['body'],
+              successors: [],
+              instructions: [],
+              terminator: { kind: 'return', targets: [], returnValue: 'r3' },
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [
+        { index: 0, kind: ConstantKind.Number, value: 0 },
+      ],
+      metadata: {
+        sourceFile: 'composed-test.ts',
+        buildTimestamp: 0,
+        blockCount: 3,
+        functionCount: 1,
+        instructionCount: 3,
+        originalByteSize: 100,
+      },
+    };
+
+    const rng = new SeededRandom(42);
+    const baseCtx = (): TransformContext => ({
+      module: JSON.parse(JSON.stringify(dummyModule)),
+      profile: {
+        ...mockProfile,
+        vm: { runtimeHardening: 'stealth', seed: 1 },
+      } as ObfuscationProfile,
+      semanticGraph: { rootDir: '', modules: new Map(), dependencyEdges: [], entryPoints: [], symbolTable: [], aliases: new Map(), compilerOptions: {}, diagnostics: [] } as ProjectSemanticGraph,
+      symbolAliases: new Map(),
+      diagnostics: [],
+      rng,
+      phase: 0,
+    });
+
+    const passes = [
+      { name: 'ControlFlowFlatteningPass', pass: new ControlFlowFlatteningPass() },
+      { name: 'DeadCodeInjectionPass', pass: new DeadCodeInjectionPass() },
+      { name: 'TypeLevelFakePathPass', pass: new TypeLevelFakePathPass() },
+    ];
+
+    let result: { module: IRModule; nodesTransformed: number; diagnostics: any[] } = { module: dummyModule, nodesTransformed: 0, diagnostics: [] };
+
+    for (const { name, pass } of passes) {
+      const ctx = baseCtx();
+      ctx.module = result.module;
+      result = pass.execute(ctx);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+
+    const finalModule = result.module;
+    const func = finalModule.functions[0]!;
+
+    // Structural integrity checks
+    const allIds = new Set(func.blocks.map((b) => b.id));
+    expect(allIds.size).toBe(func.blocks.length);
+
+    for (const block of func.blocks) {
+      // All predecessors and successors must reference existing blocks
+      for (const pred of block.predecessors) {
+        expect(allIds.has(pred)).toBe(true);
+      }
+      for (const succ of block.successors) {
+        expect(allIds.has(succ)).toBe(true);
+      }
+      // All terminator targets must reference existing blocks
+      for (const target of block.terminator.targets) {
+        expect(allIds.has(target)).toBe(true);
+      }
+      // Each block id must be non-empty
+      expect(block.id.length).toBeGreaterThan(0);
+      // Each block must have at least one block in the function
+      expect(block.instructions).toBeDefined();
+      expect(block.phiNodes).toBeDefined();
+    }
+
+    // Constant pool must still be defined
+    expect(finalModule.constantPool).toBeDefined();
+    expect(finalModule.constantPool.length).toBeGreaterThanOrEqual(1);
+
+    // Structural integrity is maintained regardless of whether transforms fire
+    expect(result.module.constantPool).toBeDefined();
+  });
 });

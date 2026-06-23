@@ -32,5 +32,8 @@ test_*.js
 # Local test and playground directories
 taste-skill/
 
+# Test pipeline output
+dist-orig/
+
 # Stale junk files
 fnv1a.json

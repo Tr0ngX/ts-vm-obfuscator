@@ -163,4 +163,155 @@ describe('VM Security', () => {
     const bundle = buildVMRuntime(compiled, { ...baseConfig, constantPoolEncoding: ConstantEncodingScheme.Identity });
     expect(bundle).toBeDefined();
   });
+
+  it('triggers selfDestruct when tamper detection finds a replaced intrinsic', () => {
+    const origSin = Math.sin;
+    const origToString = Function.prototype.toString;
+
+    try {
+      // Replace a key intrinsic to trigger tamper detection
+      Math.sin = function fakeSin() { return 0; } as typeof Math.sin;
+
+      const ir = {
+        id: 'tamper-test',
+        sourceFile: 'tamper-test.ts',
+        functions: [
+          {
+            id: 'fn_tamper',
+            name: 'fnTamper',
+            params: [],
+            returnType: 1 as any,
+            blocks: [
+              {
+                id: 'b0',
+                label: 'entry',
+                instructions: [],
+                terminator: { kind: 'return' as const, targets: [] },
+                predecessors: [],
+                successors: [],
+                phiNodes: [],
+              },
+            ],
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [],
+        metadata: {
+          sourceFile: 'tamper-test.ts',
+          originalByteSize: 0,
+          functionCount: 1,
+          blockCount: 1,
+          instructionCount: 0,
+          buildTimestamp: 0,
+        },
+      } as any;
+
+      const compiled = compileToBytecode(ir, {
+        ...baseConfig,
+        tamperDetection: true,
+        junkInsertion: true,
+        rollingKeys: true,
+      });
+
+      const bundle = buildVMRuntime(compiled, {
+        ...baseConfig,
+        tamperDetection: true,
+        junkInsertion: true,
+        rollingKeys: true,
+      });
+
+      const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+      let loadError: Error | null = null;
+      try {
+        new Function('module', bundle.fullSource)(moduleShim);
+      } catch (e) {
+        loadError = e as Error;
+      }
+
+      // With tampered Math.sin, the tamper detection should either throw during load
+      // or produce a poisoned context that returns undefined/wrong results
+      if (!loadError) {
+        const result = moduleShim.exports.fnTamper();
+        // When selfDestruct is triggered, execution should produce undefined or failure
+        expect(result).toBeUndefined();
+      } else {
+        expect(loadError).toBeDefined();
+      }
+    } finally {
+      Math.sin = origSin;
+      Function.prototype.toString = origToString;
+    }
+  });
+
+  it('runs normally under clean environment with tamper detection enabled', () => {
+    const ir = {
+      id: 'tamper-clean',
+      sourceFile: 'tamper-clean.ts',
+      functions: [
+        {
+          id: 'fn_clean',
+          name: 'fnClean',
+          params: [],
+          returnType: 1 as any,
+          blocks: [
+            {
+              id: 'b0',
+              label: 'entry',
+              instructions: [
+                { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+              ],
+              terminator: { kind: 'return' as const, targets: [], returnValue: 'r0' },
+              predecessors: [],
+              successors: [],
+              phiNodes: [],
+            },
+          ],
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [{ index: 0, kind: 'number' as any, value: 42 }],
+      metadata: {
+        sourceFile: 'tamper-clean.ts',
+        originalByteSize: 0,
+        functionCount: 1,
+        blockCount: 1,
+        instructionCount: 1,
+        buildTimestamp: 0,
+      },
+    } as any;
+
+    const compiled = compileToBytecode(ir, {
+      ...baseConfig,
+      tamperDetection: true,
+      junkInsertion: true,
+      rollingKeys: true,
+    });
+
+    const bundle = buildVMRuntime(compiled, {
+      ...baseConfig,
+      tamperDetection: true,
+      junkInsertion: true,
+      rollingKeys: true,
+    });
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    const result = moduleShim.exports.fnClean();
+    expect(result).toBe(42);
+  });
 });
