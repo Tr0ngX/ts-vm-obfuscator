@@ -766,41 +766,43 @@ describe('Advanced Transforms', () => {
       const instructions = func.blocks[0].instructions;
 
       // Let's verify each addition case's resulting instructions in the final block:
-      
+
       // Case 1: (1 + 2) is substituted:
       // Search for BitXor, BitAnd, LoadConst (2), Mul, Add replacing the original Add (result: r2)
-      const hasSubstitutedCase1 = instructions.some(
-        (inst) => inst.opcode === OpCode.BitXor && inst.result === 'isub_temp_r15' // or similar temp register
-      ) || instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].kind === OperandKind.Register
-      );
+      const hasSubstitutedCase1 =
+        instructions.some(
+          (inst) => inst.opcode === OpCode.BitXor && inst.result === 'isub_temp_r15', // or similar temp register
+        ) ||
+        instructions.some((inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].kind === OperandKind.Register);
       // Let's verify that the original Add r0, r1 -> r2 does NOT exist anymore:
       const originalAddCase1Exists = instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].value === 'r0'
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].value === 'r0',
       );
       expect(originalAddCase1Exists).toBe(false);
 
       // Case 2: (1.5 + 2.5) must NOT be substituted. The original Add r3, r4 -> r5 must remain:
       const originalAddCase2Exists = instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r5' && inst.operands[0].value === 'r3' && inst.operands[1].value === 'r4'
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r5' && inst.operands[0].value === 'r3' && inst.operands[1].value === 'r4',
       );
       expect(originalAddCase2Exists).toBe(true);
 
       // Case 3: (3000000000 + 1) must NOT be substituted. The original Add r6, r7 -> r8 must remain:
       const originalAddCase3Exists = instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r8' && inst.operands[0].value === 'r6' && inst.operands[1].value === 'r7'
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r8' && inst.operands[0].value === 'r6' && inst.operands[1].value === 'r7',
       );
       expect(originalAddCase3Exists).toBe(true);
 
       // Case 4: Parameter addition (r9 + r10) must NOT be substituted:
       const originalAddCase4Exists = instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r11' && inst.operands[0].value === 'r9' && inst.operands[1].value === 'r10'
+        (inst) =>
+          inst.opcode === OpCode.Add && inst.result === 'r11' && inst.operands[0].value === 'r9' && inst.operands[1].value === 'r10',
       );
       expect(originalAddCase4Exists).toBe(true);
 
       // Case 5: Addition of registers defined by bitwise operations (r12 + r13 -> r14) -> should substitute:
       const originalAddCase5Exists = instructions.some(
-        (inst) => inst.opcode === OpCode.Add && inst.result === 'r14' && inst.operands[0].value === 'r12' && inst.operands[1].value === 'r13'
+        (inst) =>
+          inst.opcode === OpCode.Add && inst.result === 'r14' && inst.operands[0].value === 'r12' && inst.operands[1].value === 'r13',
       );
       expect(originalAddCase5Exists).toBe(false);
     });
@@ -852,10 +854,15 @@ describe('Advanced Transforms', () => {
         globals: [],
         imports: [],
         exports: [],
-        constantPool: [
-          { index: 0, kind: ConstantKind.String, value: 'send' },
-        ],
-        metadata: { sourceFile: 'test_electron.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 2, originalByteSize: 100 },
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'send' }],
+        metadata: {
+          sourceFile: 'test_electron.ts',
+          buildTimestamp: 0,
+          blockCount: 1,
+          functionCount: 1,
+          instructionCount: 2,
+          originalByteSize: 100,
+        },
       };
 
       const hardenedModule = applyElectronHardening(dummyModule);
@@ -865,14 +872,14 @@ describe('Advanced Transforms', () => {
       // Expect 2 original + 4 injected = 6 instructions
       expect(instructions.length).toBe(6);
 
-      const opcodes = instructions.map(inst => inst.opcode);
+      const opcodes = instructions.map((inst) => inst.opcode);
       expect(opcodes).toEqual([
         OpCode.LoadConst, // Original LoadConst
-        OpCode.Nop,       // Injected Nop
+        OpCode.Nop, // Injected Nop
         OpCode.LoadConst, // Injected LoadConst (property name)
-        OpCode.PropGet,   // Injected PropGet (fetch method)
-        OpCode.Call,      // Injected Call (invoke check)
-        OpCode.PropGet,   // Original PropGet
+        OpCode.PropGet, // Injected PropGet (fetch method)
+        OpCode.Call, // Injected Call (invoke check)
+        OpCode.PropGet, // Original PropGet
       ]);
 
       // Check the injected PropGet: fetches from 'r0' (object) and 'r-1' (property name), writing to 'r-1'
@@ -938,7 +945,14 @@ describe('Advanced Transforms', () => {
           { index: 0, kind: ConstantKind.String, value: 'console' },
           { index: 1, kind: ConstantKind.String, value: 'log' },
         ],
-        metadata: { sourceFile: 'strip-debug-test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 4, originalByteSize: 100 },
+        metadata: {
+          sourceFile: 'strip-debug-test.ts',
+          buildTimestamp: 0,
+          blockCount: 1,
+          functionCount: 1,
+          instructionCount: 4,
+          originalByteSize: 100,
+        },
       };
 
       const ctx: TransformContext = {

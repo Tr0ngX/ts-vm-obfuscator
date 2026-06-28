@@ -49,15 +49,16 @@ export function analyzeProject(tsconfigPath: string, entryPoints?: readonly stri
             : DiagnosticSeverity.Info,
       code: `TS${diag.code}`,
       message: ts.flattenDiagnosticMessageText(diag.messageText, '\n'),
-      location: (diag.file && diag.start !== undefined && diag.length !== undefined)
-        ? {
-            filePath: diag.file.fileName,
-            line: diag.file.getLineAndCharacterOfPosition(diag.start).line,
-            column: diag.file.getLineAndCharacterOfPosition(diag.start).character,
-            offset: diag.start,
-            length: diag.length,
-          }
-        : undefined,
+      location:
+        diag.file && diag.start !== undefined && diag.length !== undefined
+          ? {
+              filePath: diag.file.fileName,
+              line: diag.file.getLineAndCharacterOfPosition(diag.start).line,
+              column: diag.file.getLineAndCharacterOfPosition(diag.start).character,
+              offset: diag.start,
+              length: diag.length,
+            }
+          : undefined,
     });
   }
 

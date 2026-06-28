@@ -83,7 +83,12 @@ describe('universal profile', () => {
 
     const bundlePath = path.join(outDir, `${result.vmBundles![0]!.buildId}.js`);
     await fs.writeFile(bundlePath, result.vmBundles![0]!.fullSource, 'utf-8');
-    expect(await fs.access(bundlePath).then(() => true).catch(() => false)).toBe(true);
+    expect(
+      await fs
+        .access(bundlePath)
+        .then(() => true)
+        .catch(() => false),
+    ).toBe(true);
 
     const imported = (await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`)) as Record<string, (...args: any[]) => any>;
 

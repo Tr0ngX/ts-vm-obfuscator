@@ -249,9 +249,7 @@ function tryGetTopLevelVariableFunctionBinding(statement: ts.Statement): Array<{
 }
 
 export function analyzeFunctionCapabilities(filePath: string, sourceText?: string, program?: any): FunctionCapabilityReport[] {
-  let sourceFile = (program && typeof program.getSourceFile === 'function')
-    ? program.getSourceFile(filePath)
-    : undefined;
+  let sourceFile = program && typeof program.getSourceFile === 'function' ? program.getSourceFile(filePath) : undefined;
   if (!sourceFile) {
     const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
     sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
@@ -270,9 +268,7 @@ export function analyzeFunctionCapabilities(filePath: string, sourceText?: strin
 }
 
 export function analyzeTopLevelFunctionCapabilities(filePath: string, sourceText?: string, program?: any): FunctionCapabilityReport[] {
-  let sourceFile = (program && typeof program.getSourceFile === 'function')
-    ? program.getSourceFile(filePath)
-    : undefined;
+  let sourceFile = program && typeof program.getSourceFile === 'function' ? program.getSourceFile(filePath) : undefined;
   if (!sourceFile) {
     const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
     sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);

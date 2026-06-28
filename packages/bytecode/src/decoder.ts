@@ -1,5 +1,13 @@
 import type { Instruction, OpcodeMapping, EncodedConstant, ConstantPoolEntry, BytecodeModule } from '@tsvm/shared';
-import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, OpCode, ConstantKind, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
+import {
+  ImmediateEncodingScheme,
+  ConstantEncodingScheme,
+  OperandKind,
+  OpCode,
+  ConstantKind,
+  isVariableLengthOpcode,
+  isTerminator,
+} from '@tsvm/shared';
 
 function assertOpCode(value: number): OpCode {
   return value as OpCode;

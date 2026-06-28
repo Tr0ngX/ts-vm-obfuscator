@@ -1,5 +1,13 @@
 import type { Instruction, Operand, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
-import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, type SeededRandom, OpCode, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
+import {
+  ImmediateEncodingScheme,
+  ConstantEncodingScheme,
+  OperandKind,
+  type SeededRandom,
+  OpCode,
+  isVariableLengthOpcode,
+  isTerminator,
+} from '@tsvm/shared';
 
 import type { VMBuildConfig } from '@tsvm/shared';
 

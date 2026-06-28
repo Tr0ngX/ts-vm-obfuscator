@@ -214,12 +214,7 @@ export class InstructionSubstitutionPass implements TransformPass {
               const typeA = getOperandType(opA);
               const typeB = getOperandType(opB);
 
-              if (
-                typeA === IRType.Number &&
-                typeB === IRType.Number &&
-                isSmallIntegerOperand(opA) &&
-                isSmallIntegerOperand(opB)
-              ) {
+              if (typeA === IRType.Number && typeB === IRType.Number && isSmallIntegerOperand(opA) && isSmallIntegerOperand(opB)) {
                 // A + B => (A ^ B) + 2 * (A & B)
                 const temp1 = `r${nextReg++}` as Register;
                 const temp2 = `r${nextReg++}` as Register;

@@ -1581,7 +1581,10 @@ export class ASTLowering {
       this.storeToLocal(context.completionValueLocal, valueReg);
     }
     if (target) {
-      const codeReg = this.emitConstant(ConstantKind.Number, this.getCompletionTargetCode(context, target.kind, target.blockId, target.tryDepth));
+      const codeReg = this.emitConstant(
+        ConstantKind.Number,
+        this.getCompletionTargetCode(context, target.kind, target.blockId, target.tryDepth),
+      );
       this.storeToLocal(context.completionTargetLocal, codeReg);
     }
   }
@@ -2581,9 +2584,7 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
   const modBuilder = new IRModuleBuilder(filePath);
 
   for (const imp of moduleInfo.imports) modBuilder.addImport(imp);
-  let sourceFile = (graph.program && typeof graph.program.getSourceFile === 'function')
-    ? graph.program.getSourceFile(filePath)
-    : undefined;
+  let sourceFile = graph.program && typeof graph.program.getSourceFile === 'function' ? graph.program.getSourceFile(filePath) : undefined;
   if (!sourceFile) {
     sourceFile = ts.createSourceFile(filePath, ts.sys.readFile(filePath) || '', ts.ScriptTarget.ESNext, true);
   }

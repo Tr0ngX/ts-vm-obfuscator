@@ -613,7 +613,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   `
     : '';
 
-
   const handlerDeclarations: string[] = [];
   const handlerNames = new Map<OpCode, string>();
   const declaredOpcodes: OpCode[] = [];

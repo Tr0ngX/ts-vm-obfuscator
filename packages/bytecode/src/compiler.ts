@@ -8,7 +8,15 @@ import type {
   Operand,
   ConstantPoolEntry,
 } from '@tsvm/shared';
-import { FunctionAttribute, OpCode, OperandKind, SeededRandom, ImmediateEncodingScheme, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
+import {
+  FunctionAttribute,
+  OpCode,
+  OperandKind,
+  SeededRandom,
+  ImmediateEncodingScheme,
+  isVariableLengthOpcode,
+  isTerminator,
+} from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
 

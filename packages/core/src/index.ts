@@ -333,17 +333,15 @@ export class ObfuscationPipeline {
         if (functionReports) {
           functionReports.push(...analyzeFunctionCapabilities(filePath, undefined, semanticGraph.program));
         }
-        const forcedVmSafeFunctionNames = this.options.profile.target === 'universal'
-          ? new Set(
-              universalTopLevelReports.filter((report) => report.tier === 'vm_safe').map((report) => report.functionName),
-            )
-          : new Set<string>();
+        const forcedVmSafeFunctionNames =
+          this.options.profile.target === 'universal'
+            ? new Set(universalTopLevelReports.filter((report) => report.tier === 'vm_safe').map((report) => report.functionName))
+            : new Set<string>();
         const skippedJsLoweredFunctionNames = new Set(
           universalTopLevelReports.filter((report) => report.tier === 'js_lowered').map((report) => report.functionName),
         );
-        const unsupportedTopLevelReports = this.options.profile.target === 'universal'
-          ? universalTopLevelReports.filter((report) => report.tier === 'unsupported')
-          : [];
+        const unsupportedTopLevelReports =
+          this.options.profile.target === 'universal' ? universalTopLevelReports.filter((report) => report.tier === 'unsupported') : [];
         for (const report of unsupportedTopLevelReports) {
           this.diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -426,7 +424,7 @@ export class ObfuscationPipeline {
                   if (parentId === fn.id && !disabledIds.has(childId)) {
                     disabledIds.add(childId);
                     const childFn = irModule.functions.find((f) => f.id === childId);
-                    if (childFn && childFn.isVirtualized) {
+                    if (childFn?.isVirtualized) {
                       (childFn as { isVirtualized: boolean }).isVirtualized = false;
                     }
                     changed = true;
@@ -549,74 +547,63 @@ export class ObfuscationPipeline {
     }
 
     // Ensure native functions and imports/exports are correctly preserved across all target profiles.
-    if (true) {
-      const vmBundleByFile = new Map<string, VMRuntimeBundle>();
-      for (const bundle of vmBundles) {
-        const matchedPath = bytecodeSourceFiles.get(bundle.buildId);
-        if (matchedPath) {
-          vmBundleByFile.set(matchedPath, bundle);
-        }
+    const vmBundleByFile = new Map<string, VMRuntimeBundle>();
+    for (const bundle of vmBundles) {
+      const matchedPath = bytecodeSourceFiles.get(bundle.buildId);
+      if (matchedPath) {
+        vmBundleByFile.set(matchedPath, bundle);
       }
-
-      const universalBundles: VMRuntimeBundle[] = [];
-      for (const [filePath, moduleInfo] of semanticGraph.modules) {
-        const reportsForFile = functionReports?.filter((report) => report.filePath === filePath) ?? [];
-        if (moduleInfo.exports.length === 0 && reportsForFile.length === 0) {
-          continue;
-        }
-        const irModuleForFile = irModules.find((m) => m.sourceFile === filePath);
-        const virtualizedFunctionNames = new Set(
-          irModuleForFile?.functions.filter((f) => f.isVirtualized).map((f) => f.name) ?? []
-        );
-        universalBundles.push(
-          buildUniversalBundle(
-            `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
-            moduleInfo,
-            semanticGraph.compilerOptions,
-            reportsForFile,
-            vmBundleByFile.get(filePath),
-            virtualizedFunctionNames,
-          ),
-        );
-      }
-      // Rewrite relative import paths in the generated universal bundles to account for flattening
-      const filePathToOutputName = new Map<string, string>();
-      for (const [filePath, moduleInfo] of semanticGraph.modules) {
-        const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-        filePathToOutputName.set(filePath, `${relativeBuildId}${getUniversalOutputExtension(this.options.profile)}`);
-      }
-
-      const rewrittenUniversalBundles: VMRuntimeBundle[] = [];
-      for (const bundle of universalBundles) {
-        let matchedFilePath: string | undefined;
-        for (const [filePath, moduleInfo] of semanticGraph.modules) {
-          const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-          if (bundle.buildId === relativeBuildId) {
-            matchedFilePath = filePath;
-            break;
-          }
-        }
-
-        if (matchedFilePath) {
-          const rewrittenSource = rewriteRelativeImports(
-            bundle.fullSource,
-            matchedFilePath,
-            filePathToOutputName,
-            semanticGraph.modules,
-          );
-          rewrittenUniversalBundles.push({
-            ...bundle,
-            fullSource: rewrittenSource,
-          });
-        } else {
-          rewrittenUniversalBundles.push(bundle);
-        }
-      }
-      vmBundles = rewrittenUniversalBundles;
-      this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} universal compatibility bundles`);
     }
 
+    const universalBundles: VMRuntimeBundle[] = [];
+    for (const [filePath, moduleInfo] of semanticGraph.modules) {
+      const reportsForFile = functionReports?.filter((report) => report.filePath === filePath) ?? [];
+      if (moduleInfo.exports.length === 0 && reportsForFile.length === 0) {
+        continue;
+      }
+      const irModuleForFile = irModules.find((m) => m.sourceFile === filePath);
+      const virtualizedFunctionNames = new Set(irModuleForFile?.functions.filter((f) => f.isVirtualized).map((f) => f.name) ?? []);
+      universalBundles.push(
+        buildUniversalBundle(
+          `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
+          moduleInfo,
+          semanticGraph.compilerOptions,
+          reportsForFile,
+          vmBundleByFile.get(filePath),
+          virtualizedFunctionNames,
+        ),
+      );
+    }
+    // Rewrite relative import paths in the generated universal bundles to account for flattening
+    const filePathToOutputName = new Map<string, string>();
+    for (const [filePath, moduleInfo] of semanticGraph.modules) {
+      const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+      filePathToOutputName.set(filePath, `${relativeBuildId}${getUniversalOutputExtension(this.options.profile)}`);
+    }
 
+    const rewrittenUniversalBundles: VMRuntimeBundle[] = [];
+    for (const bundle of universalBundles) {
+      let matchedFilePath: string | undefined;
+      for (const [filePath, moduleInfo] of semanticGraph.modules) {
+        const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+        if (bundle.buildId === relativeBuildId) {
+          matchedFilePath = filePath;
+          break;
+        }
+      }
+
+      if (matchedFilePath) {
+        const rewrittenSource = rewriteRelativeImports(bundle.fullSource, matchedFilePath, filePathToOutputName, semanticGraph.modules);
+        rewrittenUniversalBundles.push({
+          ...bundle,
+          fullSource: rewrittenSource,
+        });
+      } else {
+        rewrittenUniversalBundles.push(bundle);
+      }
+    }
+    vmBundles = rewrittenUniversalBundles;
+    this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} universal compatibility bundles`);
 
     // Benchmark was removed to avoid circular dependencies.
     // It should be run externally.
@@ -674,11 +661,7 @@ export class ObfuscationPipeline {
   }
 }
 
-function resolveImportTarget(
-  importingFilePath: string,
-  importPath: string,
-  modules: ReadonlyMap<string, any>,
-): string | undefined {
+function resolveImportTarget(importingFilePath: string, importPath: string, modules: ReadonlyMap<string, any>): string | undefined {
   if (!importPath.startsWith('.')) {
     return undefined;
   }
@@ -710,11 +693,7 @@ function resolveImportTarget(
   const ext = path.extname(resolvedBase);
   if (ext === '.js' || ext === '.jsx' || ext === '.mjs') {
     const withoutExt = resolvedBase.slice(0, -ext.length);
-    const altCandidates = [
-      withoutExt + '.ts',
-      withoutExt + '.tsx',
-      withoutExt + '.d.ts',
-    ];
+    const altCandidates = [withoutExt + '.ts', withoutExt + '.tsx', withoutExt + '.d.ts'];
     for (const cand of altCandidates) {
       const normalizedCand = path.normalize(cand).toLowerCase();
       for (const modKey of modules.keys()) {
