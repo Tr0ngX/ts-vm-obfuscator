@@ -2233,6 +2233,10 @@ const ${top.vmFunctions} = (function() {
   }
 
   function __runVm(ctx) {
+    if ((ctx.${ctx.pc} & 0xF) === 0) {
+      ctx.${ctx.regs}._jitDeopt = ctx.${ctx.pc};
+      delete ctx.${ctx.regs}._jitDeopt;
+    }
     ${antiDebugLogic}
     ${tamperDetectionLogic}
     if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
