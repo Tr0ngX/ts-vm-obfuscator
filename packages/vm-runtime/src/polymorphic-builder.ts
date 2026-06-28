@@ -927,9 +927,27 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.InstanceOf, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] instanceof ctx.regs[args[1]];`);
   declareHandler(OpCode.In, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] in ctx.regs[args[1]];`);
   declareHandler(OpCode.PropGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
-  declareHandler(OpCode.PropSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
+  declareHandler(
+    OpCode.PropSet,
+    `${readArgs} {
+    var key = ctx.regs[args[1]];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      throw new TypeError('Prototype mutation blocked');
+    }
+    ctx.regs[args[0]][key] = ctx.regs[args[2]];
+  }`,
+  );
   declareHandler(OpCode.ComputedGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
-  declareHandler(OpCode.ComputedSet, `${readArgs} ctx.regs[args[0]][ctx.regs[args[1]]] = ctx.regs[args[2]];`);
+  declareHandler(
+    OpCode.ComputedSet,
+    `${readArgs} {
+    var key = ctx.regs[args[1]];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      throw new TypeError('Prototype mutation blocked');
+    }
+    ctx.regs[args[0]][key] = ctx.regs[args[2]];
+  }`,
+  );
   declareHandler(OpCode.ArrayNew, `${readArgs} ctx.regs[args[0]] = [];`);
   declareHandler(OpCode.ObjectNew, `${readArgs} ctx.regs[args[0]] = {};`);
   declareHandler(OpCode.Delete, `${readArgs} delete ctx.regs[args[0]][ctx.regs[args[1]]];`);
@@ -995,7 +1013,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     `
     ${readArgs}
     var obj = ${regRef('args[0]')};
-    var method = obj[ctx.regs[args[1]]];
+    var methodKey = ctx.regs[args[1]];
+    var method = obj[methodKey];
+    if (typeof method === 'function' && tsvmSensitiveKeys[methodKey] && !tsvmExecutors.has(method)) {
+      try {
+        var str = ${top.nativeToString}.call(method);
+        if (str.indexOf('[native code]') === -1) {
+          selfDestruct(ctx);
+          return;
+        }
+      } catch(e) {}
+    }
     var aa = [];
     for (var ci = 2; ci < args.length - 1; ci++) {
       aa.push(${regRef('args[ci]')});
@@ -1011,6 +1039,29 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     if (typeof fn === 'undefined' || fn === null) {
       throw new TypeError('VM Call target is undefined or null');
     }
+    if (typeof fn !== 'function') {
+      var isSensitiveObj = false;
+      try {
+        if (fn && (fn.send || fn.invoke || fn.on || fn.nodeIntegration !== undefined || fn.contextIsolation !== undefined)) {
+          isSensitiveObj = true;
+        }
+      } catch(e) {}
+      if (isSensitiveObj) {
+        ${regRef('args[args.length - 1]')} = fn;
+        return;
+      }
+      throw new TypeError('VM Call target is not a function');
+    }
+    var fnName = fn.name;
+    if (fnName && tsvmSensitiveKeys[fnName] && !tsvmExecutors.has(fn)) {
+      try {
+        var str = ${top.nativeToString}.call(fn);
+        if (str.indexOf('[native code]') === -1) {
+          selfDestruct(ctx);
+          return;
+        }
+      } catch(e) {}
+    }
     var ab = [];
     for (var ci2 = 1; ci2 < args.length - 1; ci2++) {
       ab.push(${regRef('args[ci2]')});
@@ -1023,6 +1074,15 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     `
     ${readArgs}
     var fnArray = ctx.regs[args[0]];
+    if (typeof fnArray === 'function' && fnArray.name && tsvmSensitiveKeys[fnArray.name] && !tsvmExecutors.has(fnArray)) {
+      try {
+        var str = ${top.nativeToString}.call(fnArray);
+        if (str.indexOf('[native code]') === -1) {
+          selfDestruct(ctx);
+          return;
+        }
+      } catch(e) {}
+    }
     ctx.regs[args[2]] = ${top.nativeApply}.call(fnArray, null, ctx.regs[args[1]]);
   `,
   );
@@ -1031,7 +1091,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     `
     ${readArgs}
     var methodObj = ctx.regs[args[0]];
-    var methodFn = methodObj[ctx.regs[args[1]]];
+    var methodKey = ctx.regs[args[1]];
+    var methodFn = methodObj[methodKey];
+    if (typeof methodFn === 'function' && tsvmSensitiveKeys[methodKey] && !tsvmExecutors.has(methodFn)) {
+      try {
+        var str = ${top.nativeToString}.call(methodFn);
+        if (str.indexOf('[native code]') === -1) {
+          selfDestruct(ctx);
+          return;
+        }
+      } catch(e) {}
+    }
     ctx.regs[args[3]] = ${top.nativeApply}.call(methodFn, methodObj, ctx.regs[args[2]]);
   `,
   );
@@ -1276,6 +1346,8 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     // breakpoints in DevTools. Remove this entire block if distributing to production.
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugger;
+    var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (_dbg_end - _dbg_start > 100) {
        selfDestruct(ctx);
     }
     // Opaque getter trap to detect automated inspect / DevTools formatting
@@ -1630,12 +1702,19 @@ const ${top.vmFunctions} = (function() {
   const ${top.iteratorSymbol} = typeof Symbol !== 'undefined' ? Symbol.iterator : '@@iterator';
   const ${top.asyncIteratorSymbol} = typeof Symbol !== 'undefined' && Symbol.asyncIterator ? Symbol.asyncIterator : null;
   const ${top.privateData} = new ${top.weakMapCtor}();
+  const tsvmExecutors = typeof WeakSet !== 'undefined' ? new WeakSet() : { add: function(){}, has: function(){ return false; } };
+  const tsvmSensitiveKeys = { fetch: 1, XMLHttpRequest: 1, send: 1, invoke: 1, on: 1, handle: 1, sendSync: 1, postMessage: 1, connect: 1, request: 1 };
 
   // Secure local caches of essential operations
   const ${top.nativeDefineProperty} = ${top.objectObj}.defineProperty;
   const ${top.nativeGetOwnPropertyDescriptor} = ${top.objectObj}.getOwnPropertyDescriptor;
   const ${top.nativeApply} = (cleanIntrinsics.Function || Function).prototype.apply;
   const ${top.nativeCall} = (cleanIntrinsics.Function || Function).prototype.call;
+  const pristineFetch = cleanIntrinsics.fetch || (typeof fetch !== 'undefined' ? fetch : undefined);
+  const pristineXHR = cleanIntrinsics.XMLHttpRequest || (typeof XMLHttpRequest !== 'undefined' ? XMLHttpRequest : undefined);
+  const pristineHeaders = cleanIntrinsics.Headers || (typeof Headers !== 'undefined' ? Headers : undefined);
+  const pristineRequest = cleanIntrinsics.Request || (typeof Request !== 'undefined' ? Request : undefined);
+  const pristineResponse = cleanIntrinsics.Response || (typeof Response !== 'undefined' ? Response : undefined);
   const ${top.performanceNow} = (cleanIntrinsics.performance && cleanIntrinsics.performance.now) ? cleanIntrinsics.performance.now.bind(cleanIntrinsics.performance) : (typeof performance !== 'undefined' && performance.now) ? performance.now.bind(performance) : null;
   const ${top.mathRandom} = (cleanIntrinsics.Math || Math).random;
   let executionCounter = 0;
@@ -1862,13 +1941,101 @@ const ${top.vmFunctions} = (function() {
         return true;
       }
     });
+    var rawGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global;
+    var secureGlobalProxy = new Proxy(rawGlobal, {
+      get: function(target, prop) {
+        if (typeof prop === 'string') {
+          if (
+            prop === '__proto__' ||
+            prop === 'constructor' ||
+            prop === 'prototype' ||
+            prop === 'process' ||
+            prop === 'require' ||
+            prop === 'child_process' ||
+            prop === 'fs' ||
+            prop === 'eval' ||
+            prop === 'Function' ||
+            prop === 'module' ||
+            prop === 'exports'
+          ) {
+            return undefined;
+          }
+          if (prop === 'fetch') {
+            if (pristineFetch) {
+              try {
+                var str = ${top.nativeToString}.call(pristineFetch);
+                if (str.indexOf('[native code]') !== -1) {
+                  return pristineFetch;
+                }
+              } catch (e) {}
+            }
+            return undefined;
+          }
+          if (prop === 'XMLHttpRequest') {
+            if (pristineXHR) {
+              try {
+                var str = ${top.nativeToString}.call(pristineXHR);
+                if (str.indexOf('[native code]') !== -1) {
+                  return pristineXHR;
+                }
+              } catch (e) {}
+            }
+            return undefined;
+          }
+          if (prop === 'Headers') return pristineHeaders;
+          if (prop === 'Request') return pristineRequest;
+          if (prop === 'Response') return pristineResponse;
+        }
+        var val = target[prop];
+        return val;
+      },
+      set: function(target, prop, val) {
+        if (typeof prop === 'string') {
+          if (
+            prop === '__proto__' ||
+            prop === 'constructor' ||
+            prop === 'prototype' ||
+            prop === 'process' ||
+            prop === 'require' ||
+            prop === 'child_process' ||
+            prop === 'fs' ||
+            prop === 'eval' ||
+            prop === 'Function' ||
+            prop === 'fetch' ||
+            prop === 'XMLHttpRequest'
+          ) {
+            throw new TypeError('Access Denied');
+          }
+        }
+        target[prop] = val;
+        return true;
+      },
+      has: function(target, prop) {
+        if (typeof prop === 'string') {
+          if (
+            prop === '__proto__' ||
+            prop === 'constructor' ||
+            prop === 'prototype' ||
+            prop === 'process' ||
+            prop === 'require' ||
+            prop === 'child_process' ||
+            prop === 'fs' ||
+            prop === 'eval' ||
+            prop === 'Function'
+          ) {
+            return false;
+          }
+        }
+        return prop in target;
+      }
+    });
     ctx = {
       ${ctx.pc}: 0,
       ${ctx.bytecode}: ${config.rollingKeys ? 'Uint8Array.from(bytecodeArr)' : 'bytecodeArr'},
       ${ctx.regs}: regsProxy,
       ${ctx.fnArgs}: argsArr,
       ${ctx.env}: envArr || [],
-      ${ctx.globalScope}: typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global,
+      ${ctx.globalScope}: secureGlobalProxy,
       ${ctx.thisArg}: thisArg,
       ${ctx.newTarget}: newTarget,
       ${ctx.resumeMode}: 'normal',
@@ -2045,7 +2212,7 @@ const ${top.vmFunctions} = (function() {
     const isAsync = attributes && attributes.indexOf('async') >= 0;
     const isGenerator = attributes && attributes.indexOf('generator') >= 0;
     if (isAsync && isGenerator) {
-      return function execute() {
+      var exec = function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
         const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
         let delegateIterator = null;
@@ -2063,7 +2230,7 @@ const ${top.vmFunctions} = (function() {
           }
           return mode;
         };
-        return {
+        var iter = {
           [${top.asyncIteratorSymbol} || ${top.iteratorSymbol}]: function() { return this; },
           next: async function(v) {
             if (finished) return { value: undefined, done: true };
@@ -2134,10 +2301,16 @@ const ${top.vmFunctions} = (function() {
             }
           }
         };
+        tsvmExecutors.add(iter.next);
+        tsvmExecutors.add(iter.return);
+        tsvmExecutors.add(iter.throw);
+        return iter;
       };
+      tsvmExecutors.add(exec);
+      return exec;
     }
     if (isAsync) {
-      return async function execute() {
+      var exec = async function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
         const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
         try {
@@ -2160,14 +2333,16 @@ const ${top.vmFunctions} = (function() {
           ctx.shred();
         }
       };
+      tsvmExecutors.add(exec);
+      return exec;
     }
     if (isGenerator) {
-      return function execute() {
+      var exec = function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
         const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
         let delegateIterator = null;
         let finished = false;
-        return {
+        var iter = {
           [${top.iteratorSymbol}]: function() { return this; },
           next: function(v) {
             if (finished) return { value: undefined, done: true };
@@ -2230,9 +2405,15 @@ const ${top.vmFunctions} = (function() {
              }
           }
         };
+        tsvmExecutors.add(iter.next);
+        tsvmExecutors.add(iter.return);
+        tsvmExecutors.add(iter.throw);
+        return iter;
       };
+      tsvmExecutors.add(exec);
+      return exec;
     }
-    return function execute() {
+    var exec = function execute() {
       const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
       const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
       try {
@@ -2251,6 +2432,8 @@ const ${top.vmFunctions} = (function() {
         ctx.shred();
       }
     };
+    tsvmExecutors.add(exec);
+    return exec;
   }
 
   var ${top.result} = {};
