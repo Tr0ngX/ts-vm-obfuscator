@@ -1999,7 +1999,7 @@ const ${top.vmFunctions} = (function() {
     }
   }
 
-  ${handlerDeclarations.join('\n\n')}
+  ${buildRng.shuffle([...handlerDeclarations]).join('\n\n')}
 
   ${handlerVariantsStr}
 
