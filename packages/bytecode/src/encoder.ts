@@ -96,7 +96,7 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
   } else if (config.runtimeHardening === 'paranoid') {
     for (let pc = 0; pc < resultBytes.length; pc++) {
       const mask = (pc * 31 + config.seed) & 0xff;
-      resultBytes[pc] = (resultBytes[pc]! ^ mask);
+      resultBytes[pc] = resultBytes[pc]! ^ mask;
     }
   }
   return resultBytes;
