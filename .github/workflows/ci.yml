@@ -37,7 +37,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
       - run: pnpm typecheck
 
   test:
@@ -52,9 +59,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
       - run: pnpm exec vitest run --config vitest.config.mjs --reporter verbose
       - run: node test-pipeline.js
+      - name: Verify CLI Compilation Pipeline
+        run: node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf
 
   benchmark:
     name: Performance Benchmark
@@ -69,7 +85,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
       - name: Run benchmark
         run: node --expose-gc run-benchmark.js
         timeout-minutes: 15
