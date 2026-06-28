@@ -590,6 +590,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     return ${top.runtimeStringCache}[index] = decoded;
   }
   function ${top.opaquePredicate}(value) {
+    if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
+      var x = (((value & 0xFFFF) / 65536) * 2 - 1) || 0.1;
+      var y = ((((value >>> 16) & 0xFFFF) / 65536) * 2 - 1) || 0.1;
+      for (var i = 0; i < 8; i++) {
+        var nextX = 1 - 1.4 * x * x + y;
+        var nextY = 0.3 * x;
+        x = nextX;
+        y = nextY;
+      }
+      return x >= -2.0 && x <= 2.0 && y >= -0.6 && y <= 0.6;
+    }
     value = (value ^ 0x51ed) | 0;
     var steps = 0;
     var n = value;
@@ -1979,6 +1990,10 @@ const ${top.vmFunctions} = (function() {
       return decoded;
     `
         : `
+      if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'}) {
+        var mask = (pos * 31 + ${config.seed}) & 0xFF;
+        return byte ^ mask;
+      }
       return byte;
     `
     }
