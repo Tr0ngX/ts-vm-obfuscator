@@ -112,14 +112,19 @@ function rewriteModuleStatements(
   sourceFile: import('typescript').SourceFile,
   reports: readonly FunctionCapabilityReport[],
   vmObjectName: string,
+  virtualizedFunctions?: ReadonlySet<string>,
 ): { readonly rewrittenSource: string; readonly hasVmFunctions: boolean } {
   const topLevelReportMap = buildTopLevelReportMap(sourceFile, reports);
-  const replacements = new Map<import('typescript').Statement, string>();
+  const replacements: { start: number; end: number; replacementText: string }[] = [];
   let hasVmFunctions = false;
 
   for (const statement of sourceFile.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name) {
-      const report = topLevelReportMap.get(statement.name.text);
+      const functionName = statement.name.text;
+      if (virtualizedFunctions && !virtualizedFunctions.has(functionName)) {
+        continue;
+      }
+      const report = topLevelReportMap.get(functionName);
       if (!report) {
         continue;
       }
@@ -129,7 +134,11 @@ function rewriteModuleStatements(
         );
       }
       if (report.tier === 'vm_safe') {
-        replacements.set(statement, buildVmFunctionWrapper(transpiledSource, sourceFile, statement, vmObjectName));
+        replacements.push({
+          start: statement.getStart(sourceFile),
+          end: statement.getEnd(),
+          replacementText: buildVmFunctionWrapper(transpiledSource, sourceFile, statement, vmObjectName),
+        });
         hasVmFunctions = true;
       }
       continue;
@@ -141,6 +150,9 @@ function rewriteModuleStatements(
           continue;
         }
         const bindingName = declaration.name.text;
+        if (virtualizedFunctions && !virtualizedFunctions.has(bindingName)) {
+          continue;
+        }
         if (!ts.isArrowFunction(declaration.initializer) && !ts.isFunctionExpression(declaration.initializer)) {
           continue;
         }
@@ -154,34 +166,26 @@ function rewriteModuleStatements(
           );
         }
         if (report.tier === 'vm_safe') {
-          const statementStart = statement.getStart(sourceFile);
-          const statementEnd = statement.getEnd();
           const initializerStart = declaration.initializer.getStart(sourceFile);
           const initializerEnd = declaration.initializer.getEnd();
-          replacements.set(
-            statement,
-            [
-              transpiledSource.slice(statementStart, initializerStart),
-              buildVmFunctionExpressionWrapper(bindingName, declaration.initializer, vmObjectName),
-              transpiledSource.slice(initializerEnd, statementEnd),
-            ].join(''),
-          );
+          replacements.push({
+            start: initializerStart,
+            end: initializerEnd,
+            replacementText: buildVmFunctionExpressionWrapper(bindingName, declaration.initializer, vmObjectName),
+          });
           hasVmFunctions = true;
         }
       }
     }
   }
 
-  let rewritten = '';
-  let cursor = 0;
-  for (const statement of sourceFile.statements) {
-    const start = statement.getStart(sourceFile);
-    const end = statement.getEnd();
-    rewritten += transpiledSource.slice(cursor, start);
-    rewritten += replacements.get(statement) ?? transpiledSource.slice(start, end);
-    cursor = end;
+  // Sort replacements descending by start position to prevent offset shifting
+  replacements.sort((a, b) => b.start - a.start || b.end - a.end);
+
+  let rewritten = transpiledSource;
+  for (const r of replacements) {
+    rewritten = rewritten.slice(0, r.start) + r.replacementText + rewritten.slice(r.end);
   }
-  rewritten += transpiledSource.slice(cursor);
 
   return {
     rewrittenSource: rewritten.trim(),
@@ -212,6 +216,7 @@ export function buildUniversalBundle(
   compilerOptions: Record<string, unknown>,
   functionReports: readonly FunctionCapabilityReport[],
   vmBundle?: VMRuntimeBundle,
+  virtualizedFunctions?: ReadonlySet<string>,
 ): VMRuntimeBundle {
   const sourceText = ts.sys.readFile(moduleInfo.filePath) || '';
   const transpiledSource = transpileModuleToEsm(sourceText, moduleInfo.filePath, compilerOptions);
@@ -223,7 +228,13 @@ export function buildUniversalBundle(
     ts.ScriptKind.JS,
   );
   const vmObjectName = vmBundle ? extractVmFunctionObjectName(vmBundle.fullSource) : 'vmFunctions';
-  const { rewrittenSource, hasVmFunctions } = rewriteModuleStatements(transpiledSource, transpiledFile, functionReports, vmObjectName);
+  const { rewrittenSource, hasVmFunctions } = rewriteModuleStatements(
+    transpiledSource,
+    transpiledFile,
+    functionReports,
+    vmObjectName,
+    virtualizedFunctions,
+  );
 
   const loweredFunctions = functionReports.filter((report) => report.tier === 'js_lowered');
   const reportComment =

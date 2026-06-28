@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { ControlFlowFlatteningPass } from '../src/passes/control-flow-flattening.js';
 import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
 import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
+import { StripDebugPass } from '../src/passes/strip-debug.js';
+import { InstructionSubstitutionPass } from '../src/passes/instruction-substitution.js';
 import {
   ConstantKind,
   type IRModule,
@@ -14,6 +16,7 @@ import {
   type ObfuscationProfile,
 } from '@tsvm/shared';
 import { createTransformRegistry } from '../src/registry.js';
+import { applyElectronHardening } from '@tsvm/electron-hardening';
 
 const mockProfile: ObfuscationProfile = {
   name: 'generic',
@@ -319,7 +322,7 @@ describe('Advanced Transforms', () => {
         expect.objectContaining({ kind: ConstantKind.Number, value: 15 }),
         expect.objectContaining({ kind: ConstantKind.Number, value: 8 }),
         expect.objectContaining({ kind: ConstantKind.String, value: 'Error' }),
-        expect.objectContaining({ kind: ConstantKind.String, value: 'stack' }),
+        expect.objectContaining({ kind: ConstantKind.String, value: 'name' }),
         expect.objectContaining({ kind: ConstantKind.String, value: 'string' }),
       ]),
     );
@@ -607,5 +610,362 @@ describe('Advanced Transforms', () => {
 
     // Structural integrity is maintained regardless of whether transforms fire
     expect(result.module.constantPool).toBeDefined();
+  });
+
+  describe('InstructionSubstitutionPass small integer bounds and types check', () => {
+    it('should only substitute addition when operands are guaranteed to be small integers', () => {
+      const pass = new InstructionSubstitutionPass();
+      // Use SeededRandom(0) to ensure nextFloat() is always < 0.4 so it attempts substitution
+      const rng = new SeededRandom(0);
+      rng.nextFloat = () => 0.1;
+
+      const dummyModule: IRModule = {
+        id: 'isub-test',
+        sourceFile: 'isub-test.ts',
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [
+              { name: 'p0', register: 'r9', type: IRType.Number, isRest: false },
+              { name: 'p1', register: 'r10', type: IRType.Number, isRest: false },
+            ],
+            returnType: IRType.Number,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'b1',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [], returnValue: 'r14' },
+                instructions: [
+                  // 1. Small integers constants addition (1 + 2) -> should substitute
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r1' },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r2',
+                  },
+
+                  // 2. Floats constants addition (1.5 + 2.5) -> should NOT substitute
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 2 }], result: 'r3' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 3 }], result: 'r4' },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r3' },
+                      { kind: OperandKind.Register, value: 'r4' },
+                    ],
+                    result: 'r5',
+                  },
+
+                  // 3. Large integer addition (3000000000 + 1) -> should NOT substitute
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 4 }], result: 'r6' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 5 }], result: 'r7' },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r6' },
+                      { kind: OperandKind.Register, value: 'r7' },
+                    ],
+                    result: 'r8',
+                  },
+
+                  // 4. Parameter/Local addition (r9 + r10) -> should NOT substitute
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r9' },
+                      { kind: OperandKind.Register, value: 'r10' },
+                    ],
+                    result: 'r11',
+                  },
+
+                  // 5. Registers defined by bitwise operations addition -> should substitute
+                  {
+                    opcode: OpCode.BitAnd,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r12',
+                  },
+                  {
+                    opcode: OpCode.BitOr,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r13',
+                  },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r12' },
+                      { kind: OperandKind.Register, value: 'r13' },
+                    ],
+                    result: 'r14',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [
+          { index: 0, kind: ConstantKind.Number, value: 1 },
+          { index: 1, kind: ConstantKind.Number, value: 2 },
+          { index: 2, kind: ConstantKind.Number, value: 1.5 },
+          { index: 3, kind: ConstantKind.Number, value: 2.5 },
+          { index: 4, kind: ConstantKind.Number, value: 3000000000 },
+          { index: 5, kind: ConstantKind.Number, value: 1 },
+        ],
+        metadata: {
+          sourceFile: 'isub-test.ts',
+          buildTimestamp: 0,
+          blockCount: 1,
+          functionCount: 1,
+          instructionCount: 14,
+          originalByteSize: 100,
+        },
+      };
+
+      const ctx: TransformContext = {
+        module: dummyModule,
+        profile: mockProfile,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
+        symbolAliases: new Map(),
+        diagnostics: [],
+        rng,
+        phase: 0,
+      };
+
+      const result = pass.execute(ctx);
+      const func = result.module.functions[0]!;
+      const instructions = func.blocks[0].instructions;
+
+      // Let's verify each addition case's resulting instructions in the final block:
+      
+      // Case 1: (1 + 2) is substituted:
+      // Search for BitXor, BitAnd, LoadConst (2), Mul, Add replacing the original Add (result: r2)
+      const hasSubstitutedCase1 = instructions.some(
+        (inst) => inst.opcode === OpCode.BitXor && inst.result === 'isub_temp_r15' // or similar temp register
+      ) || instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].kind === OperandKind.Register
+      );
+      // Let's verify that the original Add r0, r1 -> r2 does NOT exist anymore:
+      const originalAddCase1Exists = instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r2' && inst.operands[0].value === 'r0'
+      );
+      expect(originalAddCase1Exists).toBe(false);
+
+      // Case 2: (1.5 + 2.5) must NOT be substituted. The original Add r3, r4 -> r5 must remain:
+      const originalAddCase2Exists = instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r5' && inst.operands[0].value === 'r3' && inst.operands[1].value === 'r4'
+      );
+      expect(originalAddCase2Exists).toBe(true);
+
+      // Case 3: (3000000000 + 1) must NOT be substituted. The original Add r6, r7 -> r8 must remain:
+      const originalAddCase3Exists = instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r8' && inst.operands[0].value === 'r6' && inst.operands[1].value === 'r7'
+      );
+      expect(originalAddCase3Exists).toBe(true);
+
+      // Case 4: Parameter addition (r9 + r10) must NOT be substituted:
+      const originalAddCase4Exists = instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r11' && inst.operands[0].value === 'r9' && inst.operands[1].value === 'r10'
+      );
+      expect(originalAddCase4Exists).toBe(true);
+
+      // Case 5: Addition of registers defined by bitwise operations (r12 + r13 -> r14) -> should substitute:
+      const originalAddCase5Exists = instructions.some(
+        (inst) => inst.opcode === OpCode.Add && inst.result === 'r14' && inst.operands[0].value === 'r12' && inst.operands[1].value === 'r13'
+      );
+      expect(originalAddCase5Exists).toBe(false);
+    });
+  });
+
+  describe('Electron Hardening Pass', () => {
+    it('should inject correct guard sequence for contextBridge / IPC calls (fetching property from object first)', () => {
+      const dummyModule: IRModule = {
+        id: 'test_electron',
+        sourceFile: 'test_electron.ts',
+        functions: [
+          {
+            id: 'func_electron',
+            name: 'func_electron',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'b1',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r1',
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r2',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'send' },
+        ],
+        metadata: { sourceFile: 'test_electron.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 2, originalByteSize: 100 },
+      };
+
+      const hardenedModule = applyElectronHardening(dummyModule);
+      const instructions = hardenedModule.functions[0]!.blocks[0]!.instructions;
+
+      // The PropGet should now be preceded by Nop, LoadConst, PropGet (fetch), and Call
+      // Expect 2 original + 4 injected = 6 instructions
+      expect(instructions.length).toBe(6);
+
+      const opcodes = instructions.map(inst => inst.opcode);
+      expect(opcodes).toEqual([
+        OpCode.LoadConst, // Original LoadConst
+        OpCode.Nop,       // Injected Nop
+        OpCode.LoadConst, // Injected LoadConst (property name)
+        OpCode.PropGet,   // Injected PropGet (fetch method)
+        OpCode.Call,      // Injected Call (invoke check)
+        OpCode.PropGet,   // Original PropGet
+      ]);
+
+      // Check the injected PropGet: fetches from 'r0' (object) and 'r-1' (property name), writing to 'r-1'
+      const injectedPropGet = instructions[3]!;
+      expect(injectedPropGet.operands[0]).toEqual({ kind: OperandKind.Register, value: 'r0' });
+      expect(injectedPropGet.operands[1]).toEqual({ kind: OperandKind.Register, value: 'r-1' });
+      expect(injectedPropGet.result).toBe('r-1');
+
+      // Check the injected Call: invokes the function reference stored in 'r-1'
+      const injectedCall = instructions[4]!;
+      expect(injectedCall.operands[0]).toEqual({ kind: OperandKind.Register, value: 'r-1' });
+    });
+  });
+
+  describe('StripDebugPass', () => {
+    it('should retain the result register on Nop instructions when console calls are stripped', () => {
+      const pass = new StripDebugPass();
+      const dummyModule: IRModule = {
+        id: 'strip-debug-test',
+        sourceFile: 'strip-debug-test.ts',
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'b1',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  // const consoleReg = LoadGlobal('console')
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' }, // 'console'
+                  { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' }, // console
+                  // const res = CallMethod(console, 'log', 'hello')
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r2' }, // 'log'
+                  {
+                    opcode: OpCode.CallMethod,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' }, // console
+                      { kind: OperandKind.Register, value: 'r2' }, // 'log'
+                    ],
+                    result: 'r3',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'console' },
+          { index: 1, kind: ConstantKind.String, value: 'log' },
+        ],
+        metadata: { sourceFile: 'strip-debug-test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 4, originalByteSize: 100 },
+      };
+
+      const ctx: TransformContext = {
+        module: dummyModule,
+        profile: mockProfile,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
+        symbolAliases: new Map(),
+        diagnostics: [],
+        rng: new SeededRandom(0),
+        phase: 0,
+      };
+
+      const result = pass.execute(ctx);
+      const instructions = result.module.functions[0]!.blocks[0]!.instructions;
+      const nopInst = instructions.find((inst) => inst.opcode === OpCode.Nop);
+
+      expect(nopInst).toBeDefined();
+      expect(nopInst!.result).toBe('r3'); // Must preserve the result register!
+    });
   });
 });

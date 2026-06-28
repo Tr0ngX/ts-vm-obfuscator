@@ -730,26 +730,42 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
   }
 
   if (ts.isPostfixUnaryExpression(expr)) {
-    if (expr.operator === ts.SyntaxKind.PlusPlusToken) {
-      if (ts.isIdentifier(expr.operand)) {
-        const vReg = self.resolveVar(expr.operand.text);
-        const oneReg = self.emitConstant(ConstantKind.Number, 1);
-        const resReg = self.fnBuilder.allocRegister();
-        self.currentBlock.addInstruction(
-          OpCode.Add,
-          [
-            { kind: OperandKind.Register, value: vReg },
-            { kind: OperandKind.Register, value: oneReg },
-          ],
-          resReg,
-        );
-        self.storeValue(expr.operand, resReg);
-        return vReg;
-      }
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const vReg = self.readValue(expr.operand);
+      const oneReg = self.emitConstant(ConstantKind.Number, 1);
+      const resReg = self.fnBuilder.allocRegister();
+      const op = expr.operator === ts.SyntaxKind.PlusPlusToken ? OpCode.Add : OpCode.Sub;
+      self.currentBlock.addInstruction(
+        op,
+        [
+          { kind: OperandKind.Register, value: vReg },
+          { kind: OperandKind.Register, value: oneReg },
+        ],
+        resReg,
+      );
+      self.storeValue(expr.operand, resReg);
+      return vReg;
     }
   }
 
   if (ts.isPrefixUnaryExpression(expr)) {
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const vReg = self.readValue(expr.operand);
+      const oneReg = self.emitConstant(ConstantKind.Number, 1);
+      const resReg = self.fnBuilder.allocRegister();
+      const op = expr.operator === ts.SyntaxKind.PlusPlusToken ? OpCode.Add : OpCode.Sub;
+      self.currentBlock.addInstruction(
+        op,
+        [
+          { kind: OperandKind.Register, value: vReg },
+          { kind: OperandKind.Register, value: oneReg },
+        ],
+        resReg,
+      );
+      self.storeValue(expr.operand, resReg);
+      return resReg;
+    }
+
     const operandReg = visitExpression(self, expr.operand);
     const resReg = self.fnBuilder.allocRegister();
     if (expr.operator === ts.SyntaxKind.ExclamationToken) {

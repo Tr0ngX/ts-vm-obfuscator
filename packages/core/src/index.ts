@@ -21,7 +21,9 @@
  *   - Polymorphic: opcode mapping, encoding, handler layout all randomized per build
  */
 
-import { DiagnosticSeverity, ImmediateEncodingScheme, ConstantEncodingScheme } from '@tsvm/shared';
+import ts from 'typescript';
+import path from 'path';
+import { DiagnosticSeverity, ImmediateEncodingScheme, ConstantEncodingScheme, OpCode, OperandKind } from '@tsvm/shared';
 import type {
   ObfuscationProfile,
   ProjectSemanticGraph,
@@ -323,21 +325,25 @@ export class ObfuscationPipeline {
       const { analyzeFunctionCapabilities, analyzeTopLevelFunctionCapabilities, lowerToIR } = await import('@tsvm/ir');
       const t0 = Date.now();
       irModules = [];
-      if (this.options.profile.target === 'universal') {
-        functionReports = [];
-      }
+      // Always initialize functionReports to generate reports for all profiles
+      functionReports = [];
       for (const [filePath, moduleInfo] of semanticGraph.modules) {
-        const universalTopLevelReports = this.options.profile.target === 'universal' ? analyzeTopLevelFunctionCapabilities(filePath) : [];
+        // Always analyze top level functions for reports & diagnostic compatibility checking
+        const universalTopLevelReports = analyzeTopLevelFunctionCapabilities(filePath, undefined, semanticGraph.program);
         if (functionReports) {
-          functionReports.push(...analyzeFunctionCapabilities(filePath));
+          functionReports.push(...analyzeFunctionCapabilities(filePath, undefined, semanticGraph.program));
         }
-        const forcedVmSafeFunctionNames = new Set(
-          universalTopLevelReports.filter((report) => report.tier === 'vm_safe').map((report) => report.functionName),
-        );
+        const forcedVmSafeFunctionNames = this.options.profile.target === 'universal'
+          ? new Set(
+              universalTopLevelReports.filter((report) => report.tier === 'vm_safe').map((report) => report.functionName),
+            )
+          : new Set<string>();
         const skippedJsLoweredFunctionNames = new Set(
           universalTopLevelReports.filter((report) => report.tier === 'js_lowered').map((report) => report.functionName),
         );
-        const unsupportedTopLevelReports = universalTopLevelReports.filter((report) => report.tier === 'unsupported');
+        const unsupportedTopLevelReports = this.options.profile.target === 'universal'
+          ? universalTopLevelReports.filter((report) => report.tier === 'unsupported')
+          : [];
         for (const report of unsupportedTopLevelReports) {
           this.diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -383,6 +389,73 @@ export class ObfuscationPipeline {
       }
     }
 
+    // ── Closure Propagation Check ──
+    if (this.options.profile.virtualization.mode !== 'none') {
+      this.emit('transform_execution' as PipelineStage, 'Running closure propagation check...');
+      try {
+        for (const irModule of irModules) {
+          const childToParent = new Map<string, string>(); // childFunctionId -> parentFunctionId
+          for (const fn of irModule.functions) {
+            for (const block of fn.blocks) {
+              for (const inst of block.instructions) {
+                if (inst.opcode === OpCode.ClosureNew && inst.operands[0]?.kind === OperandKind.ConstantIndex) {
+                  const constIdx = inst.operands[0].value as number;
+                  const entry = irModule.constantPool[constIdx];
+                  if (entry && typeof entry.value === 'string') {
+                    childToParent.set(entry.value, fn.id);
+                  }
+                }
+              }
+            }
+          }
+
+          const disabledIds = new Set<string>();
+          for (const fn of irModule.functions) {
+            if (!fn.isVirtualized) {
+              disabledIds.add(fn.id);
+            }
+          }
+
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const fn of irModule.functions) {
+              if (disabledIds.has(fn.id)) {
+                // Parent is disabled -> disable children
+                for (const [childId, parentId] of childToParent.entries()) {
+                  if (parentId === fn.id && !disabledIds.has(childId)) {
+                    disabledIds.add(childId);
+                    const childFn = irModule.functions.find((f) => f.id === childId);
+                    if (childFn && childFn.isVirtualized) {
+                      (childFn as { isVirtualized: boolean }).isVirtualized = false;
+                    }
+                    changed = true;
+                  }
+                }
+              } else {
+                // Parent is enabled -> check if any child is disabled
+                let hasDisabledChild = false;
+                for (const [childId, parentId] of childToParent.entries()) {
+                  if (parentId === fn.id && disabledIds.has(childId)) {
+                    hasDisabledChild = true;
+                    break;
+                  }
+                }
+                if (hasDisabledChild) {
+                  (fn as { isVirtualized: boolean }).isVirtualized = false;
+                  disabledIds.add(fn.id);
+                  changed = true;
+                }
+              }
+            }
+          }
+        }
+      } catch (error: unknown) {
+        this.emitError('transform_execution' as PipelineStage, 'Closure propagation check failed', error);
+        return this.failResult(buildId, startTime, { semanticGraph, irModules });
+      }
+    }
+
     // ── Stage 4: Transform Execution ──
     this.emit('transform_execution' as PipelineStage, 'Executing transform passes...');
     try {
@@ -414,6 +487,22 @@ export class ObfuscationPipeline {
     } catch (error: unknown) {
       this.emitError('transform_execution' as PipelineStage, 'Transform execution failed', error);
       return this.failResult(buildId, startTime, { semanticGraph, irModules });
+    }
+
+    // ── Electron Hardening (if enabled) ──
+    let electronAudit: ElectronAuditReport | undefined;
+    if (this.options.profile.electronHarden) {
+      try {
+        const { applyElectronHardening } = await import('@tsvm/electron-hardening');
+        const t0 = Date.now();
+        for (let i = 0; i < irModules.length; i++) {
+          irModules[i] = applyElectronHardening(irModules[i]!);
+        }
+        this.emit('transform_execution' as PipelineStage, 'Applied Electron hardening rules', Date.now() - t0);
+      } catch (error: unknown) {
+        this.emitError('transform_execution' as PipelineStage, 'Electron hardening failed', error);
+        return this.failResult(buildId, startTime, { semanticGraph, irModules });
+      }
     }
 
     // ── Stage 5: Bytecode Compilation ──
@@ -459,7 +548,8 @@ export class ObfuscationPipeline {
       return this.failResult(buildId, startTime, { semanticGraph, irModules, bytecodeModules });
     }
 
-    if (this.options.profile.target === 'universal') {
+    // Ensure native functions and imports/exports are correctly preserved across all target profiles.
+    if (true) {
       const vmBundleByFile = new Map<string, VMRuntimeBundle>();
       for (const bundle of vmBundles) {
         const matchedPath = bytecodeSourceFiles.get(bundle.buildId);
@@ -474,6 +564,10 @@ export class ObfuscationPipeline {
         if (moduleInfo.exports.length === 0 && reportsForFile.length === 0) {
           continue;
         }
+        const irModuleForFile = irModules.find((m) => m.sourceFile === filePath);
+        const virtualizedFunctionNames = new Set(
+          irModuleForFile?.functions.filter((f) => f.isVirtualized).map((f) => f.name) ?? []
+        );
         universalBundles.push(
           buildUniversalBundle(
             `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
@@ -481,26 +575,48 @@ export class ObfuscationPipeline {
             semanticGraph.compilerOptions,
             reportsForFile,
             vmBundleByFile.get(filePath),
+            virtualizedFunctionNames,
           ),
         );
       }
-      vmBundles = universalBundles;
+      // Rewrite relative import paths in the generated universal bundles to account for flattening
+      const filePathToOutputName = new Map<string, string>();
+      for (const [filePath, moduleInfo] of semanticGraph.modules) {
+        const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+        filePathToOutputName.set(filePath, `${relativeBuildId}${getUniversalOutputExtension(this.options.profile)}`);
+      }
+
+      const rewrittenUniversalBundles: VMRuntimeBundle[] = [];
+      for (const bundle of universalBundles) {
+        let matchedFilePath: string | undefined;
+        for (const [filePath, moduleInfo] of semanticGraph.modules) {
+          const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+          if (bundle.buildId === relativeBuildId) {
+            matchedFilePath = filePath;
+            break;
+          }
+        }
+
+        if (matchedFilePath) {
+          const rewrittenSource = rewriteRelativeImports(
+            bundle.fullSource,
+            matchedFilePath,
+            filePathToOutputName,
+            semanticGraph.modules,
+          );
+          rewrittenUniversalBundles.push({
+            ...bundle,
+            fullSource: rewrittenSource,
+          });
+        } else {
+          rewrittenUniversalBundles.push(bundle);
+        }
+      }
+      vmBundles = rewrittenUniversalBundles;
       this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} universal compatibility bundles`);
     }
 
-    // ── Stage 7: Electron Hardening (if enabled) ──
-    let electronAudit: ElectronAuditReport | undefined;
-    if (this.options.profile.electronHarden) {
-      try {
-        const { applyElectronHardening } = await import('@tsvm/electron-hardening');
-        for (let i = 0; i < irModules.length; i++) {
-          irModules[i] = applyElectronHardening(irModules[i]!);
-        }
-        this.emit('vm_build' as PipelineStage, 'Applied Electron hardening rules');
-      } catch (error: unknown) {
-        this.emitError('vm_build' as PipelineStage, 'Electron hardening failed', error);
-      }
-    }
+
 
     // Benchmark was removed to avoid circular dependencies.
     // It should be run externally.
@@ -556,6 +672,140 @@ export class ObfuscationPipeline {
       ...partial,
     };
   }
+}
+
+function resolveImportTarget(
+  importingFilePath: string,
+  importPath: string,
+  modules: ReadonlyMap<string, any>,
+): string | undefined {
+  if (!importPath.startsWith('.')) {
+    return undefined;
+  }
+  const baseDir = path.dirname(importingFilePath);
+  const resolvedBase = path.resolve(baseDir, importPath);
+
+  const candidates = [
+    resolvedBase,
+    resolvedBase + '.ts',
+    resolvedBase + '.tsx',
+    resolvedBase + '.js',
+    resolvedBase + '.jsx',
+    resolvedBase + '.mjs',
+    path.join(resolvedBase, 'index.ts'),
+    path.join(resolvedBase, 'index.tsx'),
+    path.join(resolvedBase, 'index.js'),
+    path.join(resolvedBase, 'index.jsx'),
+  ];
+
+  for (const cand of candidates) {
+    const normalizedCand = path.normalize(cand).toLowerCase();
+    for (const modKey of modules.keys()) {
+      if (path.normalize(modKey).toLowerCase() === normalizedCand) {
+        return modKey;
+      }
+    }
+  }
+
+  const ext = path.extname(resolvedBase);
+  if (ext === '.js' || ext === '.jsx' || ext === '.mjs') {
+    const withoutExt = resolvedBase.slice(0, -ext.length);
+    const altCandidates = [
+      withoutExt + '.ts',
+      withoutExt + '.tsx',
+      withoutExt + '.d.ts',
+    ];
+    for (const cand of altCandidates) {
+      const normalizedCand = path.normalize(cand).toLowerCase();
+      for (const modKey of modules.keys()) {
+        if (path.normalize(modKey).toLowerCase() === normalizedCand) {
+          return modKey;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function rewriteRelativeImports(
+  sourceText: string,
+  filePath: string,
+  filePathToOutputName: Map<string, string>,
+  modules: ReadonlyMap<string, any>,
+): string {
+  const sourceFile = ts.createSourceFile('temp.js', sourceText, ts.ScriptTarget.ESNext, true);
+  const replacements: Array<{ start: number; end: number; newText: string }> = [];
+
+  const visit = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const specifier = node.moduleSpecifier.text;
+      const targetFilePath = resolveImportTarget(filePath, specifier, modules);
+      if (targetFilePath) {
+        const newOutputName = filePathToOutputName.get(targetFilePath);
+        if (newOutputName) {
+          replacements.push({
+            start: node.moduleSpecifier.getStart(sourceFile) + 1,
+            end: node.moduleSpecifier.getEnd() - 1,
+            newText: `./${newOutputName}`,
+          });
+        }
+      }
+    }
+
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const specifier = node.moduleSpecifier.text;
+      const targetFilePath = resolveImportTarget(filePath, specifier, modules);
+      if (targetFilePath) {
+        const newOutputName = filePathToOutputName.get(targetFilePath);
+        if (newOutputName) {
+          replacements.push({
+            start: node.moduleSpecifier.getStart(sourceFile) + 1,
+            end: node.moduleSpecifier.getEnd() - 1,
+            newText: `./${newOutputName}`,
+          });
+        }
+      }
+    }
+
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteral(node.arguments[0]!)
+    ) {
+      const arg = node.arguments[0]!;
+      const specifier = arg.text;
+      const targetFilePath = resolveImportTarget(filePath, specifier, modules);
+      if (targetFilePath) {
+        const newOutputName = filePathToOutputName.get(targetFilePath);
+        if (newOutputName) {
+          replacements.push({
+            start: arg.getStart(sourceFile) + 1,
+            end: arg.getEnd() - 1,
+            newText: `./${newOutputName}`,
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  ts.forEachChild(sourceFile, visit);
+
+  if (replacements.length === 0) {
+    return sourceText;
+  }
+
+  replacements.sort((a, b) => b.start - a.start);
+
+  let result = sourceText;
+  for (const rep of replacements) {
+    result = result.slice(0, rep.start) + rep.newText + result.slice(rep.end);
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────

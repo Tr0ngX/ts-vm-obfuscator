@@ -248,9 +248,14 @@ function tryGetTopLevelVariableFunctionBinding(statement: ts.Statement): Array<{
   return bindings;
 }
 
-export function analyzeFunctionCapabilities(filePath: string, sourceText?: string): FunctionCapabilityReport[] {
-  const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
-  const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
+export function analyzeFunctionCapabilities(filePath: string, sourceText?: string, program?: any): FunctionCapabilityReport[] {
+  let sourceFile = (program && typeof program.getSourceFile === 'function')
+    ? program.getSourceFile(filePath)
+    : undefined;
+  if (!sourceFile) {
+    const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
+    sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
+  }
   const reports: FunctionCapabilityReport[] = [];
 
   const visit = (node: ts.Node) => {
@@ -264,9 +269,14 @@ export function analyzeFunctionCapabilities(filePath: string, sourceText?: strin
   return reports;
 }
 
-export function analyzeTopLevelFunctionCapabilities(filePath: string, sourceText?: string): FunctionCapabilityReport[] {
-  const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
-  const sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
+export function analyzeTopLevelFunctionCapabilities(filePath: string, sourceText?: string, program?: any): FunctionCapabilityReport[] {
+  let sourceFile = (program && typeof program.getSourceFile === 'function')
+    ? program.getSourceFile(filePath)
+    : undefined;
+  if (!sourceFile) {
+    const text = sourceText ?? ts.sys.readFile(filePath) ?? '';
+    sourceFile = ts.createSourceFile(filePath, text, ts.ScriptTarget.ESNext, true);
+  }
   const reports: FunctionCapabilityReport[] = [];
 
   for (const statement of sourceFile.statements) {

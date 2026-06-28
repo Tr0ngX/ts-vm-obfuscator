@@ -24,7 +24,7 @@ export class SymbolIndirectionPass implements TransformPass {
       // Always preserve exported function names — the VM runtime needs
       // the original name for module.exports binding.
       // Internal implementation is still fully obfuscated via bytecode.
-      if (func.isExported) {
+      if (func.isExported || func.isVirtualized) {
         return func;
       }
 
@@ -52,14 +52,7 @@ export class SymbolIndirectionPass implements TransformPass {
       };
     });
 
-    const newGlobals = ctx.module.globals.map((g) => {
-      if (g.isExported && ctx.profile.preserveExports) return g;
-      symbolsRenamed++;
-      return {
-        ...g,
-        name: `g_${ctx.rng.identifier(8)}`,
-      };
-    });
+    const newGlobals = ctx.module.globals;
 
     const newModule: IRModule = {
       ...ctx.module,

@@ -60,5 +60,35 @@ describe('universal profile', () => {
     expect(imported.classLifted(4)).toBe('Local:6');
     await expect(imported.asyncVm(4)).resolves.toBe(12);
     await expect(imported.asyncLifted(4)).resolves.toBe(15);
+
+    expect(result.functionReports?.some((report) => report.functionName === 'multiA' && report.tier === 'vm_safe')).toBe(true);
+    expect(result.functionReports?.some((report) => report.functionName === 'multiB' && report.tier === 'vm_safe')).toBe(true);
+    expect(imported.multiA(5)).toBe(6);
+    expect(imported.multiB(5)).toBe(7);
+  });
+
+  it('builds a generic compatibility bundle that preserves exports and native structure', async () => {
+    const fixtureRoot = path.join(__dirname, 'fixtures', 'universal-project');
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tsvm-generic-'));
+    const pipeline = new ObfuscationPipeline({
+      tsconfigPath: path.join(fixtureRoot, 'tsconfig.json'),
+      profile: createDefaultProfile('generic'),
+      outDir,
+    });
+
+    const result = await pipeline.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.vmBundles?.length).toBe(1);
+
+    const bundlePath = path.join(outDir, `${result.vmBundles![0]!.buildId}.js`);
+    await fs.writeFile(bundlePath, result.vmBundles![0]!.fullSource, 'utf-8');
+    expect(await fs.access(bundlePath).then(() => true).catch(() => false)).toBe(true);
+
+    const imported = (await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`)) as Record<string, (...args: any[]) => any>;
+
+    expect(imported.vmAdd(2, 3)).toBe(5);
+    expect(imported.multiA(5)).toBe(6);
+    expect(imported.multiB(5)).toBe(7);
   });
 });

@@ -37,23 +37,11 @@ export class StripDebugPass implements TransformPass {
               changed = true;
               nodesTransformed++;
 
-              // We must preserve the result register to keep SSA valid,
-              // just load 'undefined' into it instead of making the call.
-              if (inst.result) {
-                // Find or create 'undefined' in ConstantPool
-                // For simplicity, we just emit Nop, since the return of console.log is usually unused,
-                // but if we need strict safety, we should emit an undefined.
-                // However, TSXobf VM ignores undefined return assignments cleanly if we just Nop it,
-                // but let's be safe.
-                newInstructions.push({
-                  ...inst,
-                  opcode: OpCode.Nop,
-                  operands: [],
-                  result: undefined, // drop result
-                });
-              } else {
-                newInstructions.push({ ...inst, opcode: OpCode.Nop, operands: [] });
-              }
+              newInstructions.push({
+                ...inst,
+                opcode: OpCode.Nop,
+                operands: [],
+              });
               continue;
             }
           }

@@ -40,6 +40,7 @@ export interface FinallyCompletionTarget {
   readonly code: number;
   readonly kind: 'break' | 'continue';
   readonly blockId: string;
+  readonly tryDepth: number;
 }
 
 export interface FinallyContext {
@@ -48,6 +49,7 @@ export interface FinallyContext {
   readonly completionValueLocal: Register;
   readonly completionTargetLocal: Register;
   readonly targets: FinallyCompletionTarget[];
+  readonly tryDepth: number;
 }
 
 export interface NormalizedComputedName {

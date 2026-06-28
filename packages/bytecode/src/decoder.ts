@@ -1,5 +1,5 @@
 import type { Instruction, OpcodeMapping, EncodedConstant, ConstantPoolEntry, BytecodeModule } from '@tsvm/shared';
-import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, OpCode, ConstantKind } from '@tsvm/shared';
+import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, OpCode, ConstantKind, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
 
 function assertOpCode(value: number): OpCode {
   return value as OpCode;
@@ -22,36 +22,6 @@ function numToOperandKind(kind: number): OperandKind {
     default:
       throw new Error(`Unknown operand kind: ${kind}`);
   }
-}
-
-function isVariableLengthOpcode(opcode: number): boolean {
-  return (
-    opcode === OpCode.Call ||
-    opcode === OpCode.CallMethod ||
-    opcode === OpCode.New ||
-    opcode === OpCode.ArrayNew ||
-    opcode === OpCode.ObjectNew ||
-    opcode === OpCode.Spread ||
-    opcode === OpCode.SpreadIntoArray ||
-    opcode === OpCode.SuperCall ||
-    opcode === OpCode.SuperInstruction
-  );
-}
-
-function isTerminator(opcode: number): boolean {
-  return (
-    opcode === OpCode.Jmp ||
-    opcode === OpCode.JmpIf ||
-    opcode === OpCode.JmpIfNot ||
-    opcode === OpCode.Return ||
-    opcode === OpCode.ReturnVoid ||
-    opcode === OpCode.Throw ||
-    opcode === OpCode.Yield ||
-    opcode === OpCode.YieldStar ||
-    opcode === OpCode.Await ||
-    opcode === OpCode.Halt ||
-    opcode === OpCode.Trap
-  );
 }
 
 function unrollKeys(bytes: Uint8Array, seed: number): Uint8Array {
@@ -130,36 +100,36 @@ const opcodeLayout: Partial<Record<OpCode, { inputCount: number; hasResult: bool
   [OpCode.Return]: { inputCount: 1, hasResult: false },
   [OpCode.ReturnVoid]: { inputCount: 0, hasResult: false },
   [OpCode.ClosureNew]: { inputCount: 1, hasResult: true },
-  [OpCode.CellNew]: { inputCount: 0, hasResult: true },
+  [OpCode.CellNew]: { inputCount: 1, hasResult: true },
   [OpCode.CellGet]: { inputCount: 1, hasResult: true },
   [OpCode.CellSet]: { inputCount: 2, hasResult: false },
   [OpCode.EnvGet]: { inputCount: 1, hasResult: true },
-  [OpCode.CallWithArray]: { inputCount: 1, hasResult: true },
-  [OpCode.CallMethodWithArray]: { inputCount: 2, hasResult: true },
-  [OpCode.NewWithArray]: { inputCount: 1, hasResult: true },
-  [OpCode.RestArgs]: { inputCount: 0, hasResult: true },
+  [OpCode.CallWithArray]: { inputCount: 2, hasResult: true },
+  [OpCode.CallMethodWithArray]: { inputCount: 3, hasResult: true },
+  [OpCode.NewWithArray]: { inputCount: 2, hasResult: true },
+  [OpCode.RestArgs]: { inputCount: 1, hasResult: true },
   [OpCode.PropGet]: { inputCount: 2, hasResult: true },
   [OpCode.PropSet]: { inputCount: 3, hasResult: false },
   [OpCode.ComputedGet]: { inputCount: 2, hasResult: true },
   [OpCode.ComputedSet]: { inputCount: 3, hasResult: false },
-  [OpCode.ArrayNew]: { inputCount: 1, hasResult: true },
+  [OpCode.ArrayNew]: { inputCount: 0, hasResult: true },
   [OpCode.ObjectNew]: { inputCount: 0, hasResult: true },
-  [OpCode.Spread]: { inputCount: 1, hasResult: true },
+  [OpCode.Spread]: { inputCount: 2, hasResult: false },
   [OpCode.SpreadIntoArray]: { inputCount: 1, hasResult: true },
-  [OpCode.Delete]: { inputCount: 1, hasResult: true },
-  [OpCode.PrivateGet]: { inputCount: 1, hasResult: true },
-  [OpCode.PrivateSet]: { inputCount: 2, hasResult: false },
-  [OpCode.PrivateIn]: { inputCount: 1, hasResult: true },
-  [OpCode.SuperPropGet]: { inputCount: 2, hasResult: true },
-  [OpCode.SuperPropSet]: { inputCount: 3, hasResult: false },
+  [OpCode.Delete]: { inputCount: 2, hasResult: false },
+  [OpCode.PrivateGet]: { inputCount: 2, hasResult: true },
+  [OpCode.PrivateSet]: { inputCount: 3, hasResult: false },
+  [OpCode.PrivateIn]: { inputCount: 2, hasResult: true },
+  [OpCode.SuperPropGet]: { inputCount: 1, hasResult: true },
+  [OpCode.SuperPropSet]: { inputCount: 2, hasResult: false },
   [OpCode.SuperCall]: { inputCount: 1, hasResult: true },
   [OpCode.SuperCallWithArray]: { inputCount: 1, hasResult: true },
   [OpCode.Throw]: { inputCount: 1, hasResult: false },
-  [OpCode.TryCatchBegin]: { inputCount: 0, hasResult: false },
+  [OpCode.TryCatchBegin]: { inputCount: 3, hasResult: false },
   [OpCode.TryCatchEnd]: { inputCount: 0, hasResult: false },
-  [OpCode.Yield]: { inputCount: 0, hasResult: true },
-  [OpCode.Await]: { inputCount: 0, hasResult: true },
-  [OpCode.YieldStar]: { inputCount: 0, hasResult: true },
+  [OpCode.Yield]: { inputCount: 1, hasResult: true },
+  [OpCode.Await]: { inputCount: 1, hasResult: true },
+  [OpCode.YieldStar]: { inputCount: 1, hasResult: true },
   [OpCode.GetEntropy]: { inputCount: 0, hasResult: true },
   [OpCode.SuperInstruction]: { inputCount: 1, hasResult: true },
 };

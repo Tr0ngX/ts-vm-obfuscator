@@ -1,37 +1,7 @@
 import type { Instruction, Operand, OpcodeMapping, EncodedConstant, ConstantPoolEntry } from '@tsvm/shared';
-import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, type SeededRandom, OpCode } from '@tsvm/shared';
+import { ImmediateEncodingScheme, ConstantEncodingScheme, OperandKind, type SeededRandom, OpCode, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
 
 import type { VMBuildConfig } from '@tsvm/shared';
-
-function isVariableLengthOpcode(opcode: number): boolean {
-  return (
-    opcode === OpCode.Call ||
-    opcode === OpCode.CallMethod ||
-    opcode === OpCode.New ||
-    opcode === OpCode.ArrayNew ||
-    opcode === OpCode.ObjectNew ||
-    opcode === OpCode.Spread ||
-    opcode === OpCode.SpreadIntoArray ||
-    opcode === OpCode.SuperCall ||
-    opcode === OpCode.SuperInstruction
-  );
-}
-
-function isTerminator(opcode: number): boolean {
-  return (
-    opcode === OpCode.Jmp ||
-    opcode === OpCode.JmpIf ||
-    opcode === OpCode.JmpIfNot ||
-    opcode === OpCode.Return ||
-    opcode === OpCode.ReturnVoid ||
-    opcode === OpCode.Throw ||
-    opcode === OpCode.Yield ||
-    opcode === OpCode.YieldStar ||
-    opcode === OpCode.Await ||
-    opcode === OpCode.Halt ||
-    opcode === OpCode.Trap
-  );
-}
 
 export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMapping, config: VMBuildConfig, rng?: SeededRandom): Uint8Array {
   const bytes: number[] = [];
@@ -67,7 +37,7 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
     }
 
     const ops: Operand[] = [...(inst.operands || [])];
-    if (inst.result) {
+    if (inst.result && inst.opcode !== OpCode.Nop) {
       ops.push({ kind: OperandKind.Register, value: inst.result });
     }
 

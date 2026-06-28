@@ -81,9 +81,10 @@ export class ASTLowering {
   private readonly sourceFile: ts.SourceFile;
   private readonly capturedLocals: ReadonlySet<string>;
   private readonly outerCaptureBindings = new Map<string, number>();
-  private readonly breakTargets: string[] = [];
-  private readonly continueTargets: string[] = [];
+  private readonly breakTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
+  private readonly continueTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
   private readonly finallyContexts: FinallyContext[] = [];
+  private tryDepth = 0;
   private throwPassthroughFinallyDepth = 0;
   private readonly pendingParameterBindings: PendingParameterBinding[] = [];
   private readonly isAsyncFunction: boolean;
@@ -197,7 +198,7 @@ export class ASTLowering {
   }
 
   private enterBreakTarget(target: string): void {
-    this.breakTargets.push(target);
+    this.breakTargets.push({ blockId: target, tryDepth: this.tryDepth });
   }
 
   private leaveBreakTarget(): void {
@@ -205,7 +206,7 @@ export class ASTLowering {
   }
 
   private enterContinueTarget(target: string): void {
-    this.continueTargets.push(target);
+    this.continueTargets.push({ blockId: target, tryDepth: this.tryDepth });
   }
 
   private leaveContinueTarget(): void {
@@ -1540,6 +1541,14 @@ export class ASTLowering {
     }
   }
 
+  private emitPopTryFrames(targetDepth: number): void {
+    if (this.tryDepth > targetDepth) {
+      for (let i = 0; i < this.tryDepth - targetDepth; i++) {
+        this.currentBlock.addInstruction(OpCode.TryCatchEnd, []);
+      }
+    }
+  }
+
   private createFinallyContext(finallyBlockId: string): FinallyContext {
     return {
       finallyBlockId,
@@ -1547,16 +1556,17 @@ export class ASTLowering {
       completionValueLocal: this.createTempLocal('completion_value'),
       completionTargetLocal: this.createTempLocal('completion_target'),
       targets: [],
+      tryDepth: this.tryDepth,
     };
   }
 
-  private getCompletionTargetCode(context: FinallyContext, kind: 'break' | 'continue', blockId: string): number {
+  private getCompletionTargetCode(context: FinallyContext, kind: 'break' | 'continue', blockId: string, tryDepth: number): number {
     const existing = context.targets.find((target) => target.kind === kind && target.blockId === blockId);
     if (existing) {
       return existing.code;
     }
     const code = context.targets.length + 1;
-    context.targets.push({ code, kind, blockId });
+    context.targets.push({ code, kind, blockId, tryDepth });
     return code;
   }
 
@@ -1564,14 +1574,14 @@ export class ASTLowering {
     context: FinallyContext,
     kind: CompletionKind,
     valueReg?: Register,
-    target?: { kind: 'break' | 'continue'; blockId: string },
+    target?: { kind: 'break' | 'continue'; blockId: string; tryDepth: number },
   ): void {
     this.storeToLocal(context.completionKindLocal, this.emitConstant(ConstantKind.Number, kind));
     if (valueReg) {
       this.storeToLocal(context.completionValueLocal, valueReg);
     }
     if (target) {
-      const codeReg = this.emitConstant(ConstantKind.Number, this.getCompletionTargetCode(context, target.kind, target.blockId));
+      const codeReg = this.emitConstant(ConstantKind.Number, this.getCompletionTargetCode(context, target.kind, target.blockId, target.tryDepth));
       this.storeToLocal(context.completionTargetLocal, codeReg);
     }
   }
@@ -1579,7 +1589,7 @@ export class ASTLowering {
   private routeAbruptCompletionThroughFinally(
     kind: CompletionKind,
     valueReg?: Register,
-    target?: { kind: 'break' | 'continue'; blockId: string },
+    target?: { kind: 'break' | 'continue'; blockId: string; tryDepth: number },
   ): void {
     if (kind === 2 && this.throwPassthroughFinallyDepth > 0) {
       this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
@@ -1591,10 +1601,12 @@ export class ASTLowering {
     const context = this.getActiveFinallyContext();
     if (!context) {
       if (kind === 1) {
+        this.emitPopTryFrames(0);
         this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valueReg });
       } else if (kind === 2) {
         this.currentBlock.setTerminator({ kind: 'throw', targets: [], returnValue: valueReg });
       } else if ((kind === 3 || kind === 4) && target) {
+        this.emitPopTryFrames(target.tryDepth);
         this.currentBlock.setTerminator({ kind: 'jump', targets: [target.blockId] });
       }
       this.fnBuilder.addBlock(this.currentBlock.build());
@@ -1602,6 +1614,7 @@ export class ASTLowering {
       return;
     }
 
+    this.emitPopTryFrames(context.tryDepth);
     this.setFinallyCompletion(context, kind, valueReg, target);
     this.emitJumpAndAdvance(context.finallyBlockId, 'unreachable');
   }
@@ -1626,11 +1639,20 @@ export class ASTLowering {
         ],
         isMatchReg,
       );
+
+      const cleanupBlock = this.fnBuilder.createBlock(`finally_${kind}_cleanup_${target.blockId}`);
+      const savedBlock = this.currentBlock;
+      this.currentBlock = cleanupBlock;
+      this.emitPopTryFrames(target.tryDepth);
+      this.currentBlock.setTerminator({ kind: 'jump', targets: [target.blockId] });
+      this.fnBuilder.addBlock(this.currentBlock.build());
+      this.currentBlock = savedBlock;
+
       const fallbackBlock = index === targets.length - 1 ? undefined : this.fnBuilder.createBlock(`finally_${kind}_dispatch_${index}`);
       this.currentBlock.setTerminator({
         kind: 'branch',
         condition: isMatchReg,
-        targets: [target.blockId, fallbackBlock?.id ?? fallbackTargetId],
+        targets: [cleanupBlock.id, fallbackBlock?.id ?? fallbackTargetId],
       });
       this.fnBuilder.addBlock(this.currentBlock.build());
       if (fallbackBlock) {
@@ -1678,6 +1700,7 @@ export class ASTLowering {
     this.fnBuilder.addBlock(this.currentBlock.build());
 
     this.currentBlock = returnBlock;
+    this.emitPopTryFrames(0);
     this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: this.loadFromLocal(context.completionValueLocal) });
     this.fnBuilder.addBlock(this.currentBlock.build());
 
@@ -1769,15 +1792,18 @@ export class ASTLowering {
       { kind: OperandKind.BlockLabel, value: catchBlock.id },
       { kind: OperandKind.Register, value: exceptionLocal },
     ]);
+    this.tryDepth++;
     this.visitStatement(stmt.tryBlock);
     if (
       !this.isSyntheticDeadBlock(this.currentBlock) &&
       this.currentBlock.getTerminatorKind() !== 'return' &&
       this.currentBlock.getTerminatorKind() !== 'throw'
     ) {
+      this.currentBlock.addInstruction(OpCode.TryCatchEnd, []);
       this.currentBlock.setTerminator({ kind: 'jump', targets: [endBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
     }
+    this.tryDepth--;
 
     this.currentBlock = catchBlock;
     this.bindCatchVariable(stmt.catchClause, exceptionLocal);
@@ -1815,6 +1841,7 @@ export class ASTLowering {
       { kind: OperandKind.BlockLabel, value: catchBlock?.id ?? tryExceptionBlock.id },
       { kind: OperandKind.Register, value: tryExceptionLocal },
     ]);
+    this.tryDepth++;
     if (catchBlock) {
       this.withFinallyContext(completion, () => this.withPassthroughThrow(() => this.visitStatement(stmt.tryBlock)));
     } else {
@@ -1825,10 +1852,12 @@ export class ASTLowering {
       this.currentBlock.getTerminatorKind() !== 'return' &&
       this.currentBlock.getTerminatorKind() !== 'throw'
     ) {
+      this.currentBlock.addInstruction(OpCode.TryCatchEnd, []);
       this.setFinallyCompletion(completion, 0);
       this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
       this.fnBuilder.addBlock(this.currentBlock.build());
     }
+    this.tryDepth--;
 
     if (catchBlock && catchClause && catchExceptionLocal && catchExceptionBlock) {
       this.currentBlock = catchBlock;
@@ -1838,16 +1867,19 @@ export class ASTLowering {
         { kind: OperandKind.BlockLabel, value: catchExceptionBlock.id },
         { kind: OperandKind.Register, value: catchExceptionLocal },
       ]);
+      this.tryDepth++;
       this.withFinallyContext(completion, () => this.visitStatement(catchClause.block));
       if (
         !this.isSyntheticDeadBlock(this.currentBlock) &&
         this.currentBlock.getTerminatorKind() !== 'return' &&
         this.currentBlock.getTerminatorKind() !== 'throw'
       ) {
+        this.currentBlock.addInstruction(OpCode.TryCatchEnd, []);
         this.setFinallyCompletion(completion, 0);
         this.currentBlock.setTerminator({ kind: 'jump', targets: [finallyBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
       }
+      this.tryDepth--;
 
       this.currentBlock = catchExceptionBlock;
       this.setFinallyCompletion(completion, 2, this.loadFromLocal(catchExceptionLocal));
@@ -2042,6 +2074,7 @@ export class ASTLowering {
       if (this.getActiveFinallyContext()) {
         this.routeAbruptCompletionThroughFinally(1, valReg);
       } else {
+        this.emitPopTryFrames(0);
         this.currentBlock.setTerminator({ kind: 'return', targets: [], returnValue: valReg });
         const nextBlock = this.fnBuilder.createBlock('unreachable');
         this.fnBuilder.addBlock(this.currentBlock.build());
@@ -2063,9 +2096,10 @@ export class ASTLowering {
         this.failUnsupported(stmt, 'break used outside a loop or switch');
       }
       if (this.getActiveFinallyContext()) {
-        this.routeAbruptCompletionThroughFinally(3, undefined, { kind: 'break', blockId: target });
+        this.routeAbruptCompletionThroughFinally(3, undefined, { kind: 'break', blockId: target.blockId, tryDepth: target.tryDepth });
       } else {
-        this.emitJumpAndAdvance(target, 'after_break');
+        this.emitPopTryFrames(target.tryDepth);
+        this.emitJumpAndAdvance(target.blockId, 'after_break');
       }
     } else if (ts.isContinueStatement(stmt)) {
       const target = this.continueTargets[this.continueTargets.length - 1];
@@ -2073,9 +2107,10 @@ export class ASTLowering {
         this.failUnsupported(stmt, 'continue used outside a loop');
       }
       if (this.getActiveFinallyContext()) {
-        this.routeAbruptCompletionThroughFinally(4, undefined, { kind: 'continue', blockId: target });
+        this.routeAbruptCompletionThroughFinally(4, undefined, { kind: 'continue', blockId: target.blockId, tryDepth: target.tryDepth });
       } else {
-        this.emitJumpAndAdvance(target, 'after_continue');
+        this.emitPopTryFrames(target.tryDepth);
+        this.emitJumpAndAdvance(target.blockId, 'after_continue');
       }
     } else if (ts.isForStatement(stmt)) {
       this.scope = new ScopeMap(this.scope);
@@ -2546,9 +2581,12 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
   const modBuilder = new IRModuleBuilder(filePath);
 
   for (const imp of moduleInfo.imports) modBuilder.addImport(imp);
-  for (const exp of moduleInfo.exports) modBuilder.addExport(exp);
-
-  const sourceFile = ts.createSourceFile(filePath, ts.sys.readFile(filePath) || '', ts.ScriptTarget.ESNext, true);
+  let sourceFile = (graph.program && typeof graph.program.getSourceFile === 'function')
+    ? graph.program.getSourceFile(filePath)
+    : undefined;
+  if (!sourceFile) {
+    sourceFile = ts.createSourceFile(filePath, ts.sys.readFile(filePath) || '', ts.ScriptTarget.ESNext, true);
+  }
   const lowerTopLevelFunction = (functionName: string, functionNode: SupportedFunctionNode, isExported: boolean) => {
     if (options.skipTopLevelFunctionNames?.has(functionName)) {
       return;

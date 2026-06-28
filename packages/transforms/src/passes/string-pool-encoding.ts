@@ -78,13 +78,14 @@ export class StringPoolEncodingPass implements TransformPass {
             const op = inst.operands[0]!;
             if (op.kind === OperandKind.ConstantIndex) {
               const constIndex = op.value as number;
-              const constant = ctx.module.constantPool[constIndex];
+              const constant = newConstantPool[constIndex];
 
               if (
                 constant &&
                 constant.kind === ConstantKind.String &&
                 typeof constant.value === 'string' &&
-                constant.value.length >= minLength
+                constant.value.length >= minLength &&
+                constant.value.length <= 128
               ) {
                 const fullStr = constant.value;
                 const baseKey = ctx.rng.nextRange(1, 255);

@@ -263,10 +263,10 @@ export class TypeLevelFakePathPass implements TransformPass {
           newCP.push({ index: errorIdx, kind: ConstantKind.String, value: 'Error' });
         }
 
-        let stackIdx = newCP.findIndex((cp) => cp.kind === ConstantKind.String && cp.value === 'stack');
+        let stackIdx = newCP.findIndex((cp) => cp.kind === ConstantKind.String && cp.value === 'name');
         if (stackIdx === -1) {
           stackIdx = newCP.length;
-          newCP.push({ index: stackIdx, kind: ConstantKind.String, value: 'stack' });
+          newCP.push({ index: stackIdx, kind: ConstantKind.String, value: 'name' });
         }
 
         let stringIdx = newCP.findIndex((cp) => cp.kind === ConstantKind.String && cp.value === 'string');
@@ -381,7 +381,7 @@ export class TypeLevelFakePathPass implements TransformPass {
             }, // hashMod === 0
             { opcode: OpCode.Not, operands: [{ kind: OperandKind.Register, value: tempE }], result: tempP }, // envOpaque = !hashModEqualsZero
 
-            // 5. stack = new Error().stack, typeof stack === 'string'
+            // 5. stack = new Error().name, typeof stack === 'string'
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: errorIdx }], result: tempA },
             { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempA },
             { opcode: OpCode.New, operands: [{ kind: OperandKind.Register, value: tempA }], result: tempB },

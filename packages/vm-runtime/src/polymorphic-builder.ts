@@ -1,5 +1,5 @@
 import type { BytecodeModule, VMBuildConfig, VMRuntimeBundle } from '@tsvm/shared';
-import { OpCode, ConstantEncodingScheme, ImmediateEncodingScheme, SeededRandom } from '@tsvm/shared';
+import { OpCode, ConstantEncodingScheme, ImmediateEncodingScheme, SeededRandom, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
 
 function createOpaqueNameFactory(seed: number): () => string {
   const rng = new SeededRandom(seed ^ 0x51ed70);
@@ -613,37 +613,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   `
     : '';
 
-  function isVariableLengthOpcode(opcode: number): boolean {
-    return (
-      opcode === 0x40 || // OpCode.Call
-      opcode === 0x41 || // OpCode.CallMethod
-      opcode === 0x42 || // OpCode.New
-      opcode === 0x54 || // OpCode.ArrayNew
-      opcode === 0x55 || // OpCode.ObjectNew
-      opcode === 0x56 || // OpCode.Spread
-      opcode === 0x57 || // OpCode.SpreadIntoArray
-      opcode === 0x5e || // OpCode.SuperCall
-      opcode === 0xfe // OpCode.SuperInstruction
-    );
-  }
-
-  function isTerminator(opcode: number): boolean {
-    return (
-      opcode === OpCode.Jmp ||
-      opcode === OpCode.JmpIf ||
-      opcode === OpCode.JmpIfNot ||
-      opcode === OpCode.Switch ||
-      opcode === OpCode.Return ||
-      opcode === OpCode.ReturnVoid ||
-      opcode === OpCode.TailCall ||
-      opcode === OpCode.Throw ||
-      opcode === OpCode.Yield ||
-      opcode === OpCode.YieldStar ||
-      opcode === OpCode.Await ||
-      opcode === OpCode.Halt ||
-      opcode === OpCode.Trap
-    );
-  }
 
   const handlerDeclarations: string[] = [];
   const handlerNames = new Map<OpCode, string>();

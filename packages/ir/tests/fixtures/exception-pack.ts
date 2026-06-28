@@ -49,3 +49,23 @@ export function tryFinallyBreakPack(limit: number) {
   }
   return `${trace}${count}`;
 }
+
+export function tryCatchLeakTest() {
+  let trace = '';
+  for (let i = 0; i < 2; i++) {
+    try {
+      if (i === 0) {
+        continue;
+      }
+      trace += 'try';
+    } catch (e) {
+      trace += 'catch';
+    }
+  }
+  try {
+    throw new Error('should be uncaught by the loop catch');
+  } catch (e) {
+    trace += ':native-caught';
+  }
+  return trace;
+}

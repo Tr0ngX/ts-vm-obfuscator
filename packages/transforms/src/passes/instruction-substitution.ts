@@ -167,13 +167,9 @@ export class InstructionSubstitutionPass implements TransformPass {
 
       const newBlocks = func.blocks.map((block) => {
         const newInstructions: Instruction[] = [];
+        const smallIntegerRegisters = new Set<Register>();
 
         for (const inst of block.instructions) {
-          if (ctx.rng.nextFloat() >= 0.4) {
-            newInstructions.push(inst);
-            continue;
-          }
-
           const getOperandType = (op: any): IRType => {
             if (op.kind === OperandKind.Register) {
               return regTypes.get(op.value as Register) ?? IRType.Any;
@@ -188,170 +184,226 @@ export class InstructionSubstitutionPass implements TransformPass {
             return IRType.Any;
           };
 
-          if (inst.opcode === OpCode.Add && inst.operands.length === 2 && inst.result) {
-            const opA = inst.operands[0]!;
-            const opB = inst.operands[1]!;
-
-            const typeA = getOperandType(opA);
-            const typeB = getOperandType(opB);
-
-            if (typeA === IRType.Number && typeB === IRType.Number) {
-              // A + B => (A ^ B) + 2 * (A & B)
-              const temp1 = `r${nextReg++}` as Register;
-              const temp2 = `r${nextReg++}` as Register;
-              const tempConst2 = `r${nextReg++}` as Register;
-              const temp3 = `r${nextReg++}` as Register;
-
-              newInstructions.push(
-                { opcode: OpCode.BitXor, operands: [opA, opB], result: temp1 },
-                { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp2 },
-                {
-                  opcode: OpCode.LoadConst,
-                  operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(2) }],
-                  result: tempConst2,
-                },
-                {
-                  opcode: OpCode.Mul,
-                  operands: [
-                    { kind: OperandKind.Register, value: temp2 },
-                    { kind: OperandKind.Register, value: tempConst2 },
-                  ],
-                  result: temp3,
-                },
-                {
-                  opcode: OpCode.Add,
-                  operands: [
-                    { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp3 },
-                  ],
-                  result: inst.result,
-                },
-              );
-
-              nodesTransformed++;
-              changed = true;
-            } else {
-              newInstructions.push(inst);
+          const isSmallIntegerOperand = (op: any): boolean => {
+            if (op.kind === OperandKind.ConstantIndex) {
+              const entry = constantPool[op.value as number];
+              if (entry && entry.kind === ConstantKind.Number) {
+                const val = entry.value;
+                if (typeof val === 'number') {
+                  return Number.isSafeInteger(val) && val >= -2147483648 && val <= 2147483647;
+                }
+              }
+            } else if (op.kind === OperandKind.Immediate) {
+              const val = op.value;
+              if (typeof val === 'number') {
+                return Number.isSafeInteger(val) && val >= -2147483648 && val <= 2147483647;
+              }
+            } else if (op.kind === OperandKind.Register) {
+              return smallIntegerRegisters.has(op.value as Register);
             }
-          } else if (inst.opcode === OpCode.BitAnd && inst.operands.length === 2 && inst.result) {
-            const opA = inst.operands[0]!;
-            const opB = inst.operands[1]!;
+            return false;
+          };
 
-            const typeA = getOperandType(opA);
-            const typeB = getOperandType(opB);
+          let wasSubstituted = false;
 
-            if (typeA === IRType.Number && typeB === IRType.Number) {
-              // A & B => (A | B) - (A ^ B)
-              const temp1 = `r${nextReg++}` as Register;
-              const temp2 = `r${nextReg++}` as Register;
+          if (ctx.rng.nextFloat() < 0.4) {
+            if (inst.opcode === OpCode.Add && inst.operands.length === 2 && inst.result) {
+              const opA = inst.operands[0]!;
+              const opB = inst.operands[1]!;
 
-              newInstructions.push(
-                { opcode: OpCode.BitOr, operands: [opA, opB], result: temp1 },
-                { opcode: OpCode.BitXor, operands: [opA, opB], result: temp2 },
-                {
-                  opcode: OpCode.Sub,
-                  operands: [
-                    { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 },
-                  ],
-                  result: inst.result,
-                },
-              );
+              const typeA = getOperandType(opA);
+              const typeB = getOperandType(opB);
 
-              nodesTransformed++;
-              changed = true;
-            } else {
-              newInstructions.push(inst);
+              if (
+                typeA === IRType.Number &&
+                typeB === IRType.Number &&
+                isSmallIntegerOperand(opA) &&
+                isSmallIntegerOperand(opB)
+              ) {
+                // A + B => (A ^ B) + 2 * (A & B)
+                const temp1 = `r${nextReg++}` as Register;
+                const temp2 = `r${nextReg++}` as Register;
+                const tempConst2 = `r${nextReg++}` as Register;
+                const temp3 = `r${nextReg++}` as Register;
+
+                newInstructions.push(
+                  { opcode: OpCode.BitXor, operands: [opA, opB], result: temp1 },
+                  { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp2 },
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(2) }],
+                    result: tempConst2,
+                  },
+                  {
+                    opcode: OpCode.Mul,
+                    operands: [
+                      { kind: OperandKind.Register, value: temp2 },
+                      { kind: OperandKind.Register, value: tempConst2 },
+                    ],
+                    result: temp3,
+                  },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: temp1 },
+                      { kind: OperandKind.Register, value: temp3 },
+                    ],
+                    result: inst.result,
+                  },
+                );
+
+                nodesTransformed++;
+                changed = true;
+                wasSubstituted = true;
+              }
+            } else if (inst.opcode === OpCode.BitAnd && inst.operands.length === 2 && inst.result) {
+              const opA = inst.operands[0]!;
+              const opB = inst.operands[1]!;
+
+              const typeA = getOperandType(opA);
+              const typeB = getOperandType(opB);
+
+              if (typeA === IRType.Number && typeB === IRType.Number) {
+                // A & B => (A | B) - (A ^ B)
+                const temp1 = `r${nextReg++}` as Register;
+                const temp2 = `r${nextReg++}` as Register;
+
+                newInstructions.push(
+                  { opcode: OpCode.BitOr, operands: [opA, opB], result: temp1 },
+                  { opcode: OpCode.BitXor, operands: [opA, opB], result: temp2 },
+                  {
+                    opcode: OpCode.Sub,
+                    operands: [
+                      { kind: OperandKind.Register, value: temp1 },
+                      { kind: OperandKind.Register, value: temp2 },
+                    ],
+                    result: inst.result,
+                  },
+                );
+
+                nodesTransformed++;
+                changed = true;
+                wasSubstituted = true;
+              }
+            } else if (inst.opcode === OpCode.BitOr && inst.operands.length === 2 && inst.result) {
+              const opA = inst.operands[0]!;
+              const opB = inst.operands[1]!;
+
+              const typeA = getOperandType(opA);
+              const typeB = getOperandType(opB);
+
+              if (typeA === IRType.Number && typeB === IRType.Number) {
+                // A | B => (A & B) + (A ^ B)
+                const temp1 = `r${nextReg++}` as Register;
+                const temp2 = `r${nextReg++}` as Register;
+
+                newInstructions.push(
+                  { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp1 },
+                  { opcode: OpCode.BitXor, operands: [opA, opB], result: temp2 },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: temp1 },
+                      { kind: OperandKind.Register, value: temp2 },
+                    ],
+                    result: inst.result,
+                  },
+                );
+
+                nodesTransformed++;
+                changed = true;
+                wasSubstituted = true;
+              }
+            } else if (inst.opcode === OpCode.BitXor && inst.operands.length === 2 && inst.result) {
+              const opA = inst.operands[0]!;
+              const opB = inst.operands[1]!;
+
+              const typeA = getOperandType(opA);
+              const typeB = getOperandType(opB);
+
+              if (typeA === IRType.Number && typeB === IRType.Number) {
+                // A ^ B => (A | B) - (A & B)
+                const temp1 = `r${nextReg++}` as Register;
+                const temp2 = `r${nextReg++}` as Register;
+
+                newInstructions.push(
+                  { opcode: OpCode.BitOr, operands: [opA, opB], result: temp1 },
+                  { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp2 },
+                  {
+                    opcode: OpCode.Sub,
+                    operands: [
+                      { kind: OperandKind.Register, value: temp1 },
+                      { kind: OperandKind.Register, value: temp2 },
+                    ],
+                    result: inst.result,
+                  },
+                );
+
+                nodesTransformed++;
+                changed = true;
+                wasSubstituted = true;
+              }
+            } else if (inst.opcode === OpCode.Neg && inst.operands.length === 1 && inst.result) {
+              const opA = inst.operands[0]!;
+
+              const typeA = getOperandType(opA);
+
+              if (typeA === IRType.Number) {
+                // -A => A * -1
+                const tempConstNeg1 = `r${nextReg++}` as Register;
+
+                newInstructions.push(
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(-1) }],
+                    result: tempConstNeg1,
+                  },
+                  {
+                    opcode: OpCode.Mul,
+                    operands: [opA, { kind: OperandKind.Register, value: tempConstNeg1 }],
+                    result: inst.result,
+                  },
+                );
+
+                nodesTransformed++;
+                changed = true;
+                wasSubstituted = true;
+              }
             }
-          } else if (inst.opcode === OpCode.BitOr && inst.operands.length === 2 && inst.result) {
-            const opA = inst.operands[0]!;
-            const opB = inst.operands[1]!;
+          }
 
-            const typeA = getOperandType(opA);
-            const typeB = getOperandType(opB);
-
-            if (typeA === IRType.Number && typeB === IRType.Number) {
-              // A | B => (A & B) + (A ^ B)
-              const temp1 = `r${nextReg++}` as Register;
-              const temp2 = `r${nextReg++}` as Register;
-
-              newInstructions.push(
-                { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp1 },
-                { opcode: OpCode.BitXor, operands: [opA, opB], result: temp2 },
-                {
-                  opcode: OpCode.Add,
-                  operands: [
-                    { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 },
-                  ],
-                  result: inst.result,
-                },
-              );
-
-              nodesTransformed++;
-              changed = true;
-            } else {
-              newInstructions.push(inst);
-            }
-          } else if (inst.opcode === OpCode.BitXor && inst.operands.length === 2 && inst.result) {
-            const opA = inst.operands[0]!;
-            const opB = inst.operands[1]!;
-
-            const typeA = getOperandType(opA);
-            const typeB = getOperandType(opB);
-
-            if (typeA === IRType.Number && typeB === IRType.Number) {
-              // A ^ B => (A | B) - (A & B)
-              const temp1 = `r${nextReg++}` as Register;
-              const temp2 = `r${nextReg++}` as Register;
-
-              newInstructions.push(
-                { opcode: OpCode.BitOr, operands: [opA, opB], result: temp1 },
-                { opcode: OpCode.BitAnd, operands: [opA, opB], result: temp2 },
-                {
-                  opcode: OpCode.Sub,
-                  operands: [
-                    { kind: OperandKind.Register, value: temp1 },
-                    { kind: OperandKind.Register, value: temp2 },
-                  ],
-                  result: inst.result,
-                },
-              );
-
-              nodesTransformed++;
-              changed = true;
-            } else {
-              newInstructions.push(inst);
-            }
-          } else if (inst.opcode === OpCode.Neg && inst.operands.length === 1 && inst.result) {
-            const opA = inst.operands[0]!;
-
-            const typeA = getOperandType(opA);
-
-            if (typeA === IRType.Number) {
-              // -A => A * -1
-              const tempConstNeg1 = `r${nextReg++}` as Register;
-
-              newInstructions.push(
-                {
-                  opcode: OpCode.LoadConst,
-                  operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(-1) }],
-                  result: tempConstNeg1,
-                },
-                {
-                  opcode: OpCode.Mul,
-                  operands: [opA, { kind: OperandKind.Register, value: tempConstNeg1 }],
-                  result: inst.result,
-                },
-              );
-
-              nodesTransformed++;
-              changed = true;
-            } else {
-              newInstructions.push(inst);
-            }
-          } else {
+          if (!wasSubstituted) {
             newInstructions.push(inst);
+          }
+
+          // Update smallIntegerRegisters for the next instructions
+          if (inst.result) {
+            let isSmallInt = false;
+            if (inst.opcode === OpCode.LoadConst) {
+              const op = inst.operands[0];
+              if (op) {
+                isSmallInt = isSmallIntegerOperand(op);
+              }
+            } else if (inst.opcode === OpCode.Move) {
+              const op = inst.operands[0];
+              if (op) {
+                isSmallInt = isSmallIntegerOperand(op);
+              }
+            } else if (
+              inst.opcode === OpCode.BitAnd ||
+              inst.opcode === OpCode.BitOr ||
+              inst.opcode === OpCode.BitXor ||
+              inst.opcode === OpCode.Shl ||
+              inst.opcode === OpCode.Shr
+            ) {
+              isSmallInt = true;
+            }
+
+            if (isSmallInt) {
+              smallIntegerRegisters.add(inst.result);
+            } else {
+              smallIntegerRegisters.delete(inst.result);
+            }
           }
         }
 

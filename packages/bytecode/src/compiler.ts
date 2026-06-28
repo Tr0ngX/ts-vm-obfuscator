@@ -8,7 +8,7 @@ import type {
   Operand,
   ConstantPoolEntry,
 } from '@tsvm/shared';
-import { FunctionAttribute, OpCode, OperandKind, SeededRandom, ImmediateEncodingScheme } from '@tsvm/shared';
+import { FunctionAttribute, OpCode, OperandKind, SeededRandom, ImmediateEncodingScheme, isVariableLengthOpcode, isTerminator } from '@tsvm/shared';
 import { generateRemappedOpcodes } from './opcodes.js';
 import { encodeBytecode, encodeConstantPool } from './encoder.js';
 
@@ -78,36 +78,6 @@ function computeSourceHash(irModule: IRModule): string {
     }
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function isVariableLengthOpcode(opcode: number): boolean {
-  return (
-    opcode === 0x40 || // OpCode.Call
-    opcode === 0x41 || // OpCode.CallMethod
-    opcode === 0x42 || // OpCode.New
-    opcode === 0x54 || // OpCode.ArrayNew
-    opcode === 0x55 || // OpCode.ObjectNew
-    opcode === 0x56 || // OpCode.Spread
-    opcode === 0x57 || // OpCode.SpreadIntoArray
-    opcode === 0x5e || // OpCode.SuperCall
-    opcode === 0xfe // OpCode.SuperInstruction
-  );
-}
-
-function isTerminator(opcode: number): boolean {
-  return (
-    opcode === OpCode.Jmp ||
-    opcode === OpCode.JmpIf ||
-    opcode === OpCode.JmpIfNot ||
-    opcode === OpCode.Return ||
-    opcode === OpCode.ReturnVoid ||
-    opcode === OpCode.Throw ||
-    opcode === OpCode.Yield ||
-    opcode === OpCode.YieldStar ||
-    opcode === OpCode.Await ||
-    opcode === OpCode.Halt ||
-    opcode === OpCode.Trap
-  );
 }
 
 function fuseInstructions(insts: Instruction[], config: VMBuildConfig): Instruction[] {
@@ -231,7 +201,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
   for (const irFn of irModule.functions) {
     if (irFn.isVirtualized) {
       const paramCount = irFn.params.length;
-      const maxRegs = Math.max(collectMaxRegisterIndex(irFn) + 1, paramCount);
+      const maxRegs = Math.max(collectMaxRegisterIndex(irFn), paramCount);
       const regIds = Array.from({ length: maxRegs - paramCount }, (_, i) => i + paramCount);
       const shuffledRegIds = rng.shuffle([...regIds]);
 
@@ -444,7 +414,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
         }
 
         const ops: Operand[] = [...(inst.operands || [])];
-        if (inst.result) {
+        if (inst.result && inst.opcode !== OpCode.Nop) {
           ops.push({ kind: OperandKind.Register, value: inst.result });
         }
 

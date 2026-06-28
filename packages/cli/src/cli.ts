@@ -133,7 +133,7 @@ Output:
         }
 
         const profile = createCliProfile(
-          options.profile,
+          displayTarget,
           options.seed,
           options.runtime,
           options.hardening,
@@ -158,7 +158,8 @@ Output:
           for (const diag of result.diagnostics) {
             console.error(`[${diag.code}] ${diag.message}`);
           }
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
 
         spinner.text = 'Writing output...';
@@ -182,7 +183,8 @@ Output:
         const message = err instanceof Error ? err.message : String(err);
         spinner.fail(chalk.red(`Obfuscation failed: ${message}`));
         console.error(err);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     });
 }

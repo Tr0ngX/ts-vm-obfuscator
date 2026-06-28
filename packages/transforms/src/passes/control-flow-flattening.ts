@@ -34,8 +34,9 @@ export class ControlFlowFlatteningPass implements TransformPass {
       nodesTransformed++;
 
       // 1. Assign random state IDs to each block
+      const originalEntry = func.blocks[0]!;
       const stateMap = new Map<string, number>();
-      const blockOrder = ctx.rng.shuffle([...func.blocks]);
+      const blockOrder = ctx.rng.shuffle(func.blocks.filter((b) => b.id !== originalEntry.id));
       for (const block of func.blocks) {
         stateMap.set(block.id, ctx.rng.nextRange(1000, 0x7fffffff));
       }
@@ -73,41 +74,36 @@ export class ControlFlowFlatteningPass implements TransformPass {
       // 4. Build the dispatcher block
       const dispatcherId = `__cff_dispatch_${ctx.rng.identifier(6)}`;
       const exitId = `__cff_exit_${ctx.rng.identifier(4)}`;
-      const entryStateId = stateMap.get(func.blocks[0]!.id)!;
+      const entryStateId = stateMap.get(originalEntry.id)!;
 
       // 5. Transform each original block into a case block
       // Each block ends by setting stateReg to the next state and jumping back to dispatcher
       const caseBlocks: BasicBlock[] = [];
-      for (const block of blockOrder) {
-        const stateId = stateMap.get(block.id)!;
-        const caseLabelId = `__cff_case_${block.id}_${ctx.rng.identifier(4)}`;
 
-        // Determine next state based on terminator
-        const caseInstructions: Instruction[] = [...block.instructions];
-        let caseTerminator: TerminatorInstruction;
+      const translateBlockTerminator = (
+        block: BasicBlock,
+        currentBlockId: string,
+      ): { instructions: Instruction[]; terminator: TerminatorInstruction } => {
+        const insts: Instruction[] = [];
+        let term: TerminatorInstruction;
 
         if (block.terminator.kind === 'return' || block.terminator.kind === 'throw') {
-          // Return/throw — keep original terminator, jump to exit
-          caseTerminator = block.terminator;
+          term = block.terminator;
         } else if (block.terminator.kind === 'jump') {
-          // Set state to target's state, jump to dispatcher
           const targetState = stateMap.get(block.terminator.targets[0]!)!;
-          caseInstructions.push({
+          insts.push({
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(targetState)! }],
             result: stateReg,
           });
-          caseTerminator = { kind: 'jump', targets: [dispatcherId] };
+          term = { kind: 'jump', targets: [dispatcherId] };
         } else if (block.terminator.kind === 'branch') {
-          // Branch: if condition, set true-state else set false-state, then jump to dispatcher
           const trueState = stateMap.get(block.terminator.targets[0]!)!;
           const falseState = stateMap.get(block.terminator.targets[1]!)!;
 
           const trueBlockId = `__cff_br_t_${ctx.rng.identifier(4)}`;
           const falseBlockId = `__cff_br_f_${ctx.rng.identifier(4)}`;
 
-          // We need to split this into sub-blocks for the branch
-          // true path block: set trueState, jump to dispatcher
           caseBlocks.push({
             id: trueBlockId,
             label: 'cff_br_true',
@@ -119,7 +115,7 @@ export class ControlFlowFlatteningPass implements TransformPass {
               },
             ],
             terminator: { kind: 'jump', targets: [dispatcherId] },
-            predecessors: [caseLabelId],
+            predecessors: [currentBlockId],
             successors: [dispatcherId],
             phiNodes: [],
           });
@@ -134,24 +130,31 @@ export class ControlFlowFlatteningPass implements TransformPass {
               },
             ],
             terminator: { kind: 'jump', targets: [dispatcherId] },
-            predecessors: [caseLabelId],
+            predecessors: [currentBlockId],
             successors: [dispatcherId],
             phiNodes: [],
           });
 
-          caseTerminator = {
+          term = {
             kind: 'branch',
             targets: [trueBlockId, falseBlockId],
             condition: block.terminator.condition,
           };
         } else {
-          caseTerminator = block.terminator;
+          term = block.terminator;
         }
+
+        return { instructions: insts, terminator: term };
+      };
+
+      for (const block of blockOrder) {
+        const caseLabelId = `__cff_case_${block.id}_${ctx.rng.identifier(4)}`;
+        const { instructions: termInsts, terminator: caseTerminator } = translateBlockTerminator(block, caseLabelId);
 
         caseBlocks.push({
           id: caseLabelId,
           label: `cff_case_${block.id}`,
-          instructions: caseInstructions,
+          instructions: [...block.instructions, ...termInsts],
           terminator: caseTerminator,
           predecessors: [dispatcherId],
           successors: caseTerminator.targets || [],
@@ -208,14 +211,9 @@ export class ControlFlowFlatteningPass implements TransformPass {
         tableSlots.set(slotIdx, caseBlock.id);
       }
 
-      // Entry block: set initial state, initialize jump table array, jump to dispatcher
+      // Entry block: execute original entry block instructions, initialize jump table array, set next state (or return/throw), then jump to dispatcher
       const entryBlockId = `__cff_entry_${ctx.rng.identifier(4)}`;
       const entryBlockInstructions: Instruction[] = [
-        {
-          opcode: OpCode.LoadConst,
-          operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }],
-          result: stateReg,
-        },
         // Initialize jump table array
         {
           opcode: OpCode.ArrayNew,
@@ -250,14 +248,21 @@ export class ControlFlowFlatteningPass implements TransformPass {
         );
       }
 
+      // Append original entry instructions
+      entryBlockInstructions.push(...originalEntry.instructions);
+
+      // Translate original entry terminator
+      const { instructions: entryTermInsts, terminator: entryTerminator } = translateBlockTerminator(originalEntry, entryBlockId);
+      entryBlockInstructions.push(...entryTermInsts);
+
       const entryBlock: BasicBlock = {
         id: entryBlockId,
         label: 'cff_entry',
         instructions: entryBlockInstructions,
-        terminator: { kind: 'jump', targets: [dispatcherId] },
+        terminator: entryTerminator,
         predecessors: [],
-        successors: [dispatcherId],
-        phiNodes: [],
+        successors: entryTerminator.targets || [],
+        phiNodes: originalEntry.phiNodes || [],
       };
 
       // Real dispatcher block performing perfect hashing modulo jump table
@@ -311,7 +316,10 @@ export class ControlFlowFlatteningPass implements TransformPass {
           },
         ],
         terminator: { kind: 'dynamic_jmp', targets: [] },
-        predecessors: [entryBlockId, ...caseBlocks.map((b) => b.id)],
+        predecessors: [
+          ...(entryTerminator.targets && entryTerminator.targets.includes(dispatcherId) ? [entryBlockId] : []),
+          ...caseBlocks.map((b) => b.id),
+        ],
         successors: [],
         phiNodes: [],
       };

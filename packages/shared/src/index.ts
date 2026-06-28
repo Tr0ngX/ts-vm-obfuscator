@@ -136,6 +136,7 @@ export interface ProjectSemanticGraph {
   readonly aliases: Map<number, SymbolAlias>;
   readonly compilerOptions: Record<string, unknown>;
   readonly diagnostics: readonly Diagnostic[];
+  readonly program?: any;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -876,4 +877,36 @@ export interface BuildManifest {
   readonly diagnostics: readonly Diagnostic[];
   readonly metrics: readonly BenchmarkMetric[];
   readonly functionReports?: readonly FunctionCapabilityReport[];
+}
+
+export function isVariableLengthOpcode(opcode: number): boolean {
+  return (
+    opcode === OpCode.Call ||
+    opcode === OpCode.CallMethod ||
+    opcode === OpCode.New ||
+    opcode === OpCode.ArrayNew ||
+    opcode === OpCode.ObjectNew ||
+    opcode === OpCode.Spread ||
+    opcode === OpCode.SpreadIntoArray ||
+    opcode === OpCode.SuperCall ||
+    opcode === OpCode.SuperInstruction
+  );
+}
+
+export function isTerminator(opcode: number): boolean {
+  return (
+    opcode === OpCode.Jmp ||
+    opcode === OpCode.JmpIf ||
+    opcode === OpCode.JmpIfNot ||
+    opcode === OpCode.Switch ||
+    opcode === OpCode.Return ||
+    opcode === OpCode.ReturnVoid ||
+    opcode === OpCode.TailCall ||
+    opcode === OpCode.Throw ||
+    opcode === OpCode.Yield ||
+    opcode === OpCode.YieldStar ||
+    opcode === OpCode.Await ||
+    opcode === OpCode.Halt ||
+    opcode === OpCode.Trap
+  );
 }

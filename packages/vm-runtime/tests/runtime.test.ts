@@ -714,6 +714,7 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.tryCatchFinallyPack(false)).toBe('clean');
     expect(moduleShim.exports.tryCatchFinallyPack(true)).toBe('boom');
     expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
+    expect(moduleShim.exports.tryCatchLeakTest()).toBe('try:native-caught');
   });
 
   it('should emit paranoid route tokens, handler variants, and path-mixed bytecode mutation', () => {
@@ -768,6 +769,7 @@ describe('VM Runtime', () => {
     expect(moduleShim.exports.tryCatchPack(false)).toBe('ok');
     expect(moduleShim.exports.tryCatchPack(true)).toBe('boom');
     expect(moduleShim.exports.tryFinallyBreakPack(5)).toBe('0:1:2::3');
+    expect(moduleShim.exports.tryCatchLeakTest()).toBe('try:native-caught');
   });
 
   it('should produce correct results across 5 consecutive executions with rolling key self-modification', () => {

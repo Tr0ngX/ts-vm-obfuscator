@@ -119,6 +119,7 @@ function buildGuardSequence(
   reason: 'ipc_protection' | 'context_isolation',
   propertyName: string,
   guardIndex: number,
+  objectReg: string,
 ): readonly Instruction[] {
   const guardRegister = `r${-(guardIndex + 1)}` as const;
 
@@ -143,6 +144,19 @@ function buildGuardSequence(
     },
   };
 
+  const fetchProperty: Instruction = {
+    opcode: OpCode.PropGet,
+    operands: [
+      { kind: OperandKind.Register, value: objectReg },
+      { kind: OperandKind.Register, value: guardRegister },
+    ],
+    result: guardRegister,
+    metadata: {
+      electronHardened: true,
+      guardRole: 'integrity_check_fetch',
+    },
+  };
+
   const callIntegrityCheck: Instruction = {
     opcode: OpCode.Call,
     operands: [{ kind: OperandKind.Register, value: guardRegister }],
@@ -154,7 +168,7 @@ function buildGuardSequence(
     },
   };
 
-  return [nopMarker, loadPropertyName, callIntegrityCheck];
+  return [nopMarker, loadPropertyName, fetchProperty, callIntegrityCheck];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -186,8 +200,9 @@ export function applyElectronHardening(module: IRModule): IRModule {
           const propertyName = resolvePropertyName(inst, newInstructions, module.constantPool);
           if (propertyName !== null && ALL_SENSITIVE_PROPERTIES.has(propertyName)) {
             const reason = classifySensitiveProperty(propertyName);
-            if (reason !== null) {
-              const guardInstructions = buildGuardSequence(reason, propertyName, hardenCount);
+            const objOperand = inst.operands[0];
+            if (reason !== null && objOperand && objOperand.kind === OperandKind.Register && typeof objOperand.value === 'string') {
+              const guardInstructions = buildGuardSequence(reason, propertyName, hardenCount, objOperand.value);
               for (const guardInst of guardInstructions) {
                 newInstructions.push(guardInst);
               }

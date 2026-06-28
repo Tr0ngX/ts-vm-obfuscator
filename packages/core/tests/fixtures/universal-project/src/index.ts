@@ -95,3 +95,6 @@ export const asyncLifted = async (value: number) => {
   const next = await Promise.resolve(value + 1);
   return next * 3;
 };
+
+export const multiA = (x: number) => x + 1, multiB = (y: number) => y + 2;
+
