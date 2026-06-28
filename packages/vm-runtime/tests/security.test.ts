@@ -475,7 +475,7 @@ describe('VM Security', () => {
       const branchResult = moduleShim.exports.fnBranch();
       expect(branchResult).not.toBe(10); // True branch outcome
       expect(branchResult).not.toBe(20); // Untampered false branch outcome
-      expect(branchResult).toBe(21);     // Poisoned false branch outcome
+      expect(branchResult).toBe(21); // Poisoned false branch outcome
     } finally {
       Math.sin = origSin;
     }
