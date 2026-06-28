@@ -314,4 +314,170 @@ describe('VM Security', () => {
     const result = moduleShim.exports.fnClean();
     expect(result).toBe(42);
   });
+
+  it('silently corrupts execution results when tampering is detected', () => {
+    const origSin = Math.sin;
+    try {
+      // 1. Trigger tamper detection by replacing Math.sin
+      Math.sin = (() => 0) as any;
+
+      const ir = {
+        id: 'tamper-corruption',
+        sourceFile: 'tamper-corruption.ts',
+        functions: [
+          {
+            id: 'fn_math',
+            name: 'fnMath',
+            params: [],
+            returnType: IRType.Any,
+            blocks: [
+              {
+                id: 'b0',
+                label: 'entry',
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r1' },
+                  {
+                    opcode: OpCode.Add,
+                    operands: [
+                      { kind: OperandKind.Register, value: 0 },
+                      { kind: OperandKind.Register, value: 1 },
+                    ],
+                    result: 'r2',
+                  },
+                ],
+                terminator: { kind: 'return' as const, targets: [], returnValue: 'r2' },
+                predecessors: [],
+                successors: [],
+                phiNodes: [],
+              },
+            ],
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+          },
+          {
+            id: 'fn_string',
+            name: 'fnString',
+            params: [],
+            returnType: IRType.Any,
+            blocks: [
+              {
+                id: 'b0',
+                label: 'entry',
+                instructions: [{ opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 2 }], result: 'r0' }],
+                terminator: { kind: 'return' as const, targets: [], returnValue: 'r0' },
+                predecessors: [],
+                successors: [],
+                phiNodes: [],
+              },
+            ],
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+          },
+          {
+            id: 'fn_branch',
+            name: 'fnBranch',
+            params: [],
+            returnType: IRType.Any,
+            blocks: [
+              {
+                id: 'b0',
+                label: 'entry',
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 3 }], result: 'r0' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r1' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r2' },
+                ],
+                terminator: { kind: 'branch' as const, condition: 'r0', targets: ['b1', 'b2'] },
+                predecessors: [],
+                successors: ['b1', 'b2'],
+                phiNodes: [],
+              },
+              {
+                id: 'b1',
+                label: 'left',
+                instructions: [],
+                terminator: { kind: 'return' as const, targets: [], returnValue: 'r1' },
+                predecessors: ['b0'],
+                successors: [],
+                phiNodes: [],
+              },
+              {
+                id: 'b2',
+                label: 'right',
+                instructions: [],
+                terminator: { kind: 'return' as const, targets: [], returnValue: 'r2' },
+                predecessors: ['b0'],
+                successors: [],
+                phiNodes: [],
+              },
+            ],
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [
+          { index: 0, kind: 'number' as any, value: 10 },
+          { index: 1, kind: 'number' as any, value: 20 },
+          { index: 2, kind: 'string' as any, value: 'secure_url_endpoint' },
+          { index: 3, kind: 'boolean' as any, value: true },
+        ],
+        metadata: {
+          sourceFile: 'tamper-corruption.ts',
+          originalByteSize: 0,
+          functionCount: 3,
+          blockCount: 4,
+          instructionCount: 7,
+          buildTimestamp: 0,
+        },
+      } as any;
+
+      const compiled = compileToBytecode(ir, {
+        ...baseConfig,
+        tamperDetection: true,
+        constantPoolEncoding: ConstantEncodingScheme.XorRotate,
+        rollingKeys: true,
+      });
+
+      const bundle = buildVMRuntime(compiled, {
+        ...baseConfig,
+        tamperDetection: true,
+        constantPoolEncoding: ConstantEncodingScheme.XorRotate,
+        rollingKeys: true,
+      });
+
+      const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+      new Function('module', bundle.fullSource)(moduleShim);
+
+      // 2. MATH DRIFT CHECK:
+      const mathResult = moduleShim.exports.fnMath();
+      expect(mathResult).toBeDefined();
+      expect(mathResult).not.toBe(30);
+
+      // 3. STRING DECRYPTION DRIFT CHECK:
+      const stringResult = moduleShim.exports.fnString();
+      expect(stringResult).toBeDefined();
+      expect(stringResult).not.toBe('secure_url_endpoint');
+
+      // 4. BRANCH REDIRECTION & REGISTER POISONING CHECK:
+      const branchResult = moduleShim.exports.fnBranch();
+      expect(branchResult).not.toBe(10); // True branch outcome
+      expect(branchResult).not.toBe(20); // Untampered false branch outcome
+      expect(branchResult).toBe(21);     // Poisoned false branch outcome
+    } finally {
+      Math.sin = origSin;
+    }
+  });
 });
