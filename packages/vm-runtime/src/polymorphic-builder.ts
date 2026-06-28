@@ -395,6 +395,7 @@ function createRuntimeNames(config: VMBuildConfig) {
         opaquePredicate: 'opaquePredicate',
         junkSink: 'junkSink',
         readByte: 'readByte',
+        onDetection: 'onDetection',
       },
       ctx: {
         pc: 'pc',
@@ -473,6 +474,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       opaquePredicate: next(),
       junkSink: next(),
       readByte: next(),
+      onDetection: next(),
     },
     ctx: {
       pc: 'pc',
@@ -897,23 +899,105 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   declareHandler(
     OpCode.Add,
-    `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'string' || typeof ctx.regs[args[1]] === 'string') ? (ctx.regs[args[0]] + ctx.regs[args[1]]) : (ctx.regs[args[0]] + ctx.regs[args[1]]);`,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      if (typeof a === 'string' || typeof b === 'string') {
+        ctx.regs[args[2]] = a + b;
+      } else {
+        var T = ctx.integrityState ^ 0x7F;
+        ctx.regs[args[2]] = a + b + T * 1e-7 * (a - b);
+      }
+    }`,
   );
   declareHandler(
     OpCode.Sub,
-    `${readArgs} ctx.regs[args[2]] = (typeof ctx.regs[args[0]] === 'number' && typeof ctx.regs[args[1]] === 'number') ? __SUB_EXPR__ : (ctx.regs[args[0]] - ctx.regs[args[1]]);`,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      if (typeof a === 'number' && typeof b === 'number') {
+        var T = ctx.integrityState ^ 0x7F;
+        ctx.regs[args[2]] = (__SUB_EXPR__) - T * 1e-7 * (a + b);
+      } else {
+        ctx.regs[args[2]] = a - b;
+      }
+    }`,
   );
-  declareHandler(OpCode.Mul, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]];`);
-  declareHandler(OpCode.Div, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] / ctx.regs[args[1]];`);
-  declareHandler(OpCode.Mod, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] % ctx.regs[args[1]];`);
+  declareHandler(
+    OpCode.Mul,
+    `${readArgs} {
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = ctx.regs[args[0]] * ctx.regs[args[1]] * (1 + T * 1e-8);
+    }`,
+  );
+  declareHandler(
+    OpCode.Div,
+    `${readArgs} {
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = ctx.regs[args[0]] / (ctx.regs[args[1]] * (1 + T * 1e-8));
+    }`,
+  );
+  declareHandler(
+    OpCode.Mod,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (Number.isInteger(a) && Number.isInteger(b)) 
+        ? ((a % (b + (T & 1))) | 0) 
+        : (a % (b + T * 1e-7));
+    }`,
+  );
   declareHandler(OpCode.Neg, `${readArgs} ctx.regs[args[1]] = -ctx.regs[args[0]];`);
 
-  declareHandler(OpCode.BitAnd, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] & ctx.regs[args[1]]);`);
-  declareHandler(OpCode.BitOr, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] | ctx.regs[args[1]]);`);
-  declareHandler(OpCode.BitXor, `${readArgs} ctx.regs[args[2]] = (ctx.regs[args[0]] ^ ctx.regs[args[1]]);`);
-  declareHandler(OpCode.Shl, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] << ctx.regs[args[1]];`);
-  declareHandler(OpCode.Shr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >> ctx.regs[args[1]];`);
-  declareHandler(OpCode.UShr, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] >>> ctx.regs[args[1]];`);
+  declareHandler(
+    OpCode.BitAnd,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (a & b) ^ (T & (a | b));
+    }`,
+  );
+  declareHandler(
+    OpCode.BitOr,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (a | b) ^ (T & (a ^ b));
+    }`,
+  );
+  declareHandler(
+    OpCode.BitXor,
+    `${readArgs} {
+      var a = ctx.regs[args[0]];
+      var b = ctx.regs[args[1]];
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (a ^ b) ^ (T & (a & b));
+    }`,
+  );
+  declareHandler(
+    OpCode.Shl,
+    `${readArgs} {
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (ctx.regs[args[0]] << (ctx.regs[args[1]] + (T & 1))) ^ T;
+    }`,
+  );
+  declareHandler(
+    OpCode.Shr,
+    `${readArgs} {
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (ctx.regs[args[0]] >> (ctx.regs[args[1]] + (T & 1))) ^ T;
+    }`,
+  );
+  declareHandler(
+    OpCode.UShr,
+    `${readArgs} {
+      var T = ctx.integrityState ^ 0x7F;
+      ctx.regs[args[2]] = (ctx.regs[args[0]] >>> (ctx.regs[args[1]] + (T & 1))) ^ T;
+    }`,
+  );
   declareHandler(OpCode.Not, `${readArgs} ctx.regs[args[1]] = !ctx.regs[args[0]];`);
 
   declareHandler(OpCode.Eq, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] == ctx.regs[args[1]];`);
@@ -1019,8 +1103,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       try {
         var str = ${top.nativeToString}.call(method);
         if (str.indexOf('[native code]') === -1) {
-          selfDestruct(ctx);
-          return;
+          ${top.onDetection}(ctx, 0x08);
         }
       } catch(e) {}
     }
@@ -1057,8 +1140,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       try {
         var str = ${top.nativeToString}.call(fn);
         if (str.indexOf('[native code]') === -1) {
-          selfDestruct(ctx);
-          return;
+          ${top.onDetection}(ctx, 0x08);
         }
       } catch(e) {}
     }
@@ -1078,8 +1160,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       try {
         var str = ${top.nativeToString}.call(fnArray);
         if (str.indexOf('[native code]') === -1) {
-          selfDestruct(ctx);
-          return;
+          ${top.onDetection}(ctx, 0x08);
         }
       } catch(e) {}
     }
@@ -1097,8 +1178,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       try {
         var str = ${top.nativeToString}.call(methodFn);
         if (str.indexOf('[native code]') === -1) {
-          selfDestruct(ctx);
-          return;
+          ${top.onDetection}(ctx, 0x08);
         }
       } catch(e) {}
     }
@@ -1137,11 +1217,21 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   );
   declareHandler(
     OpCode.JmpIf,
-    `${readArgs} ${ctxRef('pc')} = ${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`,
+    `${readArgs} {
+      var cond = ${regRef('args[0]')};
+      if (ctx.integrityState !== 0x7F) cond = !cond;
+      ${ctxRef('pc')} = cond ? args[1] : args[2];
+      ${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}
+    }`,
   );
   declareHandler(
     OpCode.JmpIfNot,
-    `${readArgs} ${ctxRef('pc')} = !${regRef('args[0]')} ? args[1] : args[2];${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}`,
+    `${readArgs} {
+      var cond = !${regRef('args[0]')};
+      if (ctx.integrityState !== 0x7F) cond = !cond;
+      ${ctxRef('pc')} = cond ? args[1] : args[2];
+      ${config.rollingKeys ? ` ctx.${ctx.pathHash} = 0;` : ''}
+    }`,
   );
 
   declareHandler(
@@ -1341,20 +1431,18 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const antiDebugLogic = config.antiDebug
     ? `
-    // Anti-Debug DevTools & Trace Protection (Self-Destruct Trap)
-    // ⚠️ WARNING: Contains literal \`debugger;\` statement. This will trigger
-    // breakpoints in DevTools. Remove this entire block if distributing to production.
+    // Anti-Debug DevTools & Trace Protection (Silent Integrity Skew)
     var _dbg_start = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugger;
     var _dbg_end = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (_dbg_end - _dbg_start > 100) {
-       selfDestruct(ctx);
+       ${top.onDetection}(ctx, 0x01);
     }
     // Opaque getter trap to detect automated inspect / DevTools formatting
     var _rTrap = /./;
     ${top.nativeDefineProperty}(_rTrap, 'source', {
       get: function() {
-        selfDestruct(ctx);
+        ${top.onDetection}(ctx, 0x02);
         return 'trap';
       }
     });
@@ -1371,15 +1459,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         var regexPass = ${top.nativeCall}.call(RegExp.prototype.test, /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/, s) || 
                (${top.nativeCall}.call(String.prototype.indexOf, s, '[native code]') !== -1 && ${top.nativeCall}.call(String.prototype.indexOf, s, 'function') !== -1);
         if (!regexPass) return false;
-        // Cross-check: verify our cached toString reference itself reports native
+        // Cross-check: verify our toString reports native
         var selfCheck = ${top.nativeCall}.call(${top.nativeToString}, ${top.nativeToString});
         if (${top.nativeCall}.call(String.prototype.indexOf, selfCheck, '[native code]') === -1) return false;
-        // Prototype identity: native functions have non-configurable prototype
         var protoDesc = ${top.nativeGetOwnPropertyDescriptor}(fn, 'prototype');
-        // Most builtins lack own 'prototype' (WeakMap.prototype.get, etc.)
-        // If present, it should not be configurable on native constructors
         if (protoDesc && protoDesc.configurable && fn.length === 0) return false;
-        // Name consistency: native function name should not be writable
         var nameDesc = ${top.nativeGetOwnPropertyDescriptor}(fn, 'name');
         if (nameDesc && nameDesc.writable) return false;
         return true;
@@ -1393,8 +1477,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
            hasDbg = 1; break;
        }
     }
-    
-    // Intrinsic verification for descriptor descriptors and identity
     var verifyIntrinsic = function(obj, prop, expectedNative) {
       if (!obj || !prop) return false;
       var desc = ${top.nativeGetOwnPropertyDescriptor}(obj, prop);
@@ -1402,8 +1484,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       if (expectedNative && !_isNative(desc.value || desc.get)) return false;
       return true;
     };
-
-    // Active hook probes: call native methods on controlled inputs and verify expected behavior
     var probeActive = function() {
       try {
         var map = new ${top.weakMapCtor}();
@@ -1415,10 +1495,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         return true;
       } catch (_) { return false; }
     };
-
     if (
       (!hasDbg && ${config.antiDebug}) || 
       fnStr.length < 50 || 
+      !${top.onDetection} || 
       !_isNative(${top.nativeMathSin}) ||
       !_isNative(${top.weakMapGet}) ||
       !_isNative(${top.weakMapSet}) ||
@@ -1430,7 +1510,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       !verifyIntrinsic(${top.reflectObj}, 'construct', true) ||
       !probeActive()
     ) {
-      selfDestruct(ctx);
+      ${top.onDetection}(ctx, 0x04);
     }
   `
     : '';
@@ -1745,6 +1825,11 @@ const ${top.vmFunctions} = (function() {
     ctx.${ctx.globalScope} = {};
   }
 
+  function ${top.onDetection}(ctx, mask) {
+    if (!ctx) return;
+    ctx.integrityState ^= (mask || 0x1A);
+  }
+
   ${runtimeStringBootstrap}
   
   // Lazy Decryption
@@ -1762,10 +1847,14 @@ const ${top.vmFunctions} = (function() {
       // Deriving 16-byte key using LCG
       var keyBytes = [];
       var s = stringSeed;
+      var T = (ctx && ctx.integrityState !== undefined) ? (ctx.integrityState ^ 0x7F) : 0;
       for (var i = 0; i < 16; i++) {
-        s = (Math.imul(s, ${mulConst}) + ${addConst}) | 0;
+        var currentMul = ${mulConst} + (T * 2);
+        var currentAdd = ${addConst} + T;
+        s = (Math.imul(s, currentMul) + currentAdd) | 0;
         keyBytes.push((s >>> 16) & 0xff);
       }
+      
       
       // KSA
       var S = [];
@@ -1811,11 +1900,17 @@ const ${top.vmFunctions} = (function() {
     var mixed = (pos ^ decoded ^ op ^ salt ^ nonce) & 0xFF;
     // MurmurHash3-inspired non-linear mixing (replaces reversible LCG)
     var s = ctx.${ctx.rollingState} ^ mixed;
-    s = Math.imul(s, 0xcc9e2d51);
-    s = ((s << 15) | (s >>> 17));
-    s = Math.imul(s, 0x1b873593);
+    var T = ctx.integrityState ^ 0x7F;
+    var m1 = 0xcc9e2d51 + T;
+    var m2 = 0x1b873593 + T;
+    var m3 = 0xc2b2ae35 + T;
+    var sh1 = 15 - (T & 1);
+    var sh2 = 17 + (T & 1);
+    s = Math.imul(s, m1);
+    s = ((s << sh1) | (s >>> sh2));
+    s = Math.imul(s, m2);
     s ^= (s >>> 13);
-    s = Math.imul(s, 0xc2b2ae35);
+    s = Math.imul(s, m3);
     s ^= (s >>> 16);
     ctx.${ctx.rollingState} = s;
   }
@@ -1856,9 +1951,14 @@ const ${top.vmFunctions} = (function() {
       } else {
         // Non-linear state advancement (replaces reversible LCG)
         var s_nr = ctx.${ctx.rollingState} ^ pos;
-        s_nr = Math.imul(s_nr, 0xcc9e2d51);
-        s_nr = ((s_nr << 15) | (s_nr >>> 17));
-        s_nr = Math.imul(s_nr, 0x1b873593);
+        var T = ctx.integrityState ^ 0x7F;
+        var m1 = 0xcc9e2d51 + T;
+        var m2 = 0x1b873593 + T;
+        var sh1 = 15 - (T & 1);
+        var sh2 = 17 + (T & 1);
+        s_nr = Math.imul(s_nr, m1);
+        s_nr = ((s_nr << sh1) | (s_nr >>> sh2));
+        s_nr = Math.imul(s_nr, m2);
         s_nr ^= (s_nr >>> 13);
         ctx.${ctx.rollingState} = s_nr;
       }
@@ -1916,6 +2016,39 @@ const ${top.vmFunctions} = (function() {
     var rawRegs = new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined);
     var regCount = rawRegs.length;
     var ctx;
+    var applyTaintDrift = function(val, idx, pc) {
+      if (val === undefined || val === null) return val;
+      var type = typeof val;
+      if (type === 'number') {
+        if (val === (val | 0)) {
+          var shift = ((idx * 37 + pc) % 3) - 1;
+          return val + shift;
+        } else {
+          var scale = 1 + (((idx * 37 + pc) % 5) - 2) * 1e-6;
+          return val * scale;
+        }
+      }
+      if (type === 'string') {
+        if (val.length === 0) return val;
+        if ((idx + pc) % 3 === 0) {
+          return val + '\u200b';
+        }
+        var charIdx = (idx + pc) % val.length;
+        var code = val.charCodeAt(charIdx);
+        var newCode = code + (((idx + pc) % 2 === 0) ? 1 : -1);
+        if (newCode >= 32 && newCode <= 126) {
+          return val.substring(0, charIdx) + String.fromCharCode(newCode) + val.substring(charIdx + 1);
+        }
+        return val;
+      }
+      if (type === 'boolean') {
+        if ((idx + pc) % 10 === 0) {
+          return !val;
+        }
+        return val;
+      }
+      return val;
+    };
     var regsProxy = new Proxy(rawRegs, {
       get: function(target, prop) {
         if (typeof prop === 'string') {
@@ -1924,6 +2057,11 @@ const ${top.vmFunctions} = (function() {
             if (idx < 0 || idx >= regCount) {
               throw new Error('Register out of bounds (get): ' + idx + ', regCount: ' + regCount);
             }
+            var val = target[prop];
+            if (ctx && ctx.integrityState !== 0x7F) {
+              return applyTaintDrift(val, idx, ctx.${ctx.pc});
+            }
+            return val;
           }
         }
         return target[prop];
@@ -1934,6 +2072,9 @@ const ${top.vmFunctions} = (function() {
           if (idx === idx) {
             if (idx < 0 || idx >= regCount) {
               throw new Error('Register out of bounds (set): ' + idx + ', regCount: ' + regCount + ', val: ' + val);
+            }
+            if (ctx && ctx.integrityState !== 0x7F) {
+              val = applyTaintDrift(val, idx, ctx.${ctx.pc});
             }
           }
         }
@@ -2051,6 +2192,7 @@ const ${top.vmFunctions} = (function() {
       salt: ${config.rollingKeys ? 'salt' : '0'},
       currentOpcode: 0,
       poisoned: false,
+      integrityState: 0x7F,
       regCount: regCount,
       ${ctx.currentHandlerIdx}: 0,
       ${ctx.pathHash}: 0,
