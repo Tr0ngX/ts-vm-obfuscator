@@ -862,4 +862,76 @@ describe('VM Runtime', () => {
       expect(moduleShim.exports.expressionPack()).toBe('8:0|2|3|4|6|7:undefined:3,4,5,,6,7:ABC:2020-1-2');
     }
   });
+
+  it('should apply silent drift when environmental taint is detected via overrides', () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'control-flow-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+    const config = createVMConfig(101, { tamperDetection: false });
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    // Run without taint: should be exact
+    const moduleShim1 = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim1);
+    const normalResult = moduleShim1.exports.controlFlowPack(6);
+
+    // Run with taint override: should drift silently
+    const origOverride = (globalThis as any).__tsvm_integrity_override__;
+    (globalThis as any).__tsvm_integrity_override__ = 'tainted';
+    try {
+      const moduleShim2 = { exports: {} as Record<string, (...args: any[]) => any> };
+      new Function('module', bundle.fullSource)(moduleShim2);
+      const driftedResult = moduleShim2.exports.controlFlowPack(6);
+      expect(driftedResult).toBeDefined();
+      expect(driftedResult).not.toBe(normalResult);
+    } finally {
+      (globalThis as any).__tsvm_integrity_override__ = origOverride;
+    }
+  });
+
+  it('should support event-loop call stack splitting and yield microtask in paranoid mode', async () => {
+    const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'async-loop-pack.ts');
+    const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
+
+    // Use paranoid runtime hardening
+    const config = createVMConfig(42, {
+      runtimeHardening: 'paranoid',
+      rollingKeys: true,
+    });
+    const bytecode = compileToBytecode(ir, config);
+    const bundle = buildVMRuntime(bytecode, config);
+
+    const moduleShim = { exports: {} as Record<string, (...args: any[]) => any> };
+    new Function('module', bundle.fullSource)(moduleShim);
+
+    // Create an async iterable
+    const asyncIterable = {
+      [Symbol.asyncIterator]() {
+        let i = 1;
+        return {
+          async next() {
+            if (i <= 3) {
+              return { value: i++, done: false };
+            }
+            return { value: undefined, done: true };
+          },
+        };
+      },
+    };
+
+    // The function should still execute and return the correct result,
+    // while microtask yielding happens seamlessly under the hood.
+    const promise = moduleShim.exports.testAsyncLoop(asyncIterable);
+
+    // To prove it yields control to the microtask queue, we can enqueue a microtask
+    // and verify it runs before the VM executor completes.
+    let microtaskExecuted = false;
+    Promise.resolve().then(() => {
+      microtaskExecuted = true;
+    });
+
+    const result = await promise;
+    expect(result).toBe(6);
+    expect(microtaskExecuted).toBe(true);
+  });
 });

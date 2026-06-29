@@ -13,6 +13,7 @@ import { StripDebugPass } from './passes/strip-debug.js';
 import { IRValidationPass } from './passes/ir-validation.js';
 import { RegisterCompactingPass } from './passes/register-compacting.js';
 import { InstructionSubstitutionPass } from './passes/instruction-substitution.js';
+import { ApiHidingPass } from './passes/api-hiding.js';
 
 export class TransformRegistry {
   private passes: Map<string, TransformPass> = new Map();
@@ -33,6 +34,7 @@ export class TransformRegistry {
       IRValidationPass: IRValidationPass,
       RegisterCompactingPass: RegisterCompactingPass,
       InstructionSubstitutionPass: InstructionSubstitutionPass,
+      ApiHidingPass: ApiHidingPass,
     };
 
     for (const passConfig of profile.transforms) {

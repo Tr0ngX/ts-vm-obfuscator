@@ -178,8 +178,8 @@ export function encodeConstantPool(
         encoded += String.fromCharCode(c.value.charCodeAt(i) ^ keystreamByte);
       }
 
-      return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: 0 };
+      return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: c.expectedPathHash || 0 };
     }
-    return { index, kind: c.kind, value: c.value, encodedBytes: new Uint8Array(), decodingKey: 0 };
+    return { index, kind: c.kind, value: c.value, encodedBytes: new Uint8Array(), decodingKey: c.expectedPathHash || 0 };
   });
 }

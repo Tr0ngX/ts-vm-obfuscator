@@ -527,6 +527,7 @@ export function compileToBytecode(irModule: IRModule, config: VMBuildConfig): By
       sourceHash: computeSourceHash(irModule),
       profile: config.profile ?? 'generic',
       deterministicSeed: config.seed,
+      hiddenAPIs: irModule.metadata.hiddenAPIs,
     },
   };
 }

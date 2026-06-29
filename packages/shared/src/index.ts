@@ -487,6 +487,7 @@ export interface IRModuleMetadata {
   readonly blockCount: number;
   readonly instructionCount: number;
   readonly buildTimestamp: number;
+  readonly hiddenAPIs?: readonly string[];
 }
 
 export interface IRModule {
@@ -567,6 +568,7 @@ export interface BytecodeMetadata {
   readonly sourceHash: string;
   readonly profile: string;
   readonly deterministicSeed?: number;
+  readonly hiddenAPIs?: readonly string[];
 }
 
 export interface BytecodeModule {

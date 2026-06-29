@@ -4,6 +4,7 @@ import { DeadCodeInjectionPass } from '../src/passes/dead-code-injection.js';
 import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
 import { StripDebugPass } from '../src/passes/strip-debug.js';
 import { InstructionSubstitutionPass } from '../src/passes/instruction-substitution.js';
+import { ApiHidingPass } from '../src/passes/api-hiding.js';
 import {
   ConstantKind,
   type IRModule,
@@ -980,6 +981,107 @@ describe('Advanced Transforms', () => {
 
       expect(nopInst).toBeDefined();
       expect(nopInst!.result).toBe('r3'); // Must preserve the result register!
+    });
+  });
+
+  describe('ApiHidingPass', () => {
+    it('should replace global browser/Node API lookups with dynamic lookups', () => {
+      const pass = new ApiHidingPass();
+      const rng = new SeededRandom(12345);
+
+      const dummyModule: IRModule = {
+        id: 'api-hide-test',
+        sourceFile: 'test.ts',
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'b1',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r0',
+                  },
+                  {
+                    opcode: OpCode.LoadGlobal,
+                    operands: [{ kind: OperandKind.Register, value: 'r0' }],
+                    result: 'r1',
+                  },
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 1 }],
+                    result: 'r2',
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' },
+                      { kind: OperandKind.Register, value: 'r2' },
+                    ],
+                    result: 'r3',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'window' },
+          { index: 1, kind: ConstantKind.String, value: 'fetch' },
+        ],
+        metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 4, originalByteSize: 100 },
+      };
+
+      const ctx: TransformContext = {
+        module: dummyModule,
+        profile: mockProfile,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
+        symbolAliases: new Map(),
+        diagnostics: [],
+        rng,
+        phase: 0,
+      };
+
+      const result = pass.execute(ctx);
+      const instructions = result.module.functions[0]!.blocks[0]!.instructions;
+
+      // The original 4 instructions should be expanded to include lookup instructions.
+      expect(instructions.length).toBeGreaterThan(4);
+
+      // Verify that hiddenAPIs contains window and window.fetch
+      expect(result.module.metadata.hiddenAPIs).toContain('window');
+      expect(result.module.metadata.hiddenAPIs).toContain('window.fetch');
+
+      // The helper name should be added to the constant pool
+      const helperNameCP = result.module.constantPool.find((c) => c.kind === ConstantKind.String && c.value === '__resolveAPI');
+      expect(helperNameCP).toBeDefined();
     });
   });
 });

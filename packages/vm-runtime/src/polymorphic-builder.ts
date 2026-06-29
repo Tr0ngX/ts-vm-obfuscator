@@ -540,6 +540,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   }
 
   const exportedFunctions = module.functions.filter((f) => f.isEntryPoint);
+  const hiddenAPIs = module.metadata?.hiddenAPIs ?? [];
+  const encodedAPIs = hiddenAPIs.map((api) => {
+    let enc = '';
+    for (let i = 0; i < api.length; i++) {
+      enc += String.fromCharCode(api.charCodeAt(i) ^ 0x5a);
+    }
+    return enc;
+  });
   const concealRuntimeStrings = !!config.stealthDispatch || !!config.tamperDetection || !!config.junkInsertion;
   const stringRng = new SeededRandom(config.seed ^ 0x3d7f19);
   const keyBytes: number[] = [];
@@ -891,10 +899,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     `
     ${readArgs}
     var propName = ctx.regs[args[0]];
-    var globalVal = ${ctxRef('globalScope')}[propName];
-    ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
-      ? ${top.result}[propName]
-      : globalVal;
+    if (propName === '__resolveAPI') {
+      ${regRef('args[1]')} = __resolveAPI;
+    } else {
+      var globalVal = ${ctxRef('globalScope')}[propName];
+      ${regRef('args[1]')} = (typeof ${top.result} !== 'undefined' && ${top.result}[propName] !== undefined)
+        ? ${top.result}[propName]
+        : globalVal;
+    }
   `,
   );
   declareHandler(
@@ -1810,6 +1822,59 @@ const ${top.vmFunctions} = (function() {
   const ${top.mathRandom} = (cleanIntrinsics.Math || Math).random;
   let executionCounter = 0;
 
+  function djb2(str) {
+    var hash = 5381;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash * 33) + str.charCodeAt(i)) & 0xFFFFFFFF;
+    }
+    return hash >>> 0;
+  }
+
+  function __resolveAPI(hash) {
+    var g = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+    var apis = ${JSON.stringify(encodedAPIs)}.map(function(enc) {
+      var dec = '';
+      for (var i = 0; i < enc.length; i++) {
+        dec += String.fromCharCode(enc.charCodeAt(i) ^ 0x5a);
+      }
+      return dec;
+    });
+
+    for (var i = 0; i < apis.length; i++) {
+      var api = apis[i];
+      if (djb2(api) === hash) {
+        var parts = api.split('.');
+        var curr = g;
+        for (var j = 0; j < parts.length; j++) {
+          if (j === 0 && (parts[j] === 'window' || parts[j] === 'globalThis' || parts[j] === 'self' || parts[j] === 'global')) {
+            curr = g;
+          } else {
+            curr = curr[parts[j]];
+          }
+          if (curr === undefined || curr === null) {
+            break;
+          }
+        }
+        if (typeof curr === 'function') {
+          var parent = g;
+          if (parts.length > 1) {
+            parent = g;
+            for (var k = 0; k < parts.length - 1; k++) {
+              if (k === 0 && (parts[k] === 'window' || parts[k] === 'globalThis' || parts[k] === 'self' || parts[k] === 'global')) {
+                parent = g;
+              } else {
+                parent = parent[parts[k]];
+              }
+            }
+          }
+          return curr.bind(parent);
+        }
+        return curr;
+      }
+    }
+    return undefined;
+  }
+
   function selfDestruct(ctx) {
     if (!ctx) return;
     ctx.poisoned = true;
@@ -1908,7 +1973,8 @@ const ${top.vmFunctions} = (function() {
     var salt = ctx.salt || 0;
     var nonce = ctx.executionNonce || 0;
     var op = ctx.currentOpcode || 0;
-    var mixed = (pos ^ decoded ^ op ^ salt ^ nonce) & 0xFF;
+    var trace = ctx.traceChecksum || 0;
+    var mixed = (pos ^ decoded ^ op ^ salt ^ nonce ^ (trace & 0xFF)) & 0xFF;
     // MurmurHash3-inspired non-linear mixing (replaces reversible LCG)
     var s = ctx.${ctx.rollingState} ^ mixed;
     var T = ctx.integrityState ^ 0x7F;
@@ -1947,6 +2013,9 @@ const ${top.vmFunctions} = (function() {
     var pos = ${ctxRef('pc')}++;
     if (pos >= ${ctxRef('bytecode')}.length) return 0;
     var byte = ${ctxRef('bytecode')}[pos];
+    if (ctx && ctx.traceChecksum !== undefined) {
+      ctx.traceChecksum = (((ctx.traceChecksum * 33) ^ byte) ^ pos) | 0;
+    }
     ${
       config.rollingKeys
         ? `
@@ -2027,10 +2096,51 @@ const ${top.vmFunctions} = (function() {
     return executor;
   }
 
-  function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr, registerCount, salt) {
+  function __createVmContext(bytecodeArr, envArr, thisArg, newTarget, argsArr, registerCount, salt, isAsync) {
     var rawRegs = new Array(registerCount > 0 ? registerCount : argsArr.length + 8).fill(undefined);
     var regCount = rawRegs.length;
     var ctx;
+    var rawGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+    var isTainted = false;
+    if (rawGlobal.__tsvm_integrity_override__ === 'tainted' || rawGlobal.__tsvm_taint__ || rawGlobal.__VM_TAINT__) {
+      isTainted = true;
+    }
+    try {
+      if (rawGlobal.process && rawGlobal.process.env && (rawGlobal.process.env.TSVM_TAINT || rawGlobal.process.env.TSVM_INTEGRITY_OVERRIDE === 'tainted')) {
+        isTainted = true;
+      }
+    } catch (e) {}
+    try {
+      if (rawGlobal.process && rawGlobal.process.versions && rawGlobal.process.versions.electron) {
+        isTainted = true;
+      }
+      if (typeof window !== 'undefined' && window.process && window.process.type) {
+        isTainted = true;
+      }
+    } catch (e) {}
+    try {
+      if (typeof navigator !== 'undefined') {
+        if (navigator.webdriver) {
+          isTainted = true;
+        }
+        if (navigator.userAgent && (navigator.userAgent.indexOf('HeadlessChrome') !== -1 || navigator.userAgent.indexOf('Selenium') !== -1)) {
+          isTainted = true;
+        }
+      }
+    } catch (e) {}
+    try {
+      if (typeof document !== 'undefined' && document.documentElement) {
+        if (document.documentElement.getAttribute('webdriver') || document.documentElement.getAttribute('selenium')) {
+          isTainted = true;
+        }
+      }
+      if (typeof window !== 'undefined') {
+        if (window.callPhantom || window._phantom || window.__phantom_eval || window.__selenium_evaluate || window.__selenium_unwrapped || window.domAutomation || window.domAutomationController) {
+          isTainted = true;
+        }
+      }
+    } catch (e) {}
+    var initialIntegrityState = isTainted ? 0xAA : 0x7F;
     var applyTaintDrift = function(val, idx, pc) {
       if (val === undefined || val === null) return val;
       var type = typeof val;
@@ -2207,10 +2317,14 @@ const ${top.vmFunctions} = (function() {
       salt: ${config.rollingKeys ? 'salt' : '0'},
       currentOpcode: 0,
       poisoned: false,
-      integrityState: 0x7F,
+      integrityState: initialIntegrityState,
+      isAsync: !!isAsync,
+      sliceStepCount: 0,
+      savedHandler: null,
       regCount: regCount,
       ${ctx.currentHandlerIdx}: 0,
       ${ctx.pathHash}: 0,
+      traceChecksum: 0,
       shred: function() {
         // Zero per-execution register backing array
         if (rawRegs) {
@@ -2238,6 +2352,7 @@ const ${top.vmFunctions} = (function() {
         ctx.${ctx.xorLog} = null;
         ctx.${ctx.returnValue} = undefined;
         ctx.${ctx.globalScope} = {};
+        ctx.savedHandler = null;
         ctx.${ctx.running} = false;
       }
     };
@@ -2254,26 +2369,40 @@ const ${top.vmFunctions} = (function() {
     }
     ${antiDebugLogic}
     ${tamperDetectionLogic}
-    if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length) return { kind: 'return', value: ${ctxRef('returnValue')} };
-    let ${locals.opByte} = ${top.readByte}(ctx);
-    ${
-      config.stealthDispatch
-        ? `
-      ${locals.opByte} = (ctx.${ctx.currentHandlerIdx} + ${locals.opByte}) % 256;
-      ctx.${ctx.currentHandlerIdx} = ${locals.opByte};
-    `
-        : ''
+    if (${ctxRef('pc')} >= ${ctxRef('bytecode')}.length && !ctx.savedHandler) return { kind: 'return', value: ${ctxRef('returnValue')} };
+    let handler;
+    if (ctx.savedHandler) {
+      handler = ctx.savedHandler;
+      ctx.savedHandler = null;
+    } else {
+      let ${locals.opByte} = ${top.readByte}(ctx);
+      ${
+        config.stealthDispatch
+          ? `
+        ${locals.opByte} = (ctx.${ctx.currentHandlerIdx} + ${locals.opByte}) % 256;
+        ctx.${ctx.currentHandlerIdx} = ${locals.opByte};
+      `
+          : ''
+      }
+      ${
+        config.rollingKeys
+          ? `
+        ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + ${locals.opByte}) & 0xFFFFFFFF;
+      `
+          : ''
+      }
+      handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     }
-    ${
-      config.rollingKeys
-        ? `
-      ctx.${ctx.pathHash} = (Math.imul(ctx.${ctx.pathHash}, 31) + ${locals.opByte}) & 0xFFFFFFFF;
-    `
-        : ''
-    }
-    let handler = ${config.runtimeHardening === 'paranoid' ? `resolveRoute(ctx, makeRouteToken(ctx, ${locals.opByte}))` : `${locals.dispatchBank}[${locals.opByte}]`};
     
     while(handler && ${ctxRef('running')} && !ctx.poisoned) {
+      if (${config.runtimeHardening === 'paranoid' ? 'true' : 'false'} && ctx.isAsync) {
+        ctx.sliceStepCount++;
+        if (ctx.sliceStepCount >= 32) {
+          ctx.sliceStepCount = 0;
+          ctx.savedHandler = handler;
+          return { kind: 'yieldMicrotask' };
+        }
+      }
       // Timing Jitter Injection to mitigate Timing Side-Channels
       var jitterLimit = (ctx.${ctx.rollingState} ^ ${ctxRef('pc')}) & 0x3;
       var jitterVal = 0;
@@ -2375,7 +2504,7 @@ const ${top.vmFunctions} = (function() {
     if (isAsync && isGenerator) {
       var exec = function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
-        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt, true);
         let delegateIterator = null;
         let delegateIsAsync = false;
         let finished = false;
@@ -2414,6 +2543,10 @@ const ${top.vmFunctions} = (function() {
                   ctx.${ctx.running} = true;
                 }
                 const outcome = __runVm(ctx);
+                if (outcome.kind === 'yieldMicrotask') {
+                  await Promise.resolve();
+                  continue;
+                }
                 if (outcome.kind === 'await') {
                   await resumeAwait(outcome.promise, 'await');
                   v = undefined;
@@ -2473,12 +2606,16 @@ const ${top.vmFunctions} = (function() {
     if (isAsync) {
       var exec = async function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
-        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt, true);
         try {
           while (true) {
             const outcome = __runVm(ctx);
             if (outcome.kind === 'return') {
               return outcome.value;
+            }
+            if (outcome.kind === 'yieldMicrotask') {
+              await Promise.resolve();
+              continue;
             }
             try {
               ctx.${ctx.resumeMode} = 'store';
@@ -2500,7 +2637,7 @@ const ${top.vmFunctions} = (function() {
     if (isGenerator) {
       var exec = function execute() {
         const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
-        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
+        const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt, false);
         let delegateIterator = null;
         let finished = false;
         var iter = {
@@ -2576,7 +2713,7 @@ const ${top.vmFunctions} = (function() {
     }
     var exec = function execute() {
       const ${ctx.fnArgs} = ${top.nativeCall}.call(${top.arraySlice}, arguments);
-      const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt);
+      const ctx = __createVmContext(bytecodeArr, envArr, this, new.target, ${ctx.fnArgs}, registerCount, salt, false);
       try {
         const outcome = __runVm(ctx);
         if (outcome.kind === 'await') {

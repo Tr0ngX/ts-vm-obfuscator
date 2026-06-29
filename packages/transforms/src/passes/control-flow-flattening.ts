@@ -90,12 +90,25 @@ export class ControlFlowFlatteningPass implements TransformPass {
         if (block.terminator.kind === 'return' || block.terminator.kind === 'throw') {
           term = block.terminator;
         } else if (block.terminator.kind === 'jump') {
+          const sourceState = stateMap.get(block.id)!;
           const targetState = stateMap.get(block.terminator.targets[0]!)!;
-          insts.push({
-            opcode: OpCode.LoadConst,
-            operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(targetState)! }],
-            result: stateReg,
-          });
+          const transitionKey = sourceState ^ targetState;
+          const keyIdx = getOrAddNumberConstant(transitionKey);
+          insts.push(
+            {
+              opcode: OpCode.LoadConst,
+              operands: [{ kind: OperandKind.ConstantIndex, value: keyIdx }],
+              result: tempReg,
+            },
+            {
+              opcode: OpCode.BitXor,
+              operands: [
+                { kind: OperandKind.Register, value: stateReg },
+                { kind: OperandKind.Register, value: tempReg },
+              ],
+              result: stateReg,
+            },
+          );
           term = { kind: 'jump', targets: [dispatcherId] };
         } else if (block.terminator.kind === 'branch') {
           const trueState = stateMap.get(block.terminator.targets[0]!)!;
@@ -104,13 +117,25 @@ export class ControlFlowFlatteningPass implements TransformPass {
           const trueBlockId = `__cff_br_t_${ctx.rng.identifier(4)}`;
           const falseBlockId = `__cff_br_f_${ctx.rng.identifier(4)}`;
 
+          const sourceState = stateMap.get(block.id)!;
+          const trueKey = sourceState ^ trueState;
+          const falseKey = sourceState ^ falseState;
+
           caseBlocks.push({
             id: trueBlockId,
             label: 'cff_br_true',
             instructions: [
               {
                 opcode: OpCode.LoadConst,
-                operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(trueState)! }],
+                operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(trueKey) }],
+                result: tempReg,
+              },
+              {
+                opcode: OpCode.BitXor,
+                operands: [
+                  { kind: OperandKind.Register, value: stateReg },
+                  { kind: OperandKind.Register, value: tempReg },
+                ],
                 result: stateReg,
               },
             ],
@@ -125,7 +150,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
             instructions: [
               {
                 opcode: OpCode.LoadConst,
-                operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(falseState)! }],
+                operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(falseKey) }],
+                result: tempReg,
+              },
+              {
+                opcode: OpCode.BitXor,
+                operands: [
+                  { kind: OperandKind.Register, value: stateReg },
+                  { kind: OperandKind.Register, value: tempReg },
+                ],
                 result: stateReg,
               },
             ],
@@ -219,6 +252,12 @@ export class ControlFlowFlatteningPass implements TransformPass {
           opcode: OpCode.ArrayNew,
           operands: [],
           result: tableReg,
+        },
+        // Initialize state register to entryStateId
+        {
+          opcode: OpCode.LoadConst,
+          operands: [{ kind: OperandKind.ConstantIndex, value: stateConstants.get(entryStateId)! }],
+          result: stateReg,
         },
       ];
 
@@ -364,7 +403,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
             instructions: [
               {
                 opcode: OpCode.LoadConst,
-                operands: [{ kind: OperandKind.ConstantIndex, value: decoyStateIdx }],
+                operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(decoyStateId ^ 0x12345678) }],
+                result: tempReg,
+              },
+              {
+                opcode: OpCode.BitXor,
+                operands: [
+                  { kind: OperandKind.Register, value: stateReg },
+                  { kind: OperandKind.Register, value: tempReg },
+                ],
                 result: stateReg,
               },
             ],

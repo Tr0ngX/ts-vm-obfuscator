@@ -107,6 +107,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
   const baseTransforms = [
     { name: 'InstructionSubstitutionPass', enabled: true, options: {} },
     { name: 'SymbolIndirectionPass', enabled: true, options: {} },
+    { name: 'ApiHidingPass', enabled: true, options: {} },
     { name: 'StringPoolEncodingPass', enabled: true, options: {} },
     { name: 'FunctionVirtualizationPass', enabled: true, options: {} },
     { name: 'DeadCodeInjectionPass', enabled: true, options: {} },
