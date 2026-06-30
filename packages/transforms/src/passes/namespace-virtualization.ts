@@ -382,7 +382,15 @@ export class NamespaceVirtualizationPass implements TransformPass {
 
         for (const block of func.blocks) {
           for (const inst of block.instructions) {
-            if (inst.opcode === OpCode.ObjectNew && inst.result) {
+            if (
+              (inst.opcode === OpCode.ObjectNew ||
+                inst.opcode === OpCode.ArrayNew ||
+                inst.opcode === OpCode.ClosureNew ||
+                inst.opcode === OpCode.New ||
+                inst.opcode === OpCode.NewWithArray ||
+                inst.opcode === OpCode.GeneratorNew) &&
+              inst.result
+            ) {
               localObjects.add(inst.result);
             } else if (inst.opcode === OpCode.Move) {
               const srcOp = inst.operands[0];
