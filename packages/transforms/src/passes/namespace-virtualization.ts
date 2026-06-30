@@ -388,7 +388,10 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 inst.opcode === OpCode.ClosureNew ||
                 inst.opcode === OpCode.New ||
                 inst.opcode === OpCode.NewWithArray ||
-                inst.opcode === OpCode.GeneratorNew) &&
+                inst.opcode === OpCode.GeneratorNew ||
+                inst.opcode === OpCode.LoadCapture ||
+                inst.opcode === OpCode.CellGet ||
+                inst.opcode === OpCode.EnvGet) &&
               inst.result
             ) {
               localObjects.add(inst.result);
