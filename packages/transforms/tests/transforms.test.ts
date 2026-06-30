@@ -1133,7 +1133,14 @@ describe('Advanced Transforms', () => {
         imports: [],
         exports: [],
         constantPool: [{ index: 0, kind: ConstantKind.String, value: 'customProp' }],
-        metadata: { sourceFile: 'ns-virt-test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 2, originalByteSize: 100 },
+        metadata: {
+          sourceFile: 'ns-virt-test.ts',
+          buildTimestamp: 0,
+          blockCount: 1,
+          functionCount: 1,
+          instructionCount: 2,
+          originalByteSize: 100,
+        },
         ...overrides,
       };
 
