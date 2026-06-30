@@ -6,6 +6,10 @@
 
 > **Next-Generation Code Virtualization Pipeline** for securing high-value business logic in TypeScript and JavaScript ecosystems.
 
+<p align="center">
+  <video src="docs/images/tsxobf-part1.mp4" width="100%" controls muted loop></video>
+</p>
+
 ---
 **Languages:** [English](README.md) | [Tiếng Việt (Vietnamese)](README_VN.md) | **[Ultimate Benchmark Suite Report](BENCHMARK.md)**
 ---
