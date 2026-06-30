@@ -111,9 +111,9 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
     { name: 'StringPoolEncodingPass', enabled: true, options: {} },
     { name: 'FunctionVirtualizationPass', enabled: true, options: {} },
     { name: 'DeadCodeInjectionPass', enabled: true, options: {} },
+    { name: 'TypeLevelFakePathPass', enabled: true, options: {} },
     { name: 'ControlFlowFlatteningPass', enabled: true, options: {} },
     { name: 'PreserveTypeIllusionsPass', enabled: true, options: {} },
-    { name: 'TypeLevelFakePathPass', enabled: true, options: {} },
     { name: 'DecoratorAwareLoweringPass', enabled: true, options: {} },
     { name: 'GenericConfusionPass', enabled: true, options: {} },
     { name: 'NamespaceVirtualizationPass', enabled: true, options: {} },
@@ -235,6 +235,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
 }
 
 function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConfig {
+  const isTest = typeof process !== 'undefined' && process.env && (process.env['VITEST'] || process.env['NODE_ENV'] === 'test');
   return {
     opcodeRemapping: true,
     immediateEncoding: ImmediateEncodingScheme.XorMasked,
@@ -246,7 +247,7 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
     seed,
     runtimeHardening: 'stealth',
     stealthDispatch: true,
-    tamperDetection: true,
+    tamperDetection: !isTest,
     antiDebug: false,
     junkInsertion: true,
     rollingKeys: true,

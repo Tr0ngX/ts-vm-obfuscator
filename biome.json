@@ -55,7 +55,9 @@
       "dist-obf",
       "examples",
       "apps",
+      "scratch-out",
       "*.js",
+      "*.mjs",
       "*.json",
       "packages/*/tests/fixtures",
       "packages/*/tests/__snapshots__"

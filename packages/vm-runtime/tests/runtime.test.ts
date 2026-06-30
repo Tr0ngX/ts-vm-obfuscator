@@ -866,7 +866,7 @@ describe('VM Runtime', () => {
   it('should apply silent drift when environmental taint is detected via overrides', () => {
     const filePath = path.join(__dirname, '..', '..', 'ir', 'tests', 'fixtures', 'control-flow-pack.ts');
     const ir = lowerToIR(createModuleInfo(filePath), createGraph(), filePath, { forceVirtualizeAll: true });
-    const config = createVMConfig(101, { tamperDetection: false });
+    const config = createVMConfig(101, { tamperDetection: true });
     const bytecode = compileToBytecode(ir, config);
     const bundle = buildVMRuntime(bytecode, config);
 

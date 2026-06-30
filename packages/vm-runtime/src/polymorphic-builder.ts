@@ -541,10 +541,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
 
   const exportedFunctions = module.functions.filter((f) => f.isEntryPoint);
   const hiddenAPIs = module.metadata?.hiddenAPIs ?? [];
+  const apiXorKey = (config.seed ^ 0xbeefface) & 0xff || 0x5a;
   const encodedAPIs = hiddenAPIs.map((api) => {
     let enc = '';
     for (let i = 0; i < api.length; i++) {
-      enc += String.fromCharCode(api.charCodeAt(i) ^ 0x5a);
+      enc += String.fromCharCode(api.charCodeAt(i) ^ apiXorKey);
     }
     return enc;
   });
@@ -1033,23 +1034,46 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   declareHandler(OpCode.TypeOf, `${readArgs} ctx.regs[args[1]] = typeof ctx.regs[args[0]];`);
   declareHandler(OpCode.InstanceOf, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] instanceof ctx.regs[args[1]];`);
   declareHandler(OpCode.In, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]] in ctx.regs[args[1]];`);
-  declareHandler(OpCode.PropGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(
+    OpCode.PropGet,
+    `${readArgs} {
+    var key = ctx.regs[args[1]];
+    var keyStr = String(key);
+    if (keyStr === '__proto__' || keyStr === 'constructor') {
+      throw new TypeError('Prototype/constructor access blocked');
+    }
+    console.log('PropGet EXEC - Obj:', ctx.regs[args[0]] ? typeof ctx.regs[args[0]] : 'null', 'Key:', key, 'Val:', ctx.regs[args[0]] ? ctx.regs[args[0]][key] : 'undefined', 'DestReg:', args[2], 'PC:', ctx.pc);
+    ctx.regs[args[2]] = ctx.regs[args[0]][key];
+  }`,
+  );
   declareHandler(
     OpCode.PropSet,
     `${readArgs} {
     var key = ctx.regs[args[1]];
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+    var keyStr = String(key);
+    if (keyStr === '__proto__' || keyStr === 'constructor') {
       throw new TypeError('Prototype mutation blocked');
     }
     ctx.regs[args[0]][key] = ctx.regs[args[2]];
   }`,
   );
-  declareHandler(OpCode.ComputedGet, `${readArgs} ctx.regs[args[2]] = ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(
+    OpCode.ComputedGet,
+    `${readArgs} {
+    var key = ctx.regs[args[1]];
+    var keyStr = String(key);
+    if (keyStr === '__proto__' || keyStr === 'constructor') {
+      throw new TypeError('Prototype/constructor access blocked');
+    }
+    ctx.regs[args[2]] = ctx.regs[args[0]][key];
+  }`,
+  );
   declareHandler(
     OpCode.ComputedSet,
     `${readArgs} {
     var key = ctx.regs[args[1]];
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+    var keyStr = String(key);
+    if (keyStr === '__proto__' || keyStr === 'constructor') {
       throw new TypeError('Prototype mutation blocked');
     }
     ctx.regs[args[0]][key] = ctx.regs[args[2]];
@@ -1057,7 +1081,17 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   );
   declareHandler(OpCode.ArrayNew, `${readArgs} ctx.regs[args[0]] = [];`);
   declareHandler(OpCode.ObjectNew, `${readArgs} ctx.regs[args[0]] = {};`);
-  declareHandler(OpCode.Delete, `${readArgs} delete ctx.regs[args[0]][ctx.regs[args[1]]];`);
+  declareHandler(
+    OpCode.Delete,
+    `${readArgs} {
+    var key = ctx.regs[args[1]];
+    var keyStr = String(key);
+    if (keyStr === '__proto__' || keyStr === 'constructor') {
+      throw new TypeError('Prototype/constructor deletion blocked');
+    }
+    delete ctx.regs[args[0]][key];
+  }`,
+  );
   declareHandler(OpCode.CellNew, `${readArgs} ctx.regs[args[1]] = { v: ctx.regs[args[0]] };`);
   declareHandler(OpCode.CellGet, `${readArgs} ctx.regs[args[1]] = ctx.regs[args[0]].v;`);
   declareHandler(OpCode.CellSet, `${readArgs} ctx.regs[args[0]].v = ctx.regs[args[1]];`);
@@ -1088,7 +1122,10 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     } else if (spreadSource != null) {
       var spreadKeys = Object.keys(spreadSource);
       for (var ski = 0; ski < spreadKeys.length; ski++) {
-        var spreadKey = spreadKeys[ski];
+        var spreadKey = String(spreadKeys[ski]);
+        if (spreadKey === '__proto__' || spreadKey === 'constructor') {
+          continue;
+        }
         spreadTarget[spreadKey] = spreadSource[spreadKey];
       }
     }
@@ -1102,6 +1139,14 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var indexedSpreadSource = ${regRef('args[1]')};
     var indexedSpreadStart = ${regRef('args[2]')};
     if (indexedSpreadSource == null || typeof indexedSpreadSource[Symbol.iterator] !== 'function') {
+      console.log('FAIL SPREAD:', {
+        indexedSpreadSource: indexedSpreadSource,
+        type: typeof indexedSpreadSource,
+        hasSymbol: typeof Symbol !== 'undefined',
+        Symbol: typeof Symbol !== 'undefined' ? Symbol : null,
+        iterator: typeof Symbol !== 'undefined' ? Symbol.iterator : null,
+        val: indexedSpreadSource ? indexedSpreadSource[Symbol.iterator] : null
+      });
       throw new TypeError('VM spread source is not iterable');
     }
     var indexedSpreadIterator = indexedSpreadSource[Symbol.iterator]();
@@ -1143,6 +1188,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var fn = ${regRef('args[0]')};
     if (typeof fn === 'undefined' || fn === null) {
+      console.log('FAIL CALL: target is undefined!', {
+        targetRegIndex: args[0],
+        targetRegVal: fn,
+        pc: ctx.${ctx.pc},
+        args: args,
+        regs: ctx.regs,
+      });
       throw new TypeError('VM Call target is undefined or null');
     }
     if (typeof fn !== 'function') {
@@ -1187,7 +1239,11 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         }
       } catch(e) {}
     }
-    ctx.regs[args[2]] = ${top.nativeApply}.call(fnArray, null, ctx.regs[args[1]]);
+    var res = ${top.nativeApply}.call(fnArray, null, ctx.regs[args[1]]);
+    if (res === 'imul' || res === 'Math' || (typeof res === 'string' && res.length < 10)) {
+      console.log('CallWithArray EXEC - Target:', fnArray ? fnArray.name : 'null', 'Args:', ctx.regs[args[1]], 'Res:', res, 'DestReg:', args[2], 'PC:', ctx.pc);
+    }
+    ctx.regs[args[2]] = res;
   `,
   );
   declareHandler(
@@ -1830,18 +1886,20 @@ const ${top.vmFunctions} = (function() {
     return hash >>> 0;
   }
 
-  function __resolveAPI(hash) {
-    var g = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
-    var apis = ${JSON.stringify(encodedAPIs)}.map(function(enc) {
-      var dec = '';
-      for (var i = 0; i < enc.length; i++) {
-        dec += String.fromCharCode(enc.charCodeAt(i) ^ 0x5a);
-      }
-      return dec;
-    });
+  var __resolvedAPICache = {};
 
-    for (var i = 0; i < apis.length; i++) {
-      var api = apis[i];
+  function __resolveAPI(hash) {
+    if (__resolvedAPICache[hash]) {
+      return __resolvedAPICache[hash];
+    }
+    var g = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+    var encoded = ${JSON.stringify(encodedAPIs)};
+    for (var i = 0; i < encoded.length; i++) {
+      var enc = encoded[i];
+      var api = '';
+      for (var k = 0; k < enc.length; k++) {
+        api += String.fromCharCode(enc.charCodeAt(k) ^ ${apiXorKey});
+      }
       if (djb2(api) === hash) {
         var parts = api.split('.');
         var curr = g;
@@ -1859,16 +1917,19 @@ const ${top.vmFunctions} = (function() {
           var parent = g;
           if (parts.length > 1) {
             parent = g;
-            for (var k = 0; k < parts.length - 1; k++) {
-              if (k === 0 && (parts[k] === 'window' || parts[k] === 'globalThis' || parts[k] === 'self' || parts[k] === 'global')) {
+            for (var m = 0; m < parts.length - 1; m++) {
+              if (m === 0 && (parts[m] === 'window' || parts[m] === 'globalThis' || parts[m] === 'self' || parts[m] === 'global')) {
                 parent = g;
               } else {
-                parent = parent[parts[k]];
+                parent = parent[parts[m]];
               }
             }
           }
-          return curr.bind(parent);
+          var bound = curr.bind(parent);
+          __resolvedAPICache[hash] = bound;
+          return bound;
         }
+        __resolvedAPICache[hash] = curr;
         return curr;
       }
     }
@@ -1903,7 +1964,7 @@ const ${top.vmFunctions} = (function() {
 
   function ${top.onDetection}(ctx, mask) {
     if (!ctx) return;
-    ctx.integrityState ^= (mask || 0x1A);
+    ${config.tamperDetection ? 'ctx.integrityState ^= (mask || 0x1A);' : ''}
   }
 
   ${runtimeStringBootstrap}
@@ -1915,9 +1976,15 @@ const ${top.vmFunctions} = (function() {
     if (c.kind === 'string' && ${config.constantPoolEncoding === ConstantEncodingScheme.XorRotate}) {
       var val = c.value;
       var decoded = '';
-      var stringSeed = (${top.seed} ^ (index * 0x9E3779B9)) | 0;
+      var stringSeed = (${top.seed} ^ (index * 0x9E3779B9)) & 0xFFFFFFFF;
+      ${
+        config.rollingKeys
+          ? `
       if (ctx && ctx.${ctx.pathHash} !== undefined) {
-        stringSeed = (stringSeed ^ ctx.${ctx.pathHash}) | 0;
+        stringSeed = (stringSeed ^ ctx.${ctx.pathHash}) & 0xFFFFFFFF;
+      }
+      `
+          : ''
       }
       
       // Deriving 16-byte key using LCG
@@ -1964,6 +2031,11 @@ const ${top.vmFunctions} = (function() {
         decoded += String.fromCharCode(val.charCodeAt(i) ^ keystreamByte);
       }
       
+      if (decoded === 'Math' || decoded === 'imul' || decoded.length < 10) {
+        console.log('getCP Decrypted - Index:', index, 'Val:', val, 'Decoded:', decoded, 'Seed:', stringSeed, 'pathHash:', ctx ? ctx.pathHash : 'no-ctx');
+      }
+      c.value = decoded;
+      c.kind = 'raw_string';
       return decoded;
     }
     return c.kind === 'undefined' ? undefined : c.value;
@@ -2102,6 +2174,9 @@ const ${top.vmFunctions} = (function() {
     var ctx;
     var rawGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
     var isTainted = false;
+    ${
+      config.tamperDetection
+        ? `
     if (rawGlobal.__tsvm_integrity_override__ === 'tainted' || rawGlobal.__tsvm_taint__ || rawGlobal.__VM_TAINT__) {
       isTainted = true;
     }
@@ -2140,6 +2215,9 @@ const ${top.vmFunctions} = (function() {
         }
       }
     } catch (e) {}
+    `
+        : ''
+    }
     var initialIntegrityState = isTainted ? 0xAA : 0x7F;
     var applyTaintDrift = function(val, idx, pc) {
       if (val === undefined || val === null) return val;
@@ -2179,7 +2257,7 @@ const ${top.vmFunctions} = (function() {
         if (typeof prop === 'string') {
           var idx = +prop;
           if (idx === idx) {
-            if (idx < 0 || idx >= regCount) {
+            if (idx < 0 ? idx < -128 : idx >= regCount) {
               throw new Error('Register out of bounds (get): ' + idx + ', regCount: ' + regCount);
             }
             var val = target[prop];
@@ -2195,7 +2273,7 @@ const ${top.vmFunctions} = (function() {
         if (typeof prop === 'string') {
           var idx = +prop;
           if (idx === idx) {
-            if (idx < 0 || idx >= regCount) {
+            if (idx < 0 ? idx < -128 : idx >= regCount) {
               throw new Error('Register out of bounds (set): ' + idx + ', regCount: ' + regCount + ', val: ' + val);
             }
             if (ctx && ctx.integrityState !== 0x7F) {
@@ -2208,23 +2286,25 @@ const ${top.vmFunctions} = (function() {
       }
     });
     var rawGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : global;
-    var secureGlobalProxy = new Proxy(rawGlobal, {
+    var virtualGlobalScope = {};
+    var allowedGlobals = {
+      'Math': 1, 'JSON': 1, 'Date': 1, 'parseInt': 1, 'parseFloat': 1,
+      'isNaN': 1, 'isFinite': 1, 'decodeURI': 1, 'decodeURIComponent': 1,
+      'encodeURI': 1, 'encodeURIComponent': 1, 'String': 1, 'Number': 1,
+      'Boolean': 1, 'Array': 1, 'Object': 1, 'RegExp': 1, 'Error': 1,
+      'TypeError': 1, 'RangeError': 1, 'ReferenceError': 1, 'SyntaxError': 1,
+      'Map': 1, 'Set': 1, 'WeakMap': 1, 'WeakSet': 1, 'Symbol': 1,
+      'Promise': 1, 'setTimeout': 1, 'clearTimeout': 1, 'setInterval': 1,
+      'clearInterval': 1, 'console': 1, 'undefined': 1, 'Infinity': 1, 'NaN': 1
+    };
+    var secureGlobalProxy = new Proxy(virtualGlobalScope, {
       get: function(target, prop) {
         if (typeof prop === 'string') {
-          if (
-            prop === '__proto__' ||
-            prop === 'constructor' ||
-            prop === 'prototype' ||
-            prop === 'process' ||
-            prop === 'require' ||
-            prop === 'child_process' ||
-            prop === 'fs' ||
-            prop === 'eval' ||
-            prop === 'Function' ||
-            prop === 'module' ||
-            prop === 'exports'
-          ) {
-            return undefined;
+          if (prop in target) {
+            return target[prop];
+          }
+          if (allowedGlobals[prop]) {
+            return rawGlobal[prop];
           }
           if (prop === 'fetch') {
             if (pristineFetch) {
@@ -2252,8 +2332,7 @@ const ${top.vmFunctions} = (function() {
           if (prop === 'Request') return pristineRequest;
           if (prop === 'Response') return pristineResponse;
         }
-        var val = target[prop];
-        return val;
+        return undefined;
       },
       set: function(target, prop, val) {
         if (typeof prop === 'string') {
@@ -2272,25 +2351,13 @@ const ${top.vmFunctions} = (function() {
           ) {
             throw new TypeError('Access Denied');
           }
+          target[prop] = val;
         }
-        target[prop] = val;
         return true;
       },
       has: function(target, prop) {
         if (typeof prop === 'string') {
-          if (
-            prop === '__proto__' ||
-            prop === 'constructor' ||
-            prop === 'prototype' ||
-            prop === 'process' ||
-            prop === 'require' ||
-            prop === 'child_process' ||
-            prop === 'fs' ||
-            prop === 'eval' ||
-            prop === 'Function'
-          ) {
-            return false;
-          }
+          return (prop in target) || !!allowedGlobals[prop] || prop === 'fetch' || prop === 'XMLHttpRequest';
         }
         return prop in target;
       }

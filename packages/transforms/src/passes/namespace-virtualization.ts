@@ -154,6 +154,80 @@ export class NamespaceVirtualizationPass implements TransformPass {
       'set',
       'deleteProperty',
       'ownKeys',
+      // Math methods (used by CFF dispatcher hash computation and user code)
+      'imul',
+      'abs',
+      'floor',
+      'ceil',
+      'round',
+      'min',
+      'max',
+      'pow',
+      'sqrt',
+      'random',
+      'sign',
+      'trunc',
+      'log',
+      'log2',
+      'log10',
+      'exp',
+      'sin',
+      'cos',
+      'tan',
+      'atan2',
+      'clz32',
+      'fround',
+      'hypot',
+      'cbrt',
+      // String static methods
+      'fromCharCode',
+      'fromCodePoint',
+      'raw',
+      // Number methods
+      'toFixed',
+      'toPrecision',
+      'isNaN',
+      'isFinite',
+      'parseInt',
+      'parseFloat',
+      'isInteger',
+      'isSafeInteger',
+      // Array static methods
+      'isArray',
+      'from',
+      'of',
+      'sort',
+      'reverse',
+      'fill',
+      'copyWithin',
+      'flat',
+      'flatMap',
+      'every',
+      'some',
+      'at',
+      // Object static methods
+      'is',
+      // Date/JSON/RegExp
+      'now',
+      'parse',
+      'stringify',
+      'getDate',
+      'getMonth',
+      'getFullYear',
+      'getTime',
+      'setDate',
+      'toISOString',
+      'toJSON',
+      'source',
+      'flags',
+      'lastIndex',
+      // Map/Set
+      'add',
+      'delete',
+      'clear',
+      'size',
+      'has',
+      'forEach',
     ]);
 
     function hashString(str: string, seed: number): string {
@@ -340,6 +414,12 @@ export class NamespaceVirtualizationPass implements TransformPass {
       }
 
       const newBlocks = func.blocks.map((block) => {
+        // Skip CFF-generated blocks — these contain internal dispatcher logic
+        // (Math.imul hash computation, state transitions) that must not be namespace-virtualized
+        if (block.label?.startsWith('cff_')) {
+          return block;
+        }
+
         const newInstructions: Instruction[] = [];
         for (const inst of block.instructions) {
           if (inst.opcode === OpCode.PropGet || inst.opcode === OpCode.PropSet) {

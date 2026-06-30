@@ -1,4 +1,4 @@
-import type { IRModule, Instruction } from '@tsvm/shared';
+import type { IRModule, Instruction, Register } from '@tsvm/shared';
 import { OpCode, ConstantKind, OperandKind } from '@tsvm/shared';
 
 // ─────────────────────────────────────────────────────────────
@@ -115,14 +115,31 @@ function resolvePropertyName(
  *
  * This is fully deterministic — no randomness is involved.
  */
+function getMaxRegister(func: any): number {
+  let max = -1;
+  for (const block of func.blocks) {
+    for (const inst of block.instructions) {
+      if (inst.result) {
+        const val = Number.parseInt(inst.result.replace('r', ''), 10);
+        if (!Number.isNaN(val) && val > max) max = val;
+      }
+      for (const op of inst.operands || []) {
+        if (op.kind === OperandKind.Register && typeof op.value === 'string') {
+          const val = Number.parseInt(op.value.replace('r', ''), 10);
+          if (!Number.isNaN(val) && val > max) max = val;
+        }
+      }
+    }
+  }
+  return max + 1;
+}
+
 function buildGuardSequence(
   reason: 'ipc_protection' | 'context_isolation',
   propertyName: string,
-  guardIndex: number,
+  guardRegister: Register,
   objectReg: string,
 ): readonly Instruction[] {
-  const guardRegister = `r${-(guardIndex + 1)}` as const;
-
   const nopMarker: Instruction = {
     opcode: OpCode.Nop,
     operands: [],
@@ -130,7 +147,6 @@ function buildGuardSequence(
       electronHardened: true,
       reason,
       property: propertyName,
-      guardIndex,
     },
   };
 
@@ -193,6 +209,8 @@ export function applyElectronHardening(module: IRModule): IRModule {
   let hardenCount = 0;
   const newFunctions = module.functions.map((func) => {
     let changed = false;
+    let maxRegId = getMaxRegister(func);
+    const addedLocals: any[] = [];
     const newBlocks = func.blocks.map((block) => {
       const newInstructions: Instruction[] = [];
       for (const inst of block.instructions) {
@@ -202,7 +220,14 @@ export function applyElectronHardening(module: IRModule): IRModule {
             const reason = classifySensitiveProperty(propertyName);
             const objOperand = inst.operands[0];
             if (reason !== null && objOperand && objOperand.kind === OperandKind.Register && typeof objOperand.value === 'string') {
-              const guardInstructions = buildGuardSequence(reason, propertyName, hardenCount, objOperand.value);
+              const guardRegister = `r${maxRegId++}` as Register;
+              addedLocals.push({
+                name: `electron_harden_${guardRegister}`,
+                register: guardRegister,
+                type: 'any',
+                isCaptured: false,
+              });
+              const guardInstructions = buildGuardSequence(reason, propertyName, guardRegister, objOperand.value);
               for (const guardInst of guardInstructions) {
                 newInstructions.push(guardInst);
               }
@@ -215,7 +240,7 @@ export function applyElectronHardening(module: IRModule): IRModule {
       }
       return changed ? { ...block, instructions: newInstructions } : block;
     });
-    return changed ? { ...func, blocks: newBlocks } : func;
+    return changed ? { ...func, locals: [...func.locals, ...addedLocals], blocks: newBlocks } : func;
   });
 
   return hardenCount > 0 ? { ...module, functions: newFunctions } : module;

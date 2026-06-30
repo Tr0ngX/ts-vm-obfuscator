@@ -9,7 +9,7 @@ import type {
   Operand,
   Register,
 } from '@tsvm/shared';
-import { OpCode, OperandKind, ConstantKind } from '@tsvm/shared';
+import { OpCode, OperandKind, ConstantKind, IRType } from '@tsvm/shared';
 import { getMaxRegister } from '../utils.js';
 
 export class ControlFlowFlatteningPass implements TransformPass {
@@ -47,12 +47,16 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const tempReg = `r${maxReg + 2}` as Register;
       const tableReg = `r${maxReg + 3}` as Register;
       const primeReg = `r${maxReg + 4}` as Register;
-      const sizeReg = `r${maxReg + 5}` as Register;
-      const mulReg = `r${maxReg + 6}` as Register;
-      const idxReg = `r${maxReg + 7}` as Register;
-      const targetReg = `r${maxReg + 8}` as Register;
-      const constIdxReg = `r${maxReg + 9}` as Register;
-      const constLblReg = `r${maxReg + 10}` as Register;
+      const xorReg = `r${maxReg + 5}` as Register;
+      const fnvReg = `r${maxReg + 6}` as Register;
+      const mulReg = `r${maxReg + 7}` as Register;
+      const maskReg = `r${maxReg + 8}` as Register;
+      const hashReg = `r${maxReg + 9}` as Register;
+      const sizeReg = `r${maxReg + 10}` as Register;
+      const idxReg = `r${maxReg + 11}` as Register;
+      const targetReg = `r${maxReg + 12}` as Register;
+      const constIdxReg = `r${maxReg + 13}` as Register;
+      const constLblReg = `r${maxReg + 14}` as Register;
 
       // 3. Add state constants to constant pool
       const stateConstants = new Map<number, number>(); // stateId -> cpIndex
@@ -67,6 +71,15 @@ export class ControlFlowFlatteningPass implements TransformPass {
         if (idx === -1) {
           idx = constantPool.length;
           constantPool.push({ index: idx, kind: ConstantKind.Number, value: val });
+        }
+        return idx;
+      };
+
+      const getOrAddStringConstant = (val: string): number => {
+        let idx = constantPool.findIndex((c) => c.kind === ConstantKind.String && c.value === val);
+        if (idx === -1) {
+          idx = constantPool.length;
+          constantPool.push({ index: idx, kind: ConstantKind.String, value: val });
         }
         return idx;
       };
@@ -219,7 +232,8 @@ export class ControlFlowFlatteningPass implements TransformPass {
           let collision = false;
           for (const block of orderedCases) {
             const stateId = stateMap.get(block.label!.replace('cff_case_', '')!)!;
-            const idx = (stateId * prime) % tableSize;
+            const hash = Math.imul(stateId ^ prime, 16777619) & 0x7fffffff;
+            const idx = hash % tableSize;
             if (seen.has(idx)) {
               collision = true;
               break;
@@ -240,7 +254,8 @@ export class ControlFlowFlatteningPass implements TransformPass {
       const tableSlots = new Map<number, string>();
       for (const caseBlock of orderedCases) {
         const stateId = stateMap.get(caseBlock.label!.replace('cff_case_', '')!)!;
-        const slotIdx = (stateId * selectedPrime) % tableSize;
+        const hash = Math.imul(stateId ^ selectedPrime, 16777619) & 0x7fffffff;
+        const slotIdx = hash % tableSize;
         tableSlots.set(slotIdx, caseBlock.id);
       }
 
@@ -315,31 +330,85 @@ export class ControlFlowFlatteningPass implements TransformPass {
             operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(selectedPrime) }],
             result: primeReg,
           },
-          // 2. Mul: stateReg * primeReg
+          // 2. BitXor: stateReg ^ primeReg
           {
-            opcode: OpCode.Mul,
+            opcode: OpCode.BitXor,
             operands: [
               { kind: OperandKind.Register, value: stateReg },
               { kind: OperandKind.Register, value: primeReg },
             ],
+            result: xorReg,
+          },
+          // 3. Load FNV-1a constant 16777619
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(16777619) }],
+            result: fnvReg,
+          },
+          // 4. Call Math.imul(xorReg, fnvReg) -> mulReg
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddStringConstant('Math') }],
+            result: constLblReg,
+          },
+          {
+            opcode: OpCode.LoadGlobal,
+            operands: [{ kind: OperandKind.Register, value: constLblReg }],
+            result: constLblReg,
+          },
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddStringConstant('imul') }],
+            result: constIdxReg,
+          },
+          {
+            opcode: OpCode.PropGet,
+            operands: [
+              { kind: OperandKind.Register, value: constLblReg },
+              { kind: OperandKind.Register, value: constIdxReg },
+            ],
+            result: constIdxReg,
+          },
+          {
+            opcode: OpCode.Call,
+            operands: [
+              { kind: OperandKind.Register, value: constIdxReg },
+              { kind: OperandKind.Register, value: xorReg },
+              { kind: OperandKind.Register, value: fnvReg },
+            ],
             result: mulReg,
           },
-          // 3. Load table size
+          // 5. Load mask 0x7FFFFFFF
+          {
+            opcode: OpCode.LoadConst,
+            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(0x7fffffff) }],
+            result: maskReg,
+          },
+          // 6. BitAnd: mulReg & maskReg
+          {
+            opcode: OpCode.BitAnd,
+            operands: [
+              { kind: OperandKind.Register, value: mulReg },
+              { kind: OperandKind.Register, value: maskReg },
+            ],
+            result: hashReg,
+          },
+          // 7. Load table size
           {
             opcode: OpCode.LoadConst,
             operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(tableSize) }],
             result: sizeReg,
           },
-          // 4. Mod: mulReg % sizeReg
+          // 8. Mod: hashReg % sizeReg
           {
             opcode: OpCode.Mod,
             operands: [
-              { kind: OperandKind.Register, value: mulReg },
+              { kind: OperandKind.Register, value: hashReg },
               { kind: OperandKind.Register, value: sizeReg },
             ],
             result: idxReg,
           },
-          // 5. ComputedGet: tableReg[idxReg] -> targetReg
+          // 9. ComputedGet: tableReg[idxReg] -> targetReg
           {
             opcode: OpCode.ComputedGet,
             operands: [
@@ -446,7 +515,28 @@ export class ControlFlowFlatteningPass implements TransformPass {
         [allBlocks[0], allBlocks[entryIdx]] = [allBlocks[entryIdx]!, allBlocks[0]!];
       }
 
-      return { ...func, blocks: allBlocks };
+      const newLocals = [
+        { name: 'cff_state', register: stateReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_temp', register: tempReg, type: IRType.Any, isCaptured: false },
+        { name: 'cff_table', register: tableReg, type: IRType.Any, isCaptured: false },
+        { name: 'cff_prime', register: primeReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_xor', register: xorReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_fnv', register: fnvReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_mul', register: mulReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_mask', register: maskReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_hash', register: hashReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_size', register: sizeReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_idx', register: idxReg, type: IRType.Number, isCaptured: false },
+        { name: 'cff_target', register: targetReg, type: IRType.Any, isCaptured: false },
+        { name: 'cff_const_idx', register: constIdxReg, type: IRType.Any, isCaptured: false },
+        { name: 'cff_const_lbl', register: constLblReg, type: IRType.Any, isCaptured: false },
+      ];
+
+      return {
+        ...func,
+        blocks: allBlocks,
+        locals: [...func.locals, ...newLocals],
+      };
     });
 
     return {

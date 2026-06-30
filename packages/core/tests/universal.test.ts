@@ -46,6 +46,12 @@ describe('universal profile', () => {
     expect(imported.vmArrow(4, 5)).toBe(21);
     expect(imported.switchTry(1)).toBe('one');
     expect(imported.switchTry(7)).toBe('other');
+    try {
+      const val = imported.destructured({ a: 2 }, 3, 4, 5);
+      console.log('TEST DESTRUCTURED RESULT:', val);
+    } catch (e) {
+      console.error('TEST DESTRUCTURED ERROR:', e);
+    }
     expect(imported.destructured({ a: 2 }, 3, 4, 5)).toBe(12);
     expect(imported.lifted({ value: 2 })).toBe(5);
     expect(imported.spreadHoles()).toBe('7:0|2|3|5|6:AB:2');

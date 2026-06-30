@@ -883,15 +883,15 @@ describe('Advanced Transforms', () => {
         OpCode.PropGet, // Original PropGet
       ]);
 
-      // Check the injected PropGet: fetches from 'r0' (object) and 'r-1' (property name), writing to 'r-1'
+      // Check the injected PropGet: fetches from 'r0' (object) and 'r3' (property name), writing to 'r3'
       const injectedPropGet = instructions[3]!;
       expect(injectedPropGet.operands[0]).toEqual({ kind: OperandKind.Register, value: 'r0' });
-      expect(injectedPropGet.operands[1]).toEqual({ kind: OperandKind.Register, value: 'r-1' });
-      expect(injectedPropGet.result).toBe('r-1');
+      expect(injectedPropGet.operands[1]).toEqual({ kind: OperandKind.Register, value: 'r3' });
+      expect(injectedPropGet.result).toBe('r3');
 
-      // Check the injected Call: invokes the function reference stored in 'r-1'
+      // Check the injected Call: invokes the function reference stored in 'r3'
       const injectedCall = instructions[4]!;
-      expect(injectedCall.operands[0]).toEqual({ kind: OperandKind.Register, value: 'r-1' });
+      expect(injectedCall.operands[0]).toEqual({ kind: OperandKind.Register, value: 'r3' });
     });
   });
 
