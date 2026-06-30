@@ -5,6 +5,7 @@ import { TypeLevelFakePathPass } from '../src/passes/type-level-fake-path.js';
 import { StripDebugPass } from '../src/passes/strip-debug.js';
 import { InstructionSubstitutionPass } from '../src/passes/instruction-substitution.js';
 import { ApiHidingPass } from '../src/passes/api-hiding.js';
+import { NamespaceVirtualizationPass } from '../src/passes/namespace-virtualization.js';
 import {
   ConstantKind,
   type IRModule,
@@ -1082,6 +1083,378 @@ describe('Advanced Transforms', () => {
       // The helper name should be added to the constant pool
       const helperNameCP = result.module.constantPool.find((c) => c.kind === ConstantKind.String && c.value === '__resolveAPI');
       expect(helperNameCP).toBeDefined();
+    });
+  });
+
+  describe('NamespaceVirtualizationPass', () => {
+    const makeCtx = (overrides?: Partial<IRModule>): TransformContext => {
+      const defaultModule: IRModule = {
+        id: 'ns-virt-test',
+        sourceFile: 'ns-virt-test.ts',
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [{ name: 'obj', register: 'r0', type: IRType.Any }],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r1',
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r2',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'customProp' }],
+        metadata: { sourceFile: 'ns-virt-test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 2, originalByteSize: 100 },
+        ...overrides,
+      };
+
+      return {
+        module: defaultModule,
+        profile: { ...mockProfile, seed: 12345 } as ObfuscationProfile,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
+        symbolAliases: new Map(),
+        diagnostics: [],
+        rng: new SeededRandom(42),
+        phase: 0,
+      };
+    };
+
+    it('should replace PropGet with ComputedGet for non-builtin custom properties', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r0' },
+                  { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r2' },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' },
+                      { kind: OperandKind.Register, value: 'r2' },
+                    ],
+                    result: 'r3',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'customProp' },
+          { index: 1, kind: ConstantKind.String, value: 'someGlobal' },
+        ],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const func = result.module.functions[0]!;
+      const entryBlock = func.blocks[0]!;
+
+      expect(result.nodesTransformed).toBe(1);
+      // Should have LoadConst(hash) then ComputedGet replacing original PropGet
+      const loadConstInsts = entryBlock.instructions.filter((i) => i.opcode === OpCode.LoadConst);
+      const computedGetInsts = entryBlock.instructions.filter((i) => i.opcode === OpCode.ComputedGet);
+      expect(loadConstInsts.length).toBeGreaterThanOrEqual(3);
+      expect(computedGetInsts.length).toBe(1);
+      expect(computedGetInsts[0]!.metadata).toEqual({ namespaceVirtualization: true });
+    });
+
+    it('should not virtualize builtin properties like "length", "prototype", "push"', () => {
+      const ctx = makeCtx({
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'length' }],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const entryBlock = result.module.functions[0]!.blocks[0]!;
+
+      expect(result.nodesTransformed).toBe(0);
+      expect(entryBlock.instructions.length).toBe(2);
+      expect(entryBlock.instructions[1]!.opcode).toBe(OpCode.PropGet);
+    });
+
+    it('should not virtualize exported or imported property names', () => {
+      const ctx = makeCtx({
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'myExport' }],
+        exports: [{ exportedName: 'myExport', localName: 'myExport', isDefault: false }],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const entryBlock = result.module.functions[0]!.blocks[0]!;
+
+      expect(result.nodesTransformed).toBe(0);
+      expect(entryBlock.instructions[1]!.opcode).toBe(OpCode.PropGet);
+    });
+
+    it('should not virtualize PropGet on "this" register', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  { opcode: OpCode.LoadThis, operands: [], result: 'r0' },
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r1',
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r2',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'customProp' }],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const entryBlock = result.module.functions[0]!.blocks[0]!;
+
+      expect(result.nodesTransformed).toBe(0);
+      expect(entryBlock.instructions[2]!.opcode).toBe(OpCode.PropGet);
+    });
+
+    it('should skip CFF-generated blocks (labels starting with "cff_")', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [{ name: 'obj', register: 'r0', type: IRType.Any }],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'cff_dispatch',
+                label: 'cff_dispatcher',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r1',
+                  },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r0' },
+                      { kind: OperandKind.Register, value: 'r1' },
+                    ],
+                    result: 'r2',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'customProp' }],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const cffBlock = result.module.functions[0]!.blocks.find((b) => b.id === 'cff_dispatch')!;
+
+      // CFF block must be untouched (PropGet preserved, LoadConst preserved)
+      expect(cffBlock.instructions[1]!.opcode).toBe(OpCode.PropGet);
+    });
+
+    it('should add hashed property names to the constant pool', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+                  { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r2' },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' },
+                      { kind: OperandKind.Register, value: 'r2' },
+                    ],
+                    result: 'r3',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'customProp' },
+          { index: 1, kind: ConstantKind.String, value: 'someGlobal' },
+        ],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const hashStrings = result.module.constantPool.filter(
+        (c) => c.kind === ConstantKind.String && typeof c.value === 'string' && c.value.startsWith('hash_'),
+      );
+
+      expect(hashStrings.length).toBe(1);
+      expect(hashStrings[0]!.value).toMatch(/^hash_[0-9a-f]+$/);
+    });
+
+    it('should add temp registers to func.locals', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+                  { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r2' },
+                  {
+                    opcode: OpCode.PropGet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' },
+                      { kind: OperandKind.Register, value: 'r2' },
+                    ],
+                    result: 'r3',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'customProp' },
+          { index: 1, kind: ConstantKind.String, value: 'someGlobal' },
+        ],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const func = result.module.functions[0]!;
+
+      expect(func.locals.length).toBeGreaterThan(0);
+      const nsVirtLocals = func.locals.filter((l: any) => l.name.startsWith('ns_virt_temp_'));
+      expect(nsVirtLocals.length).toBe(1);
+    });
+
+    it('should not modify functions where no PropGet/PropSet targets non-builtin properties', () => {
+      const ctx = makeCtx({
+        constantPool: [{ index: 0, kind: ConstantKind.String, value: 'length' }],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+
+      expect(result.nodesTransformed).toBe(0);
+      expect(result.module.constantPool.length).toBe(1);
     });
   });
 });

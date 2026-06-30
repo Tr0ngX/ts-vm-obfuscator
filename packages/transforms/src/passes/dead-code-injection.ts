@@ -18,6 +18,7 @@ export class DeadCodeInjectionPass implements TransformPass {
 
       let changed = false;
       const newBlocks: BasicBlock[] = [];
+      const addedLocals: any[] = [];
 
       const maxReg = getMaxRegister(func) - 1;
 
@@ -36,9 +37,14 @@ export class DeadCodeInjectionPass implements TransformPass {
 
             // Allocate junk registers near live range
             const rStart = maxReg + 5;
-            const junkReg1 = `r${ctx.rng.nextRange(rStart, rStart + 3)}` as Register;
-            const junkReg2 = `r${ctx.rng.nextRange(rStart + 4, rStart + 7)}` as Register;
-            const junkReg3 = `r${ctx.rng.nextRange(rStart + 8, rStart + 11)}` as Register;
+            const junkReg1 = `r${ctx.rng.nextRange(rStart, rStart + 2)}` as Register;
+            const junkReg2 = `r${ctx.rng.nextRange(rStart + 3, rStart + 5)}` as Register;
+            const junkReg3 = `r${ctx.rng.nextRange(rStart + 6, rStart + 8)}` as Register;
+            addedLocals.push(
+              { name: `dci_junk_${junkReg1}`, register: junkReg1, type: 0, isCaptured: false },
+              { name: `dci_junk_${junkReg2}`, register: junkReg2, type: 0, isCaptured: false },
+              { name: `dci_junk_${junkReg3}`, register: junkReg3, type: 0, isCaptured: false },
+            );
 
             // Ensure there is at least one constant
             if (newCP.length === 0) {
@@ -150,7 +156,8 @@ export class DeadCodeInjectionPass implements TransformPass {
               }
 
               const randIdx = ctx.rng.nextRange(0, cpMax);
-              const condReg = `r${maxReg + 12}` as Register;
+              const condReg = `r${maxReg + 14}` as Register;
+              addedLocals.push({ name: `dci_cond_${condReg}`, register: condReg, type: 0, isCaptured: false });
 
               currentInstructions.push({
                 opcode: OpCode.LoadConst,
@@ -232,7 +239,7 @@ export class DeadCodeInjectionPass implements TransformPass {
         });
       }
 
-      return changed ? { ...func, blocks: newBlocks } : func;
+      return changed ? { ...func, blocks: newBlocks, locals: [...func.locals, ...addedLocals] } : func;
     });
 
     return {

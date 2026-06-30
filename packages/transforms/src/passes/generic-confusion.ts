@@ -27,6 +27,7 @@ export class GenericConfusionPass implements TransformPass {
       const addedLocals: any[] = [];
 
       const newBlocks = func.blocks.map((block) => {
+        let blockChanged = false;
         const newInstructions: Instruction[] = [];
         for (const inst of block.instructions) {
           if (inst.opcode === OpCode.Call || inst.opcode === OpCode.CallMethod) {
@@ -36,6 +37,7 @@ export class GenericConfusionPass implements TransformPass {
             // Randomly apply generic confusion 10% of the time for demonstration
             if (ctx.rng.nextFloat() < 0.1) {
               changed = true;
+              blockChanged = true;
               nodesTransformed++;
 
               // Inject a confusion preamble before the call using dynamic registers
@@ -59,10 +61,8 @@ export class GenericConfusionPass implements TransformPass {
               // 2. TypeOf tempReg1 -> tempReg2
               newInstructions.push({
                 opcode: OpCode.TypeOf,
-                operands: [
-                  { kind: OperandKind.Register, value: tempReg1 },
-                  { kind: OperandKind.Register, value: tempReg2 },
-                ],
+                operands: [{ kind: OperandKind.Register, value: tempReg1 }],
+                result: tempReg2,
               });
 
               // 3. Eq tempReg1, tempReg2 -> tempReg3 (dummy comparison)
@@ -85,7 +85,7 @@ export class GenericConfusionPass implements TransformPass {
           }
         }
 
-        return changed ? { ...block, instructions: newInstructions } : block;
+        return blockChanged ? { ...block, instructions: newInstructions } : block;
       });
 
       return changed
