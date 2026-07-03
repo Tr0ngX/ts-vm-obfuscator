@@ -460,6 +460,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
                 ctx.module.exports.some((e) => e.exportedName === propName || e.localName === propName) ||
                 ctx.module.imports.some((i) => i.localName === propName || i.importedName === propName));
 
+
             if (!isObjThis && !isObjParam && !isLocalObj && propName && !isBuiltin) {
               changed = true;
               nodesTransformed++;
