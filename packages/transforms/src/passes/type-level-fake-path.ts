@@ -275,6 +275,18 @@ export class TypeLevelFakePathPass implements TransformPass {
           newCP.push({ index: stringIdx, kind: ConstantKind.String, value: 'string' });
         }
 
+        let mathIdx = newCP.findIndex((cp) => cp.kind === ConstantKind.String && cp.value === 'Math');
+        if (mathIdx === -1) {
+          mathIdx = newCP.length;
+          newCP.push({ index: mathIdx, kind: ConstantKind.String, value: 'Math' });
+        }
+
+        let imulIdx = newCP.findIndex((cp) => cp.kind === ConstantKind.String && cp.value === 'imul');
+        if (imulIdx === -1) {
+          imulIdx = newCP.length;
+          newCP.push({ index: imulIdx, kind: ConstantKind.String, value: 'imul' });
+        }
+
         // We choose one of our 5 templates
         const templateId = isParanoid ? ctx.rng.nextRange(0, 4) : 0;
         let opaqueInsts: Instruction[] = [];
@@ -316,15 +328,38 @@ export class TypeLevelFakePathPass implements TransformPass {
             }, // len2
 
             // 3. hash = (len1 * 31 + len2) & 0xF
-            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempA },
+            // Math.imul(len1, 31) -> tempG
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempA }, // tempA = 31
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempC }, // tempC = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempC }], result: tempC }, // tempC = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempB }, // tempB = 'imul'
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.PropGet,
               operands: [
+                { kind: OperandKind.Register, value: tempC },
+                { kind: OperandKind.Register, value: tempB },
+              ],
+              result: tempB,
+            }, // tempB = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempB },
                 { kind: OperandKind.Register, value: tempD },
                 { kind: OperandKind.Register, value: tempA },
               ],
               result: tempG,
-            }, // len1 * 31
+            }, // tempG = Math.imul(len1, 31)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempA }, // tempA = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempG },
+                { kind: OperandKind.Register, value: tempA },
+              ],
+              result: tempG,
+            }, // tempG = tempG | 0
             {
               opcode: OpCode.Add,
               operands: [
@@ -333,6 +368,16 @@ export class TypeLevelFakePathPass implements TransformPass {
               ],
               result: tempG,
             }, // len1 * 31 + len2
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempA }, // tempA = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempG },
+                { kind: OperandKind.Register, value: tempA },
+              ],
+              result: tempG,
+            }, // tempG = tempG | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fifteenIdx }], result: tempA },
             {
               opcode: OpCode.BitAnd,
@@ -344,14 +389,26 @@ export class TypeLevelFakePathPass implements TransformPass {
             }, // hash = tempG & 15
 
             // 4. (hash * hash + 5) % 8 !== 0
+            // Math.imul(hash, hash) via reused tempB (Math.imul from step 3)
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.Call,
               operands: [
+                { kind: OperandKind.Register, value: tempB },
                 { kind: OperandKind.Register, value: tempG },
                 { kind: OperandKind.Register, value: tempG },
               ],
               result: tempE,
-            }, // hash * hash
+            }, // tempE = Math.imul(hash, hash)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempA }, // tempA = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempE },
+                { kind: OperandKind.Register, value: tempA },
+              ],
+              result: tempE,
+            }, // tempE = tempE | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: fiveIdx }], result: tempA },
             {
               opcode: OpCode.Add,
@@ -361,6 +418,16 @@ export class TypeLevelFakePathPass implements TransformPass {
               ],
               result: tempE,
             }, // hash * hash + 5
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempA }, // tempA = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempE },
+                { kind: OperandKind.Register, value: tempA },
+              ],
+              result: tempE,
+            }, // tempE = tempE | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: eightIdx }], result: tempA },
             {
               opcode: OpCode.Mod,
@@ -420,14 +487,37 @@ export class TypeLevelFakePathPass implements TransformPass {
           // Proof: x^2 mod 4 ∈ {0,1} for all integers. Never 3. ∎
           opaqueInsts = [
             { opcode: OpCode.GetEntropy, operands: [], result: tempA }, // tempA = x
+            // Math.imul(tempA, tempA) -> tempB
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempC }, // tempC = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempC }], result: tempC }, // tempC = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempD }, // tempD = 'imul'
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.PropGet,
               operands: [
+                { kind: OperandKind.Register, value: tempC },
+                { kind: OperandKind.Register, value: tempD },
+              ],
+              result: tempD,
+            }, // tempD = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempD },
                 { kind: OperandKind.Register, value: tempA },
                 { kind: OperandKind.Register, value: tempA },
               ],
               result: tempB,
-            }, // tempB = x^2
+            }, // tempB = Math.imul(x, x)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempC }, // tempC = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempB },
+                { kind: OperandKind.Register, value: tempC },
+              ],
+              result: tempB,
+            }, // tempB = tempB | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC }, // tempC = 3
             {
               opcode: OpCode.BitAnd,
@@ -463,22 +553,68 @@ export class TypeLevelFakePathPass implements TransformPass {
           opaqueInsts = [
             { opcode: OpCode.GetEntropy, operands: [], result: tempA }, // tempA = x
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: thirtyOneIdx }], result: tempC }, // tempC = 31
+            // Math.imul(tempC, tempA) -> tempB
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempE }, // tempE = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempE }], result: tempE }, // tempE = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempF }, // tempF = 'imul'
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.PropGet,
               operands: [
+                { kind: OperandKind.Register, value: tempE },
+                { kind: OperandKind.Register, value: tempF },
+              ],
+              result: tempF,
+            }, // tempF = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempF },
                 { kind: OperandKind.Register, value: tempC },
                 { kind: OperandKind.Register, value: tempA },
               ],
               result: tempB,
-            }, // tempB = 31*x
+            }, // tempB = Math.imul(31, x)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempE }, // tempE = 0
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.BitOr,
               operands: [
+                { kind: OperandKind.Register, value: tempB },
+                { kind: OperandKind.Register, value: tempE },
+              ],
+              result: tempB,
+            }, // tempB = tempB | 0
+            // Math.imul(tempB, tempB) -> tempD
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempE }, // tempE = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempE }], result: tempE }, // tempE = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempF }, // tempF = 'imul'
+            {
+              opcode: OpCode.PropGet,
+              operands: [
+                { kind: OperandKind.Register, value: tempE },
+                { kind: OperandKind.Register, value: tempF },
+              ],
+              result: tempF,
+            }, // tempF = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempF },
                 { kind: OperandKind.Register, value: tempB },
                 { kind: OperandKind.Register, value: tempB },
               ],
               result: tempD,
-            }, // tempD = (31*x)^2
+            }, // tempD = Math.imul(tempB, tempB)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempE }, // tempE = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempD },
+                { kind: OperandKind.Register, value: tempE },
+              ],
+              result: tempD,
+            }, // tempD = tempD | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: threeIdx }], result: tempC }, // tempC = 3
             {
               opcode: OpCode.Mod,
@@ -509,14 +645,37 @@ export class TypeLevelFakePathPass implements TransformPass {
           }
           opaqueInsts = [
             { opcode: OpCode.GetEntropy, operands: [], result: tempA }, // tempA = x
+            // Math.imul(tempA, tempA) -> tempB
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempC }, // tempC = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempC }], result: tempC }, // tempC = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempD }, // tempD = 'imul'
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.PropGet,
               operands: [
+                { kind: OperandKind.Register, value: tempC },
+                { kind: OperandKind.Register, value: tempD },
+              ],
+              result: tempD,
+            }, // tempD = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempD },
                 { kind: OperandKind.Register, value: tempA },
                 { kind: OperandKind.Register, value: tempA },
               ],
               result: tempB,
-            }, // tempB = x^2
+            }, // tempB = Math.imul(x, x)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempC }, // tempC = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempB },
+                { kind: OperandKind.Register, value: tempC },
+              ],
+              result: tempB,
+            }, // tempB = tempB | 0
             {
               opcode: OpCode.Add,
               operands: [
@@ -525,6 +684,16 @@ export class TypeLevelFakePathPass implements TransformPass {
               ],
               result: tempC,
             }, // tempC = x^2 + x
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempD }, // tempD = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempC },
+                { kind: OperandKind.Register, value: tempD },
+              ],
+              result: tempC,
+            }, // tempC = tempC | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempD }, // tempD = 2
             {
               opcode: OpCode.Mod,
@@ -568,14 +737,47 @@ export class TypeLevelFakePathPass implements TransformPass {
               ],
               result: tempB,
             }, // tempB = x+1
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempE }, // tempE = 0
             {
-              opcode: OpCode.Mul,
+              opcode: OpCode.BitOr,
               operands: [
+                { kind: OperandKind.Register, value: tempB },
+                { kind: OperandKind.Register, value: tempE },
+              ],
+              result: tempB,
+            }, // tempB = tempB | 0
+            // Math.imul(tempA, tempB) -> tempD
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: mathIdx }], result: tempE }, // tempE = 'Math'
+            { opcode: OpCode.LoadGlobal, operands: [{ kind: OperandKind.Register, value: tempE }], result: tempE }, // tempE = Math
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: imulIdx }], result: tempF }, // tempF = 'imul'
+            {
+              opcode: OpCode.PropGet,
+              operands: [
+                { kind: OperandKind.Register, value: tempE },
+                { kind: OperandKind.Register, value: tempF },
+              ],
+              result: tempF,
+            }, // tempF = Math.imul
+            {
+              opcode: OpCode.Call,
+              operands: [
+                { kind: OperandKind.Register, value: tempF },
                 { kind: OperandKind.Register, value: tempA },
                 { kind: OperandKind.Register, value: tempB },
               ],
               result: tempD,
-            }, // tempD = x*(x+1)
+            }, // tempD = Math.imul(x, x+1)
+            // |0 truncation
+            { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: zeroIdx }], result: tempE }, // tempE = 0
+            {
+              opcode: OpCode.BitOr,
+              operands: [
+                { kind: OperandKind.Register, value: tempD },
+                { kind: OperandKind.Register, value: tempE },
+              ],
+              result: tempD,
+            }, // tempD = tempD | 0
             { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: twoIdx }], result: tempC }, // tempC = 2
             {
               opcode: OpCode.Mod,

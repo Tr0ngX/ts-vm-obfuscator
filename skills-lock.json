@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "code-obfuscation-deobfuscation": {
+      "source": "yaklang/hack-skills",
+      "sourceType": "github",
+      "skillPath": "skills/code-obfuscation-deobfuscation/SKILL.md",
+      "computedHash": "ed37832afb34a27695150311129b467c81f6ab45534141a45113bfe012167792"
+    },
+    "ghost-proxy": {
+      "source": "ghostsecurity/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/ghost/skills/proxy/SKILL.md",
+      "computedHash": "3fc72d8c8115c56460eefe0c1521870eab82b61e97e4fea8f115d89ce6a90043"
+    }
+  }
+}

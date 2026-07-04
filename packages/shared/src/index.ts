@@ -831,6 +831,18 @@ export class SeededRandom {
       this.state = 1;
     }
   }
+
+  /** Reinitialize the generator with a new seed. If no seed is given, fall back to Math.random(). */
+  randomize(seed?: number): void {
+    if (seed !== undefined) {
+      this.state = seed & 0x7fffffff;
+    } else {
+      this.state = Math.floor(Math.random() * 2147483647);
+    }
+    if (this.state === 0) {
+      this.state = 1;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -844,6 +856,9 @@ export enum PipelineStage {
   BytecodeCompilation = 'bytecode_compilation',
   VMBuild = 'vm_build',
   BenchmarkRun = 'benchmark_run',
+  ReactSafety = 'react_safety',
+  ClosurePropagation = 'closure_propagation',
+  ElectronHardening = 'electron_hardening',
 }
 
 export interface PipelineEvent {

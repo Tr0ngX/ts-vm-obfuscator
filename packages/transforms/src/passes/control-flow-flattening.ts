@@ -66,22 +66,29 @@ export class ControlFlowFlatteningPass implements TransformPass {
         stateConstants.set(stateId, cpIdx);
       }
 
+      const numberCache = new Map<number, number>();
+      const stringCache = new Map<string, number>();
+
       const getOrAddNumberConstant = (val: number): number => {
-        let idx = constantPool.findIndex((c) => c.kind === ConstantKind.Number && c.value === val);
-        if (idx === -1) {
-          idx = constantPool.length;
-          constantPool.push({ index: idx, kind: ConstantKind.Number, value: val });
-        }
-        return idx;
+        const cached = numberCache.get(val);
+        if (cached !== undefined) return cached;
+        const idx = constantPool.findIndex((c) => c.kind === ConstantKind.Number && c.value === val);
+        if (idx !== -1) { numberCache.set(val, idx); return idx; }
+        const newIdx = constantPool.length;
+        constantPool.push({ index: newIdx, kind: ConstantKind.Number, value: val });
+        numberCache.set(val, newIdx);
+        return newIdx;
       };
 
       const getOrAddStringConstant = (val: string): number => {
-        let idx = constantPool.findIndex((c) => c.kind === ConstantKind.String && c.value === val);
-        if (idx === -1) {
-          idx = constantPool.length;
-          constantPool.push({ index: idx, kind: ConstantKind.String, value: val });
-        }
-        return idx;
+        const cached = stringCache.get(val);
+        if (cached !== undefined) return cached;
+        const idx = constantPool.findIndex((c) => c.kind === ConstantKind.String && c.value === val);
+        if (idx !== -1) { stringCache.set(val, idx); return idx; }
+        const newIdx = constantPool.length;
+        constantPool.push({ index: newIdx, kind: ConstantKind.String, value: val });
+        stringCache.set(val, newIdx);
+        return newIdx;
       };
 
       // 4. Build the dispatcher block

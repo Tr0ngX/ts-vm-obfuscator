@@ -102,4 +102,44 @@ describe('universal profile', () => {
     expect(imported.multiA(5)).toBe(6);
     expect(imported.multiB(5)).toBe(7);
   });
+
+  it('pipeline emits correct PipelineStage names via onEvent callback', async () => {
+    const stagesSeen: string[] = [];
+    const fixtureRoot = path.join(__dirname, 'fixtures', 'universal-project');
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tsvm-stages-'));
+    const pipeline = new ObfuscationPipeline({
+      tsconfigPath: path.join(fixtureRoot, 'tsconfig.json'),
+      profile: createDefaultProfile('generic'),
+      outDir,
+      onEvent: (event) => {
+        stagesSeen.push(event.stage);
+      },
+    });
+
+    const result = await pipeline.execute();
+
+    expect(result.success).toBe(true);
+    expect(stagesSeen.length).toBeGreaterThan(0);
+    expect(stagesSeen.some((s) => s === 'semantic_analysis')).toBe(true);
+    expect(stagesSeen.some((s) => s === 'ir_lowering')).toBe(true);
+    expect(stagesSeen.some((s) => s === 'transform_execution')).toBe(true);
+    expect(stagesSeen.some((s) => s === 'bytecode_compilation')).toBe(true);
+    expect(stagesSeen.some((s) => s === 'vm_build')).toBe(true);
+  });
+
+  it('non-universal profile preserves bundle output format (.js not .mjs)', async () => {
+    const fixtureRoot = path.join(__dirname, 'fixtures', 'universal-project');
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tsvm-format-'));
+    const pipeline = new ObfuscationPipeline({
+      tsconfigPath: path.join(fixtureRoot, 'tsconfig.json'),
+      profile: createDefaultProfile('generic'),
+      outDir,
+    });
+
+    const result = await pipeline.execute();
+    expect(result.success).toBe(true);
+    expect(result.vmBundles?.length).toBe(1);
+    expect(result.manifest.outputFiles.some((f) => f.endsWith('.js'))).toBe(true);
+    expect(result.manifest.outputFiles.some((f) => f.endsWith('.mjs'))).toBe(false);
+  });
 });

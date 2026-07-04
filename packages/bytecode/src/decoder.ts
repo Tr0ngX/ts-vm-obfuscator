@@ -9,11 +9,21 @@ import {
   isTerminator,
 } from '@tsvm/shared';
 
-function assertOpCode(value: number): OpCode {
-  return value as OpCode;
+import type { VMBuildConfig } from '@tsvm/shared';
+
+class DecoderError extends Error {
+  constructor(message: string) {
+    super(`[Decoder] ${message}`);
+    this.name = 'DecoderError';
+  }
 }
 
-import type { VMBuildConfig } from '@tsvm/shared';
+function assertOpCode(value: number): OpCode {
+  if (Object.values(OpCode).includes(value as OpCode)) {
+    return value as OpCode;
+  }
+  throw new DecoderError(`Invalid opcode: ${value}`);
+}
 
 function numToOperandKind(kind: number): OperandKind {
   switch (kind) {
@@ -28,7 +38,7 @@ function numToOperandKind(kind: number): OperandKind {
     case 4:
       return OperandKind.FunctionRef;
     default:
-      throw new Error(`Unknown operand kind: ${kind}`);
+      throw new DecoderError(`Unknown operand kind: ${kind}`);
   }
 }
 
@@ -43,11 +53,22 @@ function unrollKeys(bytes: Uint8Array, seed: number): Uint8Array {
   return result;
 }
 
+function unrollParanoid(bytes: Uint8Array, seed: number): Uint8Array {
+  const result = new Uint8Array(bytes.length);
+  for (let pc = 0; pc < bytes.length; pc++) {
+    const mask = (pc * 31 + seed) & 0xff;
+    result[pc] = bytes[pc]! ^ mask;
+  }
+  return result;
+}
+
 function readLEB128(bytes: Uint8Array, offset: { pos: number }): number {
+  if (offset.pos >= bytes.length) throw new DecoderError('Bytecode truncated (LEB128)');
   let val = 0;
   let shift = 0;
   let b = 0;
   do {
+    if (offset.pos >= bytes.length) throw new DecoderError('Bytecode truncated (LEB128)');
     b = bytes[offset.pos++]!;
     val |= (b & 0x7f) << shift;
     shift += 7;
@@ -56,6 +77,7 @@ function readLEB128(bytes: Uint8Array, offset: { pos: number }): number {
 }
 
 function readFixed32(bytes: Uint8Array, offset: { pos: number }): number {
+  if (offset.pos + 3 >= bytes.length) throw new DecoderError('Bytecode truncated (fixed32)');
   const b0 = bytes[offset.pos++]!;
   const b1 = bytes[offset.pos++]!;
   const b2 = bytes[offset.pos++]!;
@@ -143,7 +165,10 @@ const opcodeLayout: Partial<Record<OpCode, { inputCount: number; hasResult: bool
 };
 
 export function decodeBytecode(bytes: Uint8Array, mapping: OpcodeMapping, config: VMBuildConfig): Instruction[] {
-  const raw = config.rollingKeys ? unrollKeys(bytes, config.seed) : bytes;
+  let raw = config.rollingKeys ? unrollKeys(bytes, config.seed) : bytes;
+  if (!config.rollingKeys && config.runtimeHardening === 'paranoid') {
+    raw = unrollParanoid(raw, config.seed);
+  }
   const instructions: Instruction[] = [];
   const offset = { pos: 0 };
   let currentHandlerIdx = 0;
@@ -164,13 +189,15 @@ export function decodeBytecode(bytes: Uint8Array, mapping: OpcodeMapping, config
 
     const numJunk = config.junkInsertion ? (opcode * 7 + config.seed) % 4 : 0;
     offset.pos += numJunk;
+    if (offset.pos > raw.length) throw new Error('Bytecode truncated (junk)');
 
     const layout = opcodeLayout[opcode] ?? OPCODE_DEFAULT_LAYOUT;
     const isVarLength = isVariableLengthOpcode(opcode);
 
     let totalOps: number;
     if (isVarLength) {
-      totalOps = raw[offset.pos++]!; // argCount from bytecode
+      totalOps = raw[offset.pos++]!;
+      if (totalOps > 255) throw new Error('Invalid operand count');
     } else {
       totalOps = layout.inputCount + (layout.hasResult ? 1 : 0);
     }
@@ -261,7 +288,7 @@ export function decodeConstantPool(encoded: EncodedConstant[], scheme: ConstantE
         S[j] = temp;
       }
 
-      let decoded = '';
+      const chars: number[] = [];
       for (let i = 0; i < entry.value.length; i++) {
         ri = (ri + 1) & 0xff;
         j = (j + S[ri]!) & 0xff;
@@ -269,8 +296,9 @@ export function decodeConstantPool(encoded: EncodedConstant[], scheme: ConstantE
         S[ri] = S[j]!;
         S[j] = temp;
         const keystreamByte = S[(S[ri]! + S[j]!) & 0xff]!;
-        decoded += String.fromCharCode(entry.value.charCodeAt(i) ^ keystreamByte);
+        chars.push(entry.value.charCodeAt(i) ^ keystreamByte);
       }
+      let decoded = String.fromCharCode(...chars);
 
       return { index, kind: entry.kind, value: decoded };
     }
@@ -420,7 +448,7 @@ export function disassemble(module: BytecodeModule): string {
       }
     } catch (e) {
       const err = e as Error;
-      lines.push(`  ; DECODE ERROR: ${err.message}`);
+      lines.push(`  ; DECODE ERROR: ${err.message}\n  ; ${err.stack?.replace(/\n/g, '\n  ; ')}`);
     }
     lines.push('');
   }
@@ -443,6 +471,9 @@ function estimateInstructionSize(inst: Instruction, config: VMBuildConfig, seed:
   }
 
   const ops: { kind: OperandKind; value: number | string }[] = [...(inst.operands || [])];
+  if (inst.opcode !== OpCode.Nop && inst.result) {
+    ops.push({ kind: OperandKind.Register, value: inst.result });
+  }
 
   const isVarLength = isVariableLengthOpcode(inst.opcode);
   if (isVarLength) {

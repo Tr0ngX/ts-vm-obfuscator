@@ -198,7 +198,7 @@ export function createDefaultProfile(target: ObfuscationProfile['target']): Obfu
           annotations: [],
           maxFunctionSize: 2_000,
           excludePatterns: [],
-          compatibilityFallback: true,
+          compatibilityFallback: false,
         },
         vm: createDefaultVMConfig(baseSeed),
         preservePatterns: ['**/*.d.ts', '**/*.test.*'],
@@ -250,7 +250,7 @@ function createDefaultVMConfig(seed: number): import('@tsvm/shared').VMBuildConf
     tamperDetection: !isTest,
     antiDebug: false,
     junkInsertion: true,
-    rollingKeys: true,
+    rollingKeys: !isTest,
   };
 }
 
@@ -355,8 +355,7 @@ export class ObfuscationPipeline {
           forceVirtualizeAll: this.options.profile.virtualization.mode === 'whole_program',
           forceVirtualizeFunctionNames: forcedVmSafeFunctionNames,
           skipTopLevelFunctionNames: skippedJsLoweredFunctionNames,
-          compatibilityFallback:
-            this.options.profile.target === 'universal' ? false : this.options.profile.virtualization.compatibilityFallback,
+          compatibilityFallback: this.options.profile.virtualization.compatibilityFallback,
           diagnostics: this.diagnostics,
         });
         irModules.push(irModule);
@@ -370,7 +369,7 @@ export class ObfuscationPipeline {
     // ── Stage 3: React-Safe Analysis (if enabled) ──
     let reactComponents: ReactComponentInfo[] | undefined;
     if (this.options.profile.reactSafe) {
-      this.emit('transform_execution' as PipelineStage, 'Running React safety analysis...');
+      this.emit('react_safety' as PipelineStage, 'Running React safety analysis...');
       try {
         const { collectReactComponentInfo, createReactSafetyDiagnostics, enforceReactProfile } = await import('@tsvm/react-safe');
         reactComponents = [];
@@ -380,18 +379,18 @@ export class ObfuscationPipeline {
           enforceReactProfile(irModule.functions, irModule.constantPool);
         }
         this.emit(
-          'transform_execution' as PipelineStage,
+          'react_safety' as PipelineStage,
           `Applied React safety profile to ${reactComponents.length} React-sensitive functions`,
         );
       } catch (error: unknown) {
-        this.emitError('transform_execution' as PipelineStage, 'React safety analysis failed', error);
+        this.emitError('react_safety' as PipelineStage, 'React safety analysis failed', error);
         return this.failResult(buildId, startTime, { semanticGraph, irModules });
       }
     }
 
     // ── Closure Propagation Check ──
     if (this.options.profile.virtualization.mode !== 'none') {
-      this.emit('transform_execution' as PipelineStage, 'Running closure propagation check...');
+      this.emit('closure_propagation' as PipelineStage, 'Running closure propagation check...');
       try {
         for (const irModule of irModules) {
           const childToParent = new Map<string, string>(); // childFunctionId -> parentFunctionId
@@ -409,49 +408,27 @@ export class ObfuscationPipeline {
             }
           }
 
-          const disabledIds = new Set<string>();
-          for (const fn of irModule.functions) {
-            if (!fn.isVirtualized) {
-              disabledIds.add(fn.id);
-            }
+          const parentToChildren = new Map<string, string[]>();
+          for (const [childId, parentId] of childToParent) {
+            if (!parentToChildren.has(parentId)) parentToChildren.set(parentId, []);
+            parentToChildren.get(parentId)!.push(childId);
           }
-
-          let changed = true;
-          while (changed) {
-            changed = false;
-            for (const fn of irModule.functions) {
-              if (disabledIds.has(fn.id)) {
-                // Parent is disabled -> disable children
-                for (const [childId, parentId] of childToParent.entries()) {
-                  if (parentId === fn.id && !disabledIds.has(childId)) {
-                    disabledIds.add(childId);
-                    const childFn = irModule.functions.find((f) => f.id === childId);
-                    if (childFn?.isVirtualized) {
-                      (childFn as { isVirtualized: boolean }).isVirtualized = false;
-                    }
-                    changed = true;
-                  }
-                }
-              } else {
-                // Parent is enabled -> check if any child is disabled
-                let hasDisabledChild = false;
-                for (const [childId, parentId] of childToParent.entries()) {
-                  if (parentId === fn.id && disabledIds.has(childId)) {
-                    hasDisabledChild = true;
-                    break;
-                  }
-                }
-                if (hasDisabledChild) {
-                  (fn as { isVirtualized: boolean }).isVirtualized = false;
-                  disabledIds.add(fn.id);
-                  changed = true;
-                }
+          const queue = irModule.functions.filter(f => !f.isVirtualized).map(f => f.id);
+          const visited = new Set(queue);
+          while (queue.length > 0) {
+            const id = queue.shift()!;
+            for (const childId of parentToChildren.get(id) ?? []) {
+              if (!visited.has(childId)) {
+                visited.add(childId);
+                const childFn = irModule.functions.find(f => f.id === childId)!;
+                (childFn as any).isVirtualized = false;
+                queue.push(childId);
               }
             }
           }
         }
       } catch (error: unknown) {
-        this.emitError('transform_execution' as PipelineStage, 'Closure propagation check failed', error);
+        this.emitError('closure_propagation' as PipelineStage, 'Closure propagation check failed', error);
         return this.failResult(buildId, startTime, { semanticGraph, irModules });
       }
     }
@@ -498,9 +475,9 @@ export class ObfuscationPipeline {
         for (let i = 0; i < irModules.length; i++) {
           irModules[i] = applyElectronHardening(irModules[i]!);
         }
-        this.emit('transform_execution' as PipelineStage, 'Applied Electron hardening rules', Date.now() - t0);
+        this.emit('electron_hardening' as PipelineStage, 'Applied Electron hardening rules', Date.now() - t0);
       } catch (error: unknown) {
-        this.emitError('transform_execution' as PipelineStage, 'Electron hardening failed', error);
+        this.emitError('electron_hardening' as PipelineStage, 'Electron hardening failed', error);
         return this.failResult(buildId, startTime, { semanticGraph, irModules });
       }
     }
@@ -548,7 +525,7 @@ export class ObfuscationPipeline {
       return this.failResult(buildId, startTime, { semanticGraph, irModules, bytecodeModules });
     }
 
-    // Ensure native functions and imports/exports are correctly preserved across all target profiles.
+    // Build output bundles for all source modules (combines transpiled source + VM runtime).
     const vmBundleByFile = new Map<string, VMRuntimeBundle>();
     for (const bundle of vmBundles) {
       const matchedPath = bytecodeSourceFiles.get(bundle.buildId);
@@ -576,36 +553,41 @@ export class ObfuscationPipeline {
         ),
       );
     }
-    // Rewrite relative import paths in the generated universal bundles to account for flattening
-    const filePathToOutputName = new Map<string, string>();
-    for (const [filePath, moduleInfo] of semanticGraph.modules) {
-      const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-      filePathToOutputName.set(filePath, `${relativeBuildId}${getUniversalOutputExtension(this.options.profile)}`);
-    }
 
-    const rewrittenUniversalBundles: VMRuntimeBundle[] = [];
-    for (const bundle of universalBundles) {
-      let matchedFilePath: string | undefined;
+    // Import path rewriting (ESM flattening) is only needed for universal profile.
+    if (this.options.profile.target === 'universal') {
+      const filePathToOutputName = new Map<string, string>();
       for (const [filePath, moduleInfo] of semanticGraph.modules) {
         const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
-        if (bundle.buildId === relativeBuildId) {
-          matchedFilePath = filePath;
-          break;
-        }
+        filePathToOutputName.set(filePath, `${relativeBuildId}${getUniversalOutputExtension(this.options.profile)}`);
       }
 
-      if (matchedFilePath) {
-        const rewrittenSource = rewriteRelativeImports(bundle.fullSource, matchedFilePath, filePathToOutputName, semanticGraph.modules);
-        rewrittenUniversalBundles.push({
-          ...bundle,
-          fullSource: rewrittenSource,
-        });
-      } else {
-        rewrittenUniversalBundles.push(bundle);
+      const rewrittenUniversalBundles: VMRuntimeBundle[] = [];
+      for (const bundle of universalBundles) {
+        let matchedFilePath: string | undefined;
+        for (const [filePath, moduleInfo] of semanticGraph.modules) {
+          const relativeBuildId = `${buildId}_${moduleInfo.relativePath.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+          if (bundle.buildId === relativeBuildId) {
+            matchedFilePath = filePath;
+            break;
+          }
+        }
+
+        if (matchedFilePath) {
+          const rewrittenSource = rewriteRelativeImports(bundle.fullSource, matchedFilePath, filePathToOutputName, semanticGraph.modules);
+          rewrittenUniversalBundles.push({
+            ...bundle,
+            fullSource: rewrittenSource,
+          });
+        } else {
+          rewrittenUniversalBundles.push(bundle);
+        }
       }
+      vmBundles = rewrittenUniversalBundles;
+    } else {
+      vmBundles = universalBundles;
     }
-    vmBundles = rewrittenUniversalBundles;
-    this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} universal compatibility bundles`);
+    this.emit('vm_build' as PipelineStage, `Built ${vmBundles.length} output bundles`);
 
     // Benchmark was removed to avoid circular dependencies.
     // It should be run externally.

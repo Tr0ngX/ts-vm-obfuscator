@@ -35,7 +35,17 @@ function transpileModuleToEsm(sourceText: string, filePath: string, compilerOpti
 }
 
 function stripCommonJsFooter(vmSource: string): string {
-  return vmSource.replace(/\nif \(typeof module !== 'undefined' && module\.exports\) \{[\s\S]*?\}\s*$/u, '').trim();
+  const cjsFooterMatch = vmSource.match(/\nif \(typeof module !== 'undefined' && module\.exports\) \{([\s\S]*)\}\s*$/);
+  if (!cjsFooterMatch) return vmSource.trim();
+  const body = cjsFooterMatch[1]!;
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    if (depth < 0) return vmSource.trim();
+  }
+  if (depth === 0) return vmSource.slice(0, cjsFooterMatch.index).trim();
+  return vmSource.trim();
 }
 
 function extractVmFunctionObjectName(vmSource: string): string {

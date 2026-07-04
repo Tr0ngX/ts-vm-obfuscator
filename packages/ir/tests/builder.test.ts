@@ -363,4 +363,30 @@ describe('IR builder', () => {
     expect(opcodes).toContain(OpCode.PropGet);
     expect(opcodes).toContain(OpCode.Delete);
   });
+
+  describe('syntax expression lowering', () => {
+    it('lowers tagged template expressions into ArrayNew + Call + ComputedSet opcodes', () => {
+      const filePath = path.join(__dirname, 'fixtures', 'syntax-supported-pack.ts');
+      const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+      const fn = module.functions.find((candidate) => candidate.name === 'taggedTemplateExample');
+
+      expect(fn).toBeDefined();
+      const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+      expect(opcodes).toContain(OpCode.ArrayNew);
+      expect(opcodes).toContain(OpCode.Call);
+      expect(opcodes).toContain(OpCode.ComputedSet);
+    });
+
+    it('lowers BigInt literals into LoadGlobal(BigInt) + Call sequence', () => {
+      const filePath = path.join(__dirname, 'fixtures', 'syntax-supported-pack.ts');
+      const module = lowerToIR(createModuleInfo(filePath), createGraph(), filePath);
+      const fn = module.functions.find((candidate) => candidate.name === 'bigIntLiteralExample');
+
+      expect(fn).toBeDefined();
+      const opcodes = fn!.blocks.flatMap((block) => block.instructions.map((inst) => inst.opcode));
+      expect(opcodes).toContain(OpCode.LoadGlobal);
+      expect(opcodes).toContain(OpCode.Call);
+    });
+
+  });
 });

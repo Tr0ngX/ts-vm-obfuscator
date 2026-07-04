@@ -45,7 +45,7 @@ export function encodeBytecode(instructions: Instruction[], mapping: OpcodeMappi
     }
 
     const ops: Operand[] = [...(inst.operands || [])];
-    if (inst.result && inst.opcode !== OpCode.Nop) {
+    if (inst.result !== undefined && inst.opcode !== OpCode.Nop) {
       ops.push({ kind: OperandKind.Register, value: inst.result });
     }
 
@@ -167,7 +167,7 @@ export function encodeConstantPool(
         S[j] = temp;
       }
 
-      let encoded = '';
+      const chars: number[] = [];
       for (let i = 0; i < c.value.length; i++) {
         ri = (ri + 1) & 0xff;
         j = (j + S[ri]!) & 0xff;
@@ -175,8 +175,9 @@ export function encodeConstantPool(
         S[ri] = S[j]!;
         S[j] = temp;
         const keystreamByte = S[(S[ri]! + S[j]!) & 0xff]!;
-        encoded += String.fromCharCode(c.value.charCodeAt(i) ^ keystreamByte);
+        chars.push(c.value.charCodeAt(i) ^ keystreamByte);
       }
+      const encoded = String.fromCharCode(...chars);
 
       return { index, kind: c.kind, value: encoded, encodedBytes: new Uint8Array(), decodingKey: c.expectedPathHash || 0 };
     }

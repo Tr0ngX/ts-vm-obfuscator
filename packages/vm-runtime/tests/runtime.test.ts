@@ -934,4 +934,105 @@ describe('VM Runtime', () => {
     expect(result).toBe(6);
     expect(microtaskExecuted).toBe(true);
   });
+
+  it('should not unconditionally taint Electron environments with tamper detection', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534f42,
+      version: 1,
+      buildId: 'electron-taint-test',
+      opcodeMapping: { seed: 42, forward: new Map(), reverse: new Map([[0, OpCode.Return]]) },
+      constantPool: [],
+      functions: [
+        { id: 'f1', name: 'f1', paramCount: 0, localCount: 0, maxRegisters: 2, bytecode: new Uint8Array([0, 1]), isEntryPoint: true },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'electron-taint-test', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      seed: 42,
+      tamperDetection: true,
+    });
+
+    const source = bundle.fullSource;
+    // The taint check for window.process.type should not unconditionally taint
+    // all Electron environments. The fix replaces the bare truthy check.
+    expect(source).toContain('__tsvm_integrity_override__');
+    // Ensure it still has taint detection for other patterns
+    expect(source).toContain('__tsvm_taint__');
+    expect(source).toContain('HeadlessChrome');
+  });
+
+  it('opaque predicate inline expressions coerce PC to integer for float safety', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534f42,
+      version: 1,
+      buildId: 'float-pc-test',
+      opcodeMapping: { seed: 42, forward: new Map([[OpCode.Return, 0]]), reverse: new Map([[0, OpCode.Return]]) },
+      constantPool: [],
+      functions: [
+        { id: 'f1', name: 'f1', paramCount: 0, localCount: 0, maxRegisters: 2, bytecode: new Uint8Array([0, 1]), isEntryPoint: true },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'float-pc-test', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, {
+      opcodeRemapping: true,
+      immediateEncoding: ImmediateEncodingScheme.VariableLength,
+      superInstructions: false,
+      handlerLayoutRandom: false,
+      constantPoolEncoding: ConstantEncodingScheme.Identity,
+      traceMode: false,
+      deterministicReplay: false,
+      runtimeHardening: 'paranoid',
+      seed: 42,
+      tamperDetection: true,
+      junkInsertion: true,
+    });
+
+    // All inline opaque predicates use | 0 or & 255 to coerce ctx.pc to integer
+    // so NaN or float PC values cannot break the congruence invariant
+    const source = bundle.fullSource;
+    expect(source).toMatch(/\| 0/);
+    expect(source).toMatch(/& 255/);
+  });
+
+  it('tsvmSensitiveKeys does not flag common method names', () => {
+    const dummyModule: BytecodeModule = {
+      magic: 0x54534f42,
+      version: 1,
+      buildId: 'sensitive-keys-test',
+      opcodeMapping: { seed: 42, forward: new Map([[OpCode.Return, 0]]), reverse: new Map([[0, OpCode.Return]]) },
+      constantPool: [{ index: 0, kind: 'number', value: 1 }],
+      functions: [
+        { id: 'f1', name: 'f1', paramCount: 0, localCount: 0, maxRegisters: 2, bytecode: new Uint8Array([0, 1]), isEntryPoint: true },
+      ],
+      entryPointIndex: 0,
+      metadata: { buildTimestamp: 0, buildId: 'sensitive-keys-test', sourceHash: 'a', profile: 'generic' },
+    };
+
+    const bundle = buildVMRuntime(dummyModule, createVMConfig(42));
+
+    // tsvmSensitiveKeys should only contain specific API method names,
+    // not common method names that user-defined objects might have
+    const source = bundle.fullSource;
+    expect(source).toContain('fetch');
+    expect(source).toContain('XMLHttpRequest');
+    expect(source).toContain('sendSync');
+    expect(source).toContain('postMessage');
+
+    // Common method names should NOT be in tsvmSensitiveKeys
+    const commonMethods = ['toString', 'valueOf', 'hasOwnProperty', 'forEach', 'map', 'filter', 'length', 'name', 'prototype'];
+    for (const method of commonMethods) {
+      expect(source).not.toMatch(new RegExp(`tsvmSensitiveKeys\\[['"\`]${method}['"\`]\\]`));
+    }
+  });
 });

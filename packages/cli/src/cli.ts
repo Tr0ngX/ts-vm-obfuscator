@@ -171,7 +171,7 @@ Output:
         }
 
         if (result.vmBundles) {
-          const outputExtension = profile.target === 'universal' ? '.mjs' : '.js';
+          const outputExtension = '.mjs';
           for (const bundle of result.vmBundles) {
             const filePath = path.join(outDir, `${bundle.buildId}${outputExtension}`);
             await fs.writeFile(filePath, bundle.fullSource, 'utf-8');
@@ -189,7 +189,7 @@ Output:
     });
 }
 
-const isDirectExecution = typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+const isDirectExecution = typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href.toLowerCase() === import.meta.url.toLowerCase();
 
 if (isDirectExecution) {
   createProgram().parse(process.argv);

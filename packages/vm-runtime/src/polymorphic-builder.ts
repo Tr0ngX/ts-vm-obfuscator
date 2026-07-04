@@ -231,37 +231,29 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
 
   switch (choice) {
     case 0:
-      // (x*x + x) is always even → (x*x+x) % 2 === 0 is always true
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar} + ${pVar}) % 2 === 0; })()`, alwaysTrue: true };
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar} + ${pVar}) % 2 === 0; })()`, alwaysTrue: true };
     case 1:
-      // x*x % 4 is always 0 or 1, never 2 → (x*x % 4) !== 2 is always true
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) % 4 !== 2; })()`, alwaysTrue: true };
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar}) % 4 !== 2; })()`, alwaysTrue: true };
     case 2:
-      // (x | (x-1)) >= (x-1) is always true for non-negative x
       return {
         expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | (${pVar} - 1)) >= (${pVar} - 1); })()`,
         alwaysTrue: true,
       };
     case 3:
-      // x*x >= 0 is always true for real numbers (JS: always true for finite values)
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal}; return (${pVar} * ${pVar}) >= 0; })()`, alwaysTrue: true };
+      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar}) >= 0; })()`, alwaysTrue: true };
     case 4:
-      // (x & 1) + ((x >> 1) & 1) < 3 is always true (max value is 2)
       return {
-        expr: `(function(){ var ${pVar} = ${runtimeVal}; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`,
+        expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return ((${pVar} & 1) + ((${pVar} >> 1) & 1)) < 3; })()`,
         alwaysTrue: true,
       };
     case 5:
-      // SMT Solver Killer: x^2 % 4 is always 0 or 1, never 3.
       return { expr: `(function(){ var ${pVar} = (${runtimeVal} & 255); return (${pVar} * ${pVar} & 3) !== 3; })()`, alwaysTrue: true };
     case 6:
-      // SMT Solver Killer 2: (31 * x)^2 % 3 is always 0 or 1, never 2.
       return {
         expr: `(function(){ var ${pVar} = (${runtimeVal} & 255) * 31; return (${pVar} * ${pVar}) % 3 !== 2; })()`,
         alwaysTrue: true,
       };
     default:
-      // (x | 0) === (x | 0) is always true (reflexivity + int coercion)
       return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} | 0) === ${pVar}; })()`, alwaysTrue: true };
   }
 }
@@ -285,11 +277,13 @@ function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, 
 
     // The predicate is always true, so we negate it for the dead block
     // Dead code mimics real handler logic to confuse pattern analysis
-    code += `  if (!${pred.expr}) {\n`;
-    code += `    var ${trapVar} = ${regAlias}[${fakeReg1}];\n`;
-    code += `    ${regAlias}[${fakeReg2}] = ${trapVar} ^ ${fakeConst};\n`;
-    code += `    ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ ${trapVar}) | 0;\n`;
-    code += '  }\n';
+    code += [
+      `  if (!${pred.expr}) {\n`,
+      `    var ${trapVar} = ${regAlias}[${fakeReg1}];\n`,
+      `    ${regAlias}[${fakeReg2}] = ${trapVar} ^ ${fakeConst};\n`,
+      `    ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ ${trapVar}) | 0;\n`,
+      '  }\n',
+    ].join('');
   }
 
   return code;
@@ -303,53 +297,53 @@ function generateOpaqueDeadCode(seed: number, varIdx: number, regAlias: string, 
 function generateSignaturePollution(seed: number, varIdx: number): string {
   const rng = new SeededRandom(seed ^ varIdx ^ 0xb0b0);
   const numDecls = rng.nextRange(2, 4);
-  let code = '';
+  const parts: string[] = [];
 
   for (let i = 0; i < numDecls; i++) {
     const varName = `_sp${rng.nextRange(100, 999)}_${i}`;
     const choice = rng.nextRange(0, 3);
     switch (choice) {
       case 0:
-        code += `  var ${varName} = (${rng.nextRange(1, 0xffff)} ^ ctx.pc) | 0;\n`;
+        parts.push(`  var ${varName} = (${rng.nextRange(1, 0xffff)} ^ ctx.pc) | 0;\n`);
         break;
       case 1:
-        code += `  var ${varName} = (ctx.pc * ${rng.nextRange(2, 7)} + ${rng.nextRange(1, 100)}) & 0xFF;\n`;
+        parts.push(`  var ${varName} = (ctx.pc * ${rng.nextRange(2, 7)} + ${rng.nextRange(1, 100)}) & 0xFF;\n`);
         break;
       case 2:
-        code += `  var ${varName} = ~(ctx.pc ^ ${rng.nextRange(1, 0xffff)}) >>> 0;\n`;
+        parts.push(`  var ${varName} = ~(ctx.pc ^ ${rng.nextRange(1, 0xffff)}) >>> 0;\n`);
         break;
       default:
-        code += `  var ${varName} = ((ctx.pc >> ${rng.nextRange(1, 4)}) + ${rng.nextRange(1, 50)}) | 0;\n`;
+        parts.push(`  var ${varName} = ((ctx.pc >> ${rng.nextRange(1, 4)}) + ${rng.nextRange(1, 50)}) | 0;\n`);
         break;
     }
   }
-  return code;
+  return parts.join('');
 }
 
 function generateJunkStatements(seed: number, id: number, names: any, mulConst = '1664525', addConst = '1013904223'): string {
   const rng = new SeededRandom(seed ^ id ^ 0x7c2a11);
   const numJunk = rng.nextRange(1, 3);
-  let junk = '';
+  const parts: string[] = [];
   const ctx = names.ctx;
   for (let i = 0; i < numJunk; i++) {
     const choice = rng.nextRange(0, 3);
     const varName = `_j${id}_${i}`;
     switch (choice) {
       case 0:
-        junk += `  var ${varName} = (${seed} ^ ${rng.nextRange(10, 100)}) | 0;\n`;
-        junk += `  ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ ${varName}, ${mulConst}) + ${addConst}) | 0;\n`;
+        parts.push(`  var ${varName} = (${seed} ^ ${rng.nextRange(10, 100)}) | 0;\n`);
+        parts.push(`  ctx.${ctx.rollingState} = (Math.imul(ctx.${ctx.rollingState} ^ ${varName}, ${mulConst}) + ${addConst}) | 0;\n`);
         break;
       case 1:
-        junk += `  var ${varName} = Math.sin(${rng.nextRange(1, 10)}) * ${rng.nextRange(2, 5)};\n`;
-        junk += `  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} + (${varName} | 0)) & 0xFFFFFFFF;\n`;
+        parts.push(`  var ${varName} = Math.sin(${rng.nextRange(1, 10)}) * ${rng.nextRange(2, 5)};\n`);
+        parts.push(`  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} + (${varName} | 0)) & 0xFFFFFFFF;\n`);
         break;
       default:
-        junk += `  var ${varName} = (${seed} % ${rng.nextRange(3, 9)}) | 0;\n`;
-        junk += `  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ (${varName} * ${varName})) | 0;\n`;
+        parts.push(`  var ${varName} = (${seed} % ${rng.nextRange(3, 9)}) | 0;\n`);
+        parts.push(`  ctx.${ctx.rollingState} = (ctx.${ctx.rollingState} ^ (${varName} * ${varName})) | 0;\n`);
         break;
     }
   }
-  return junk;
+  return parts.join('');
 }
 
 function createRuntimeNames(config: VMBuildConfig) {
@@ -495,7 +489,7 @@ function createRuntimeNames(config: VMBuildConfig) {
       rollingState: next(),
       xorLog: next(),
       executionNonce: 'executionNonce',
-      currentOpcode: 'currentOpcode',
+      currentOpcode: next(),
       currentHandlerIdx: next(),
       pathHash: next(),
     },
@@ -564,13 +558,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
   ];
   const runtimeStringIndex = new Map(runtimeStringEntries.map((value, index) => [value, index]));
   const encodedRuntimeStrings = runtimeStringEntries.map((value) => {
-    let encoded = '';
+    const encodedParts: string[] = [];
     for (let i = 0; i < value.length; i++) {
       const keyByte = keyBytes[i % 16]!;
       const nextKeyByte = keyBytes[(i + 1) % 16]!;
-      encoded += String.fromCharCode(value.charCodeAt(i) ^ keyByte ^ nextKeyByte);
+      encodedParts.push(String.fromCharCode(value.charCodeAt(i) ^ keyByte ^ nextKeyByte));
     }
-    return encoded;
+    return encodedParts.join('');
   });
   const runtimeStringRef = (value: string) => {
     if (!concealRuntimeStrings) {
@@ -646,6 +640,19 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     const numVariants = isParanoid ? 4 : 1;
     const fnNames: string[] = [];
 
+    // Pre-compute operand count from handler body (single pass, not per-variant)
+    const isVarLength = isVariableLengthOpcode(canonical);
+    let operandCount = 0;
+    if (!isVarLength) {
+      const matches = body.match(/args\[(\d+)\]/g);
+      if (matches) {
+        for (const m of matches) {
+          const idx = Number.parseInt(m.match(/\d+/)![0], 10);
+          if (idx + 1 > operandCount) operandCount = idx + 1;
+        }
+      }
+    }
+
     for (let vIdx = 0; vIdx < numVariants; vIdx++) {
       const fnName = isParanoid ? `${names.nextHandlerName(canonical)}_${vIdx}` : names.nextHandlerName(canonical);
       fnNames.push(fnName);
@@ -662,7 +669,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       }
 
       // Read args
-      const isVarLength = isVariableLengthOpcode(canonical);
       let myReadArgs = '';
       const argsVar = isParanoid ? `_args_${vIdx}` : 'args';
       const valVar = isParanoid ? `_val_${vIdx}` : 'val';
@@ -729,16 +735,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
           }
         `;
       } else {
-        const matches = body.match(/args\[(\d+)\]/g);
-        let operandCount = 0;
-        if (matches) {
-          for (const m of matches) {
-            const idx = Number.parseInt(m.match(/\d+/)![0], 10);
-            if (idx + 1 > operandCount) {
-              operandCount = idx + 1;
-            }
-          }
-        }
         myReadArgs = `
           const ${argsVar} = [];
           const kinds = [];
@@ -811,23 +807,16 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
         nextOpLogic = 'return null;';
       }
 
-      // Replace args and evaluate semantic cloning markers
-      let variantBody = body.replace(/\${readArgs}/g, () => myReadArgs);
-      variantBody = variantBody.replace(/__ADD_EXPR__/g, () => {
-        return mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
-      });
-      variantBody = variantBody.replace(/__SUB_EXPR__/g, () => {
-        return mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
-      });
-      variantBody = variantBody.replace(/__AND_EXPR__/g, () => {
-        return mutateArithmeticExpression('and', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
-      });
-      variantBody = variantBody.replace(/__OR_EXPR__/g, () => {
-        return mutateArithmeticExpression('or', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
-      });
-      variantBody = variantBody.replace(/__XOR_EXPR__/g, () => {
-        return mutateArithmeticExpression('xor', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed);
-      });
+      // Replace args and evaluate semantic cloning markers (single pass)
+      const markerMap: Record<string, () => string> = {
+        '${readArgs}': () => myReadArgs,
+        '__ADD_EXPR__': () => mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        '__SUB_EXPR__': () => mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        '__AND_EXPR__': () => mutateArithmeticExpression('and', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        '__OR_EXPR__': () => mutateArithmeticExpression('or', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        '__XOR_EXPR__': () => mutateArithmeticExpression('xor', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+      };
+      let variantBody = body.replace(/\$\{readArgs\}|__ADD_EXPR__|__SUB_EXPR__|__AND_EXPR__|__OR_EXPR__|__XOR_EXPR__/g, match => markerMap[match]!());
 
       if (isParanoid) {
         variantBody = variantBody.replace(/\bargs\b/g, argsVar);
@@ -849,7 +838,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       // track current opcode in paranoid
       let currentOpcodeTracker = '';
       if (config.runtimeHardening === 'paranoid') {
-        currentOpcodeTracker = `ctx.currentOpcode = ${canonical};\n`;
+        currentOpcodeTracker = `ctx.${ctx.currentOpcode} = ${canonical};\n`;
       }
 
       // Anti-analysis hardening layers (paranoid only)
@@ -1516,14 +1505,13 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       try { 
         if (typeof fn !== 'function') return false;
         var s = ${top.nativeCall}.call(${top.nativeToString}, fn);
-        var regexPass = ${top.nativeCall}.call(RegExp.prototype.test, /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/, s) || 
-               (${top.nativeCall}.call(String.prototype.indexOf, s, '[native code]') !== -1 && ${top.nativeCall}.call(String.prototype.indexOf, s, 'function') !== -1);
+        var regexPass = ${top.nativeCall}.call(RegExp.prototype.test, /^\\s*function\\s*[a-zA-Z0-9_$]*\\s*\\(\\s*\\)\\s*\\{\\s*\\[native code\\]\\s*\\}\\s*$/, s);
         if (!regexPass) return false;
         // Cross-check: verify our toString reports native
         var selfCheck = ${top.nativeCall}.call(${top.nativeToString}, ${top.nativeToString});
         if (${top.nativeCall}.call(String.prototype.indexOf, selfCheck, '[native code]') === -1) return false;
         var protoDesc = ${top.nativeGetOwnPropertyDescriptor}(fn, 'prototype');
-        if (protoDesc && protoDesc.configurable && fn.length === 0) return false;
+        if (protoDesc && protoDesc.configurable && protoDesc.writable && fn.length === 0) return false;
         var nameDesc = ${top.nativeGetOwnPropertyDescriptor}(fn, 'name');
         if (nameDesc && nameDesc.writable) return false;
         return true;
@@ -1531,12 +1519,7 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       catch (_) { return false; }
     };
     var fnStr = ${top.nativeCall}.call(${top.nativeToString}, __runVm);
-    var hasDbg = 0;
-    for (var i = 0; i < fnStr.length - 7; i++) {
-       if (fnStr.charCodeAt(i) === 100 && fnStr.charCodeAt(i+1) === 101 && fnStr.charCodeAt(i+2) === 98 && fnStr.charCodeAt(i+3) === 117) {
-           hasDbg = 1; break;
-       }
-    }
+    var hasDbg = ${top.nativeCall}.call(String.prototype.indexOf, fnStr, 'debugger') !== -1 ? 1 : 0;
     var verifyIntrinsic = function(obj, prop, expectedNative) {
       if (!obj || !prop) return false;
       var desc = ${top.nativeGetOwnPropertyDescriptor}(obj, prop);
@@ -1843,7 +1826,7 @@ const ${top.vmFunctions} = (function() {
   const ${top.asyncIteratorSymbol} = typeof Symbol !== 'undefined' && Symbol.asyncIterator ? Symbol.asyncIterator : null;
   const ${top.privateData} = new ${top.weakMapCtor}();
   const tsvmExecutors = typeof WeakSet !== 'undefined' ? new WeakSet() : { add: function(){}, has: function(){ return false; } };
-  const tsvmSensitiveKeys = { fetch: 1, XMLHttpRequest: 1, send: 1, invoke: 1, on: 1, handle: 1, sendSync: 1, postMessage: 1, connect: 1, request: 1 };
+  const tsvmSensitiveKeys = { fetch: 1, XMLHttpRequest: 1, sendSync: 1, postMessage: 1 };
 
   // Secure local caches of essential operations
   const ${top.nativeDefineProperty} = ${top.objectObj}.defineProperty;
@@ -2022,7 +2005,7 @@ const ${top.vmFunctions} = (function() {
   function mixRollingState(ctx, pos, decoded) {
     var salt = ctx.salt || 0;
     var nonce = ctx.executionNonce || 0;
-    var op = ctx.currentOpcode || 0;
+    var op = ctx.${ctx.currentOpcode} || 0;
     var trace = ctx.traceChecksum || 0;
     var mixed = (pos ^ decoded ^ op ^ salt ^ nonce ^ (trace & 0xFF)) & 0xFF;
     // MurmurHash3-inspired non-linear mixing (replaces reversible LCG)
@@ -2164,9 +2147,6 @@ const ${top.vmFunctions} = (function() {
       }
     } catch (e) {}
     try {
-      if (rawGlobal.process && rawGlobal.process.versions && rawGlobal.process.versions.electron) {
-        isTainted = true;
-      }
       if (typeof window !== 'undefined' && window.process && window.process.type) {
         isTainted = true;
       }
@@ -2269,7 +2249,7 @@ const ${top.vmFunctions} = (function() {
       'Math': 1, 'JSON': 1, 'Date': 1, 'parseInt': 1, 'parseFloat': 1,
       'isNaN': 1, 'isFinite': 1, 'decodeURI': 1, 'decodeURIComponent': 1,
       'encodeURI': 1, 'encodeURIComponent': 1, 'String': 1, 'Number': 1,
-      'Boolean': 1, 'Array': 1, 'Object': 1, 'RegExp': 1, 'Error': 1,
+      'Boolean': 1, 'Array': 1, 'Object': 1, 'RegExp': 1, 'Error': 1, 'Function': 1,
       'TypeError': 1, 'RangeError': 1, 'ReferenceError': 1, 'SyntaxError': 1,
       'Map': 1, 'Set': 1, 'WeakMap': 1, 'WeakSet': 1, 'Symbol': 1,
       'Promise': 1, 'setTimeout': 1, 'clearTimeout': 1, 'setInterval': 1,
@@ -2356,11 +2336,11 @@ const ${top.vmFunctions} = (function() {
       ${ctx.running}: true,
       ${ctx.returnValue}: undefined,
       ${ctx.tryFrames}: [],
-      ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFF` : '0'},
+      ${ctx.rollingState}: ${config.rollingKeys ? `${top.seed} & 0xFFFFFFFF` : '0'},
       ${ctx.xorLog}: ${config.rollingKeys ? 'new Uint8Array(bytecodeArr.length)' : 'null'},
       ${ctx.executionNonce}: ${config.rollingKeys ? '(++executionCounter)' : '0'},
       salt: ${config.rollingKeys ? 'salt' : '0'},
-      currentOpcode: 0,
+      ${ctx.currentOpcode}: 0,
       poisoned: false,
       integrityState: initialIntegrityState,
       isAsync: !!isAsync,

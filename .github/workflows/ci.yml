@@ -47,8 +47,8 @@ jobs:
       - run: pnpm build --cache-dir=".turbo"
       - run: pnpm typecheck
 
-  test:
-    name: Unit & E2E Tests
+  build:
+    name: Build Packages
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
     steps:
@@ -67,14 +67,82 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-turbo-
       - run: pnpm build --cache-dir=".turbo"
-      - run: pnpm exec vitest run --config vitest.config.mjs --reporter verbose
+
+  vitest:
+    name: Vitest (Shard ${{ matrix.shard }}/${{ matrix.total }})
+    needs: [build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+        total: [6]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
+      - name: Run vitest shard ${{ matrix.shard }}/${{ matrix.total }}
+        run: pnpm exec vitest run --config vitest.config.mjs --pool=threads --reporter verbose --shard=${{ matrix.shard }}/${{ matrix.total }}
+
+  e2e-pipeline:
+    name: E2E Pipeline Test
+    needs: [vitest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
       - run: node test-pipeline.js
-      - name: Verify CLI Compilation Pipeline
-        run: node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf
+
+  cli-verify:
+    name: CLI Compilation Verify
+    needs: [vitest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - run: pnpm build --cache-dir=".turbo"
+      - run: node packages/cli/dist/cli.js -p examples/basic-ts/tsconfig.json --out dist-obf
 
   benchmark:
     name: Performance Benchmark
-    needs: [test]
+    needs: [e2e-pipeline, cli-verify]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

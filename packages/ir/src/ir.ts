@@ -57,6 +57,30 @@ export class IRModuleBuilder {
     return index;
   }
 
+  snapshot(): { functionCount: number; constantCount: number; nextFunctionId: number; constantMapKeys: Set<string> } {
+    return {
+      functionCount: this.functions.length,
+      constantCount: this.constantPool.length,
+      nextFunctionId: this.nextFunctionId,
+      constantMapKeys: new Set(this.constantMap.keys()),
+    };
+  }
+
+  revert(snap: { functionCount: number; constantCount: number; nextFunctionId: number; constantMapKeys: Set<string> }): void {
+    if (this.functions.length > snap.functionCount) {
+      this.functions.length = snap.functionCount;
+    }
+    if (this.constantPool.length > snap.constantCount) {
+      this.constantPool.length = snap.constantCount;
+    }
+    this.nextFunctionId = snap.nextFunctionId;
+    for (const key of this.constantMap.keys()) {
+      if (!snap.constantMapKeys.has(key)) {
+        this.constantMap.delete(key);
+      }
+    }
+  }
+
   build(): IRModule {
     let blockCount = 0;
     let instructionCount = 0;

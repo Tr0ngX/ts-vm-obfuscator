@@ -1,8 +1,10 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const isCI = process.env.CI === 'true';
 
 export default defineConfig({
   resolve: {
@@ -31,7 +33,18 @@ export default defineConfig({
       include: ['packages/*/src/**/*.ts'],
       exclude: ['**/*.d.ts', '**/index.ts'],
     },
-    testTimeout: 30_000,
-    pool: 'forks',
+    testTimeout: isCI ? 60_000 : 30_000,
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        minThreads: isCI ? 1 : 1,
+        maxThreads: isCI ? os.availableParallelism() : os.availableParallelism(),
+        singleThread: false,
+        isolate: !isCI,
+      },
+    },
+    maxConcurrency: isCI ? os.availableParallelism() * 2 : os.availableParallelism(),
+    fileParallelism: !isCI,
+    reporters: isCI ? ['default', 'github-actions'] : ['default'],
   },
 });

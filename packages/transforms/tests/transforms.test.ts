@@ -282,28 +282,58 @@ describe('Advanced Transforms', () => {
     expect(rewrittenEntry.terminator.targets).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.successors).toEqual(['real', fakeBlock.id]);
     expect(rewrittenEntry.instructions.map((inst) => inst.opcode)).toEqual([
+      // Step 1: typeof process.length
       OpCode.LoadConst,
       OpCode.LoadGlobal,
       OpCode.TypeOf,
       OpCode.LoadConst,
       OpCode.PropGet,
+
+      // Step 2: typeof window.length
       OpCode.LoadConst,
       OpCode.LoadGlobal,
       OpCode.TypeOf,
       OpCode.PropGet,
+
+      // Step 3: Math.imul(len1, 31) | 0
       OpCode.LoadConst,
-      OpCode.Mul,
+      OpCode.LoadConst,
+      OpCode.LoadGlobal,
+      OpCode.LoadConst,
+      OpCode.PropGet,
+      OpCode.Call,
+      OpCode.LoadConst,
+      OpCode.BitOr,
+
       OpCode.Add,
+
+      OpCode.LoadConst,
+      OpCode.BitOr,
+
       OpCode.LoadConst,
       OpCode.BitAnd,
-      OpCode.Mul,
+
+      // Step 4: Math.imul(hash, hash) | 0 + 5 % 8 !== 0
+      OpCode.Call,
+
+      OpCode.LoadConst,
+      OpCode.BitOr,
+
       OpCode.LoadConst,
       OpCode.Add,
+
+      OpCode.LoadConst,
+      OpCode.BitOr,
+
       OpCode.LoadConst,
       OpCode.Mod,
+
       OpCode.LoadConst,
       OpCode.StrictEq,
+
       OpCode.Not,
+
+      // Step 5: new Error().name, typeof === 'string'
       OpCode.LoadConst,
       OpCode.LoadGlobal,
       OpCode.New,
@@ -312,6 +342,8 @@ describe('Advanced Transforms', () => {
       OpCode.TypeOf,
       OpCode.LoadConst,
       OpCode.StrictEq,
+
+      // Step 6: envPredicate
       OpCode.StrictEq,
     ]);
     const lastOp = fakeBlock.instructions.at(-1)?.opcode;
@@ -1518,6 +1550,110 @@ describe('Advanced Transforms', () => {
 
       expect(result.nodesTransformed).toBe(0);
       expect(result.module.constantPool.length).toBe(1);
+    });
+  });
+
+  describe('ControlFlowFlatteningPass Map-cached constant lookups', () => {
+    it('uses Map cache to avoid duplicate constant pool entries', () => {
+      const pass = new ControlFlowFlatteningPass();
+      const rng = new SeededRandom(42);
+      rng.nextFloat = () => 0.1; // Force CFF to apply
+
+      const dummyModule: IRModule = {
+        id: 'cff-cache-test',
+        sourceFile: 'cff-cache-test.ts',
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'b1',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: ['b2', 'b3'],
+                terminator: { kind: 'branch', targets: ['b2', 'b3'], condition: 'r0' },
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+                ],
+              },
+              {
+                id: 'b2',
+                label: 'body_a',
+                phiNodes: [],
+                predecessors: ['b1'],
+                successors: [],
+                terminator: { kind: 'return', targets: [], returnValue: 'r0' },
+                instructions: [{ opcode: OpCode.Nop, operands: [] }],
+              },
+              {
+                id: 'b3',
+                label: 'body_b',
+                phiNodes: [],
+                predecessors: ['b1'],
+                successors: [],
+                terminator: { kind: 'return', targets: [], returnValue: 'r0' },
+                instructions: [{ opcode: OpCode.Nop, operands: [] }],
+              },
+            ],
+          },
+        ],
+        globals: [],
+        imports: [],
+        exports: [],
+        constantPool: [{ index: 0, kind: ConstantKind.Number, value: 0 }],
+        metadata: {
+          sourceFile: 'cff-cache-test.ts',
+          buildTimestamp: 0,
+          blockCount: 3,
+          functionCount: 1,
+          instructionCount: 3,
+          originalByteSize: 100,
+        },
+      };
+
+      const ctx: TransformContext = {
+        module: dummyModule,
+        profile: mockProfile,
+        semanticGraph: {
+          rootDir: '',
+          modules: new Map(),
+          dependencyEdges: [],
+          entryPoints: [],
+          symbolTable: [],
+          aliases: new Map(),
+          compilerOptions: {},
+          diagnostics: [],
+        } as ProjectSemanticGraph,
+        symbolAliases: new Map(),
+        diagnostics: [],
+        rng,
+        phase: 0,
+      };
+
+      const result = pass.execute(ctx);
+
+      // All numeric constants in the result must be unique (no duplicates)
+      const numericValues = result.module.constantPool
+        .filter((c) => c.kind === ConstantKind.Number)
+        .map((c) => c.value as number);
+      const uniqueValues = new Set(numericValues);
+      expect(numericValues.length).toBe(uniqueValues.size);
+
+      // All string constants in the result must be unique
+      const stringValues = result.module.constantPool
+        .filter((c) => c.kind === ConstantKind.String)
+        .map((c) => c.value as string);
+      const uniqueStrings = new Set(stringValues);
+      expect(stringValues.length).toBe(uniqueStrings.size);
     });
   });
 });

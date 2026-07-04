@@ -100,6 +100,9 @@ export function parseSeed(seedOption?: string): number {
   if (!Number.isInteger(seed)) {
     throw new Error(`Invalid seed "${seedOption}". Expected an integer.`);
   }
+  if (!Number.isFinite(seed) || seed < 0 || seed > 2147483647) {
+    throw new Error(`Invalid seed "${seedOption}". Must be a finite integer between 0 and 2147483647.`);
+  }
 
   return seed;
 }

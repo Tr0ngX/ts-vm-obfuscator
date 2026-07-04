@@ -355,5 +355,54 @@ describe('Bytecode Compiler', () => {
       expect(decoded[3]!.opcode).toBe(OpCode.Not);
       expect(decoded[4]!.opcode).toBe(OpCode.Return);
     });
+
+    it('rejects bytearray with truncated LEB128 value', () => {
+      const config = makeConfig({ immediateEncoding: ImmediateEncodingScheme.VariableLength, opcodeRemapping: false });
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      // LoadConst (0x01) with kindNum=2 (ConstantIndex) and truncated LEB128 (byte with continuation bit set, no follow-up)
+      const truncated = new Uint8Array([0x01, 0x02, 0x80]);
+      expect(() => decodeBytecode(truncated, mapping, config)).toThrow();
+    });
+
+    it('rejects bytearray with truncated fixed32 operand', () => {
+      const config = makeConfig({ immediateEncoding: ImmediateEncodingScheme.XorMasked, opcodeRemapping: false });
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      // LoadConst (0x01) with kindNum=2 (ConstantIndex), then only 2 of the 4 fixed32 bytes
+      const truncated = new Uint8Array([0x01, 0x02, 0x01, 0x02]);
+      expect(() => decodeBytecode(truncated, mapping, config)).toThrow();
+    });
+
+    it('rejects bytearray with invalid opcode', () => {
+      const config = makeConfig({ opcodeRemapping: false });
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      // 0xFF is not a valid OpCode; the decoder now validates and throws
+      const invalid = new Uint8Array([0xFF, 0x00, 0x00]);
+      expect(() => decodeBytecode(invalid, mapping, config)).toThrow();
+    });
+
+    it('rejects bytearray with oversized argCount on variable-length opcode', () => {
+      const config = makeConfig({ opcodeRemapping: false });
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      // Call (0x40) is variable-length; next byte is argCount (255), then operand data
+      // With argCount=255 the decoder will read past the buffer and throw
+      const oversized = new Uint8Array([0x40, 0xFF, 0x00, 0x01]);
+      expect(() => decodeBytecode(oversized, mapping, config)).toThrow();
+    });
+
+    it('round-trips paranoid XOR mask through encoder and decoder', () => {
+      const config = makeConfig({ runtimeHardening: 'paranoid', opcodeRemapping: false });
+      const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
+      const insts: Instruction[] = [
+        { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
+        { opcode: OpCode.Return, operands: [{ kind: OperandKind.Register, value: 'r0' }] },
+      ];
+      const module = makeSimpleModule(insts, config.seed);
+      const compiled = compileToBytecode(module, config);
+      const fn = compiled.functions[0]!;
+      const decoded = decodeBytecode(fn.bytecode, compiled.opcodeMapping, config);
+      expect(decoded.length).toBe(insts.length + 1);
+      expect(decoded[0]!.opcode).toBe(OpCode.LoadConst);
+      expect(decoded[decoded.length - 1]!.opcode).toBe(OpCode.Return);
+    });
   });
 });

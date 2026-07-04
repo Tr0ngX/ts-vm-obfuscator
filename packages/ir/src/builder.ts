@@ -83,6 +83,8 @@ export class ASTLowering {
   private readonly outerCaptureBindings = new Map<string, number>();
   private readonly breakTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
   private readonly continueTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
+  private readonly labelTargets: Map<string, { readonly break: { readonly blockId: string; readonly tryDepth: number }; continue?: { readonly blockId: string; readonly tryDepth: number } }> = new Map();
+  private readonly activeLabels: Set<string> = new Set();
   private readonly finallyContexts: FinallyContext[] = [];
   private tryDepth = 0;
   private throwPassthroughFinallyDepth = 0;
@@ -1513,6 +1515,33 @@ export class ASTLowering {
     this.storeValue(initializer, valueReg);
   }
 
+  private assignPerIterationBinding(
+    initializer: ts.ForInitializer | ts.ForInOrOfStatement['initializer'],
+    valueReg: Register,
+    loopKind: string,
+  ): void {
+    if (ts.isVariableDeclarationList(initializer)) {
+      if (initializer.declarations.length !== 1) {
+        this.failUnsupported(initializer, `${loopKind} supports a single declaration only`);
+      }
+      const decl = initializer.declarations[0]!;
+      if (ts.isIdentifier(decl.name)) {
+        const name = decl.name.text;
+        const freshReg = this.fnBuilder.addLocal(`$${name}$iter`, IRType.Any);
+        const undefReg = this.emitConstant(ConstantKind.Undefined, null);
+        this.currentBlock.addInstruction(OpCode.CellNew, [{ kind: OperandKind.Register, value: undefReg }], freshReg);
+        this.currentBlock.addInstruction(OpCode.CellSet, [
+          { kind: OperandKind.Register, value: freshReg },
+          { kind: OperandKind.Register, value: valueReg },
+        ]);
+        this.scope.set(name, { register: freshReg, boxed: true });
+        this.fnBuilder.addCapturedVariable(name);
+        return;
+      }
+    }
+    this.assignLoopBinding(initializer, valueReg, loopKind);
+  }
+
   private loadFromLocal(localReg: Register): Register {
     const destReg = this.fnBuilder.allocRegister();
     this.currentBlock.addInstruction(OpCode.LoadLocal, [{ kind: OperandKind.Register, value: localReg }], destReg);
@@ -2094,9 +2123,18 @@ export class ASTLowering {
         this.currentBlock = nextBlock;
       }
     } else if (ts.isBreakStatement(stmt)) {
-      const target = this.breakTargets[this.breakTargets.length - 1];
-      if (!target) {
-        this.failUnsupported(stmt, 'break used outside a loop or switch');
+      let target: { readonly blockId: string; readonly tryDepth: number } | undefined;
+      if (stmt.label) {
+        const labelEntry = this.labelTargets.get(stmt.label.text);
+        if (!labelEntry) {
+          this.failUnsupported(stmt, `Unknown label "${stmt.label.text}"`);
+        }
+        target = labelEntry!.break;
+      } else {
+        target = this.breakTargets[this.breakTargets.length - 1];
+        if (!target) {
+          this.failUnsupported(stmt, 'break used outside a loop or switch');
+        }
       }
       if (this.getActiveFinallyContext()) {
         this.routeAbruptCompletionThroughFinally(3, undefined, { kind: 'break', blockId: target.blockId, tryDepth: target.tryDepth });
@@ -2105,9 +2143,21 @@ export class ASTLowering {
         this.emitJumpAndAdvance(target.blockId, 'after_break');
       }
     } else if (ts.isContinueStatement(stmt)) {
-      const target = this.continueTargets[this.continueTargets.length - 1];
-      if (!target) {
-        this.failUnsupported(stmt, 'continue used outside a loop');
+      let target: { readonly blockId: string; readonly tryDepth: number } | undefined;
+      if (stmt.label) {
+        const labelEntry = this.labelTargets.get(stmt.label.text);
+        if (!labelEntry) {
+          this.failUnsupported(stmt, `Unknown label "${stmt.label.text}"`);
+        }
+        if (!labelEntry!.continue) {
+          this.failUnsupported(stmt, `Label "${stmt.label.text}" is not a loop label`);
+        }
+        target = labelEntry!.continue!;
+      } else {
+        target = this.continueTargets[this.continueTargets.length - 1];
+        if (!target) {
+          this.failUnsupported(stmt, 'continue used outside a loop');
+        }
       }
       if (this.getActiveFinallyContext()) {
         this.routeAbruptCompletionThroughFinally(4, undefined, { kind: 'continue', blockId: target.blockId, tryDepth: target.tryDepth });
@@ -2147,6 +2197,12 @@ export class ASTLowering {
         // Body
         this.enterBreakTarget(endBlock.id);
         this.enterContinueTarget(continueBlock.id);
+        for (const labelName of this.activeLabels) {
+          const labelEntry = this.labelTargets.get(labelName);
+          if (labelEntry && !labelEntry.continue) {
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: continueBlock.id, tryDepth: this.tryDepth };
+          }
+        }
         this.currentBlock = bodyBlock;
         this.visitStatement(stmt.statement);
         const bodyFallsThrough =
@@ -2259,6 +2315,12 @@ export class ASTLowering {
         this.currentBlock.setTerminator({ kind: 'branch', condition: doneReg, targets: [endBlock.id, bodyBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
 
+        for (const labelName of this.activeLabels) {
+          const labelEntry = this.labelTargets.get(labelName);
+          if (labelEntry && !labelEntry.continue) {
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+          }
+        }
         this.enterBreakTarget(endBlock.id);
         this.enterContinueTarget(condBlock.id);
         this.currentBlock = bodyBlock;
@@ -2272,7 +2334,7 @@ export class ASTLowering {
           ],
           valueReg,
         );
-        this.assignLoopBinding(stmt.initializer, valueReg, 'for...of');
+        this.assignPerIterationBinding(stmt.initializer, valueReg, 'for...of');
         this.visitStatement(stmt.statement);
         const bodyFallsThrough =
           !this.isSyntheticDeadBlock(this.currentBlock) &&
@@ -2293,18 +2355,28 @@ export class ASTLowering {
       this.scope = new ScopeMap(this.scope);
       try {
         const sourceReg = this.visitExpression(stmt.expression);
-        // ⚠️ SEMANTIC WARNING: Object.keys() only captures own enumerable properties.
-        // True JS for...in iterates ALL enumerable properties (own + inherited) from
-        // the prototype chain. Implementing correct semantics requires a dedicated
-        // OpCode.EnumerateKeys or a runtime helper. This approximation handles the
-        // common case of plain object literals but will miss inherited properties.
-        const objectReg = this.resolveVar('Object');
+        // Use a runtime helper via new Function to collect all enumerable keys
+        // from the full prototype chain (not just own properties like Object.keys())
+        const functionReg = this.resolveVar('Function');
+        const helperParamReg = this.emitConstant(ConstantKind.String, 'o');
+        const helperBodyReg = this.emitConstant(ConstantKind.String,
+          'var k=[],s={};for(var p in o)if(!s[p]){s[p]=1;k.push(p)}return k',
+        );
+        const helperCtorReg = this.fnBuilder.allocRegister();
+        this.currentBlock.addInstruction(
+          OpCode.New,
+          [
+            { kind: OperandKind.Register, value: functionReg },
+            { kind: OperandKind.Register, value: helperParamReg },
+            { kind: OperandKind.Register, value: helperBodyReg },
+          ],
+          helperCtorReg,
+        );
         const keysReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(
-          OpCode.CallMethod,
+          OpCode.Call,
           [
-            { kind: OperandKind.Register, value: objectReg },
-            { kind: OperandKind.Register, value: this.emitConstant(ConstantKind.String, 'keys') },
+            { kind: OperandKind.Register, value: helperCtorReg },
             { kind: OperandKind.Register, value: sourceReg },
           ],
           keysReg,
@@ -2353,6 +2425,12 @@ export class ASTLowering {
         this.currentBlock.setTerminator({ kind: 'branch', condition: condReg, targets: [bodyBlock.id, endBlock.id] });
         this.fnBuilder.addBlock(this.currentBlock.build());
 
+        for (const labelName of this.activeLabels) {
+          const labelEntry = this.labelTargets.get(labelName);
+          if (labelEntry && !labelEntry.continue) {
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: continueBlock.id, tryDepth: this.tryDepth };
+          }
+        }
         this.enterBreakTarget(endBlock.id);
         this.enterContinueTarget(continueBlock.id);
         this.currentBlock = bodyBlock;
@@ -2367,7 +2445,7 @@ export class ASTLowering {
           ],
           keyReg,
         );
-        this.assignLoopBinding(stmt.initializer, keyReg, 'for...in');
+        this.assignPerIterationBinding(stmt.initializer, keyReg, 'for...in');
         this.visitStatement(stmt.statement);
         const bodyFallsThrough =
           !this.isSyntheticDeadBlock(this.currentBlock) &&
@@ -2456,6 +2534,12 @@ export class ASTLowering {
 
       this.enterBreakTarget(endBlock.id);
       this.enterContinueTarget(condBlock.id);
+      for (const labelName of this.activeLabels) {
+        const labelEntry = this.labelTargets.get(labelName);
+        if (labelEntry && !labelEntry.continue) {
+          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+        }
+      }
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
       const bodyFallsThrough =
@@ -2480,6 +2564,12 @@ export class ASTLowering {
 
       this.enterBreakTarget(endBlock.id);
       this.enterContinueTarget(condBlock.id);
+      for (const labelName of this.activeLabels) {
+        const labelEntry = this.labelTargets.get(labelName);
+        if (labelEntry && !labelEntry.continue) {
+          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+        }
+      }
       this.currentBlock = bodyBlock;
       this.visitStatement(stmt.statement);
       const bodyFallsThrough =
@@ -2574,6 +2664,35 @@ export class ASTLowering {
       } else {
         this.lowerTryCatchStatement(stmt);
       }
+    } else if (ts.isLabeledStatement(stmt)) {
+      const labelName = stmt.label.text;
+      const labelEndBlock = this.fnBuilder.createBlock(`label_${labelName}_end`);
+
+      this.labelTargets.set(labelName, { break: { blockId: labelEndBlock.id, tryDepth: this.tryDepth } });
+      this.activeLabels.add(labelName);
+
+      this.enterBreakTarget(labelEndBlock.id);
+      try {
+        this.visitStatement(stmt.statement);
+      } finally {
+        this.leaveBreakTarget();
+        this.activeLabels.delete(labelName);
+        this.labelTargets.delete(labelName);
+      }
+
+      if (
+        !this.isSyntheticDeadBlock(this.currentBlock) &&
+        this.currentBlock.getTerminatorKind() !== 'return' &&
+        this.currentBlock.getTerminatorKind() !== 'throw' &&
+        this.currentBlock.getTerminatorKind() !== 'jump'
+      ) {
+        this.currentBlock.setTerminator({ kind: 'jump', targets: [labelEndBlock.id] });
+        this.fnBuilder.addBlock(this.currentBlock.build());
+      }
+
+      this.currentBlock = labelEndBlock;
+    } else if (ts.isEmptyStatement(stmt)) {
+      // no-op
     } else {
       this.failUnsupported(stmt);
     }
@@ -2607,6 +2726,7 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
     if ('asteriskToken' in functionNode && !!functionNode.asteriskToken) {
       attributes.push(FunctionAttribute.Generator);
     }
+    const snap = modBuilder.snapshot();
     try {
       new ASTLowering(modBuilder, functionNode, {
         name: functionName,
@@ -2619,6 +2739,7 @@ export function lowerToIR(moduleInfo: ModuleInfo, graph: ProjectSemanticGraph, f
       if (!options.compatibilityFallback) {
         throw error;
       }
+      modBuilder.revert(snap);
       const message = error instanceof Error ? error.message : String(error);
       const position = sourceFile.getLineAndCharacterOfPosition(functionNode.getStart(sourceFile));
       options.diagnostics?.push({
