@@ -9,7 +9,7 @@ on:
 env:
   CI: true
   TURBO_CACHE_KEY: ${{ github.sha }}
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   lint:
@@ -94,7 +94,9 @@ jobs:
             ${{ runner.os }}-turbo-
       - run: pnpm build --cache-dir=".turbo"
       - name: Run benchmark
-        run: node --expose-gc run-benchmark.js
+        run: node --expose-gc run-benchmark.js --skip-build
+        env:
+          TSXOBF_BENCHMARK_PRESET: ci
         timeout-minutes: 15
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4

@@ -1042,7 +1042,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     if (keyStr === '__proto__' || keyStr === 'constructor') {
       throw new TypeError('Prototype/constructor access blocked');
     }
-    console.log('PropGet EXEC - Obj:', ctx.regs[args[0]] ? typeof ctx.regs[args[0]] : 'null', 'Key:', key, 'Val:', ctx.regs[args[0]] ? ctx.regs[args[0]][key] : 'undefined', 'DestReg:', args[2], 'PC:', ctx.pc);
     ctx.regs[args[2]] = ctx.regs[args[0]][key];
   }`,
   );
@@ -1139,14 +1138,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     var indexedSpreadSource = ${regRef('args[1]')};
     var indexedSpreadStart = ${regRef('args[2]')};
     if (indexedSpreadSource == null || typeof indexedSpreadSource[Symbol.iterator] !== 'function') {
-      console.log('FAIL SPREAD:', {
-        indexedSpreadSource: indexedSpreadSource,
-        type: typeof indexedSpreadSource,
-        hasSymbol: typeof Symbol !== 'undefined',
-        Symbol: typeof Symbol !== 'undefined' ? Symbol : null,
-        iterator: typeof Symbol !== 'undefined' ? Symbol.iterator : null,
-        val: indexedSpreadSource ? indexedSpreadSource[Symbol.iterator] : null
-      });
       throw new TypeError('VM spread source is not iterable');
     }
     var indexedSpreadIterator = indexedSpreadSource[Symbol.iterator]();
@@ -1188,13 +1179,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
     ${readArgs}
     var fn = ${regRef('args[0]')};
     if (typeof fn === 'undefined' || fn === null) {
-      console.log('FAIL CALL: target is undefined!', {
-        targetRegIndex: args[0],
-        targetRegVal: fn,
-        pc: ctx.${ctx.pc},
-        args: args,
-        regs: ctx.regs,
-      });
       throw new TypeError('VM Call target is undefined or null');
     }
     if (typeof fn !== 'function') {
@@ -1240,9 +1224,6 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       } catch(e) {}
     }
     var res = ${top.nativeApply}.call(fnArray, null, ctx.regs[args[1]]);
-    if (res === 'imul' || res === 'Math' || (typeof res === 'string' && res.length < 10)) {
-      console.log('CallWithArray EXEC - Target:', fnArray ? fnArray.name : 'null', 'Args:', ctx.regs[args[1]], 'Res:', res, 'DestReg:', args[2], 'PC:', ctx.pc);
-    }
     ctx.regs[args[2]] = res;
   `,
   );
@@ -2031,9 +2012,6 @@ const ${top.vmFunctions} = (function() {
         decoded += String.fromCharCode(val.charCodeAt(i) ^ keystreamByte);
       }
       
-      if (decoded === 'Math' || decoded === 'imul' || decoded.length < 10) {
-        console.log('getCP Decrypted - Index:', index, 'Val:', val, 'Decoded:', decoded, 'Seed:', stringSeed, 'pathHash:', ctx ? ctx.pathHash : 'no-ctx');
-      }
       c.value = decoded;
       c.kind = 'raw_string';
       return decoded;

@@ -10,6 +10,7 @@ import {
   ConstantKind,
   type IRModule,
   IRType,
+  FunctionAttribute,
   OperandKind,
   OpCode,
   type ProjectSemanticGraph,
@@ -1296,6 +1297,61 @@ describe('Advanced Transforms', () => {
 
       expect(result.nodesTransformed).toBe(0);
       expect(entryBlock.instructions[2]!.opcode).toBe(OpCode.PropGet);
+    });
+
+    it('should not virtualize PropSet on static "this" register', () => {
+      const ctx = makeCtx({
+        functions: [
+          {
+            id: 'func1',
+            name: 'func1',
+            params: [],
+            returnType: IRType.Void,
+            locals: [],
+            isVirtualized: true,
+            isExported: false,
+            attributes: [FunctionAttribute.Static],
+            capturedVariables: [],
+            blocks: [
+              {
+                id: 'entry',
+                label: 'entry',
+                phiNodes: [],
+                predecessors: [],
+                successors: [],
+                terminator: { kind: 'return', targets: [] },
+                instructions: [
+                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 1 }], result: 'r0' },
+                  { opcode: OpCode.LoadThis, operands: [], result: 'r1' },
+                  {
+                    opcode: OpCode.LoadConst,
+                    operands: [{ kind: OperandKind.ConstantIndex, value: 0 }],
+                    result: 'r2',
+                  },
+                  {
+                    opcode: OpCode.PropSet,
+                    operands: [
+                      { kind: OperandKind.Register, value: 'r1' },
+                      { kind: OperandKind.Register, value: 'r2' },
+                      { kind: OperandKind.Register, value: 'r0' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        constantPool: [
+          { index: 0, kind: ConstantKind.String, value: 'customProp' },
+          { index: 1, kind: ConstantKind.Number, value: 42 },
+        ],
+      });
+      const pass = new NamespaceVirtualizationPass();
+      const result = pass.execute(ctx);
+      const entryBlock = result.module.functions[0]!.blocks[0]!;
+
+      expect(result.nodesTransformed).toBe(0);
+      expect(entryBlock.instructions[3]!.opcode).toBe(OpCode.PropSet);
     });
 
     it('should skip CFF-generated blocks (labels starting with "cff_")', () => {

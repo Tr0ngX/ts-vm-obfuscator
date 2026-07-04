@@ -1,5 +1,5 @@
 import type { TransformPass, TransformContext, TransformResult, IRModule, IRFunction, Instruction, Register } from '@tsvm/shared';
-import { OpCode, ConstantKind, OperandKind, IRType, FunctionAttribute } from '@tsvm/shared';
+import { OpCode, ConstantKind, OperandKind, IRType } from '@tsvm/shared';
 import { getMaxRegister } from '../utils.js';
 
 /**
@@ -437,9 +437,7 @@ export class NamespaceVirtualizationPass implements TransformPass {
             const objOp = inst.operands[0];
             const keyOp = inst.operands[1];
 
-            const isStaticContext = func.attributes && func.attributes.indexOf(FunctionAttribute.Static) >= 0;
             const isObjThis =
-              !isStaticContext &&
               objOp &&
               objOp.kind === OperandKind.Register &&
               typeof objOp.value === 'string' &&

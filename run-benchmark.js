@@ -3,6 +3,43 @@ const cp = require('child_process');
 const path = require('path');
 const os = require('os');
 
+const skipWorkspaceBuild = process.argv.includes('--skip-build') || process.env.TSXOBF_BENCHMARK_SKIP_BUILD === '1';
+const benchmarkPreset = process.env.TSXOBF_BENCHMARK_PRESET || 'full';
+const bootstrapReps = Number(process.env.TSXOBF_BENCHMARK_BOOTSTRAP_REPS || (benchmarkPreset === 'ci' ? 400 : 3000));
+const writeReports = !process.argv.includes('--no-report') && process.env.TSXOBF_BENCHMARK_WRITE_REPORTS !== '0';
+
+function withBenchmarkConsoleSilenced(fn) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    return fn();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+}
+
+async function withBenchmarkConsoleSilencedAsync(fn) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    return await fn();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+}
+
 // =============================================================================
 // 📊 ADVANCED STATISTICS LIBRARY
 // =============================================================================
@@ -328,27 +365,32 @@ function adaptiveWarmup(fn, args, minWarmup, maxWarmup, windowSize = 50, targetC
  *  - p95 / p99 with linear interpolation
  */
 function runHighFidelityBenchmark(fn, args, iterations, minWarmup = 100, maxWarmup = 2000) {
-  // Force GC to isolate memory pressure
-  if (global.gc) global.gc();
+  const measurement = withBenchmarkConsoleSilenced(() => {
+    // Force GC to isolate memory pressure
+    if (global.gc) global.gc();
 
-  // Adaptive warmup
-  const warmupResult = adaptiveWarmup(fn, args, minWarmup, maxWarmup);
+    // Adaptive warmup
+    const warmupResult = adaptiveWarmup(fn, args, minWarmup, maxWarmup);
 
-  // Pre-bench memory snapshot
-  const heapBefore = heapSnapshot();
+    // Pre-bench memory snapshot
+    const heapBefore = heapSnapshot();
 
-  // Main measurement loop
-  const rawTimesUs = new Array(iterations);
-  for (let i = 0; i < iterations; i++) {
-    const start = process.hrtime.bigint();
-    fn(...args);
-    const end = process.hrtime.bigint();
-    rawTimesUs[i] = Number(end - start) / 1000;
-  }
+    // Main measurement loop
+    const rawTimesUs = new Array(iterations);
+    for (let i = 0; i < iterations; i++) {
+      const start = process.hrtime.bigint();
+      fn(...args);
+      const end = process.hrtime.bigint();
+      rawTimesUs[i] = Number(end - start) / 1000;
+    }
 
-  // Post-bench memory snapshot
-  const heapAfter = heapSnapshot();
-  const hDelta = heapDelta(heapBefore, heapAfter);
+    // Post-bench memory snapshot
+    const heapAfter = heapSnapshot();
+    const hDelta = heapDelta(heapBefore, heapAfter);
+
+    return { hDelta, rawTimesUs, warmupResult };
+  });
+  const { hDelta, rawTimesUs, warmupResult } = measurement;
 
   // Sort for percentile analysis (preserve raw for distribution tests)
   const sorted = [...rawTimesUs].sort((a, b) => a - b);
@@ -376,7 +418,7 @@ function runHighFidelityBenchmark(fn, args, iterations, minWarmup = 100, maxWarm
   const p99 = Stats.percentile(filtered, 99);
 
   // BCa Bootstrap 95% CI (more accurate than z-approximation for skewed timing data)
-  const bca = Stats.bcaBootstrapCI(filtered, Stats.mean, 0.95, 3000);
+  const bca = Stats.bcaBootstrapCI(filtered, Stats.mean, 0.95, bootstrapReps);
 
   // Thermal drift detection: split filtered into halves, compare means
   const halfIdx = Math.floor(filtered.length / 2);
@@ -425,7 +467,7 @@ function compareBenchmark(nativeStats, obfStats) {
 
   // Slowdown ratio with bootstrap CI (via ratio of bootstrap means)
   const ratioBootstrap = (() => {
-    const reps = 3000, rng = (m) => Math.floor(Math.random() * m);
+    const reps = bootstrapReps, rng = (m) => Math.floor(Math.random() * m);
     const ratios = new Array(reps);
     for (let i = 0; i < reps; i++) {
       const sn = native[rng(native.length)], so = obf[rng(obf.length)];
@@ -547,18 +589,23 @@ console.log(`   Platform:  ${sysProfile.platform}`);
 console.log(`   Memory:    ${sysProfile.totalMemGB} GB total / ${sysProfile.freeMemGB} GB free`);
 console.log(`   Node:      ${sysProfile.nodeVersion} (V8 ${sysProfile.v8Version})`);
 console.log(`   GC:        ${sysProfile.gcExposed ? 'exposed ✓' : 'NOT exposed (use --expose-gc for accuracy)'}`);
+console.log(`   Preset:    ${benchmarkPreset} (${bootstrapReps} bootstrap reps)`);
 if (sysProfile.linuxCpuGovernor) {
   console.log(`   Governor:  ${sysProfile.linuxCpuGovernor}${sysProfile.linuxCpuGovernor === 'performance' ? ' ✓' : ' ⚠️ (set to "performance" for stable timings)'}`);
 }
 
-// Build workspace
+// Build workspace unless the caller has already done so.
 console.log('\n📦 Step 1: Verifying workspace builds...');
-try {
-  cp.execSync('pnpm build', { stdio: 'inherit' });
-  console.log('✅ Workspace packages successfully built!');
-} catch (err) {
-  console.error('❌ Build failed!', err.message);
-  process.exit(1);
+if (skipWorkspaceBuild) {
+  console.log('⏭️  Skipping workspace build because TSXOBF_BENCHMARK_SKIP_BUILD=1 or --skip-build was provided.');
+} else {
+  try {
+    cp.execSync('pnpm build', { stdio: 'inherit' });
+    console.log('✅ Workspace packages successfully built!');
+  } catch (err) {
+    console.error('❌ Build failed!', err.message);
+    process.exit(1);
+  }
 }
 
 // Run obfuscation
@@ -605,10 +652,10 @@ console.log(`   Original:   ${originalPath} (${originalSize} bytes)`);
 console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
 
 (async () => {
-  const originalMod = require(originalPath);
-  const obfuscatedMod = await import('file:///' + obfuscatedPath.replace(/\\/g, '/'));
+  const originalMod = withBenchmarkConsoleSilenced(() => require(originalPath));
+  const obfuscatedMod = await withBenchmarkConsoleSilencedAsync(() => import('file:///' + obfuscatedPath.replace(/\\/g, '/')));
 
-  const testSuites = [
+  const baseTestSuites = [
     { name: 'calculateSecretHash', desc: 'FNV-1a String Hashing (Loop Heavy)', args: ['Artemis II Flight Control System Telemetry Signal'], iterations: 3000, minWarmup: 300, maxWarmup: 3000 },
     { name: 'encryptTEA', desc: 'Tiny Encryption Algorithm (Bitwise Core)', args: [12345, 67890, 9876, 5432, 1111, 2222], iterations: 500, minWarmup: 100, maxWarmup: 2000 },
     { name: 'verifyArtemisCollatzAndMath', desc: 'Collatz Sequence & Bitwise Accumulators', args: [27, 987654], iterations: 500, minWarmup: 100, maxWarmup: 2000 },
@@ -624,6 +671,14 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
     { name: 'testLoopHeaders', desc: 'Loop Header Destructuring', args: [1, 5, [['1', '2', '3']], null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 },
     { name: 'testReactHooksJSX', desc: 'React JSX and Hooks Safety', args: [1, 1, 5, null], iterations: 1000, minWarmup: 200, maxWarmup: 2000 }
   ];
+  const testSuites = benchmarkPreset === 'ci'
+    ? baseTestSuites.map((suite) => ({
+        ...suite,
+        iterations: Math.max(12, Math.ceil(suite.iterations / 100)),
+        minWarmup: Math.min(8, suite.minWarmup),
+        maxWarmup: Math.min(20, suite.maxWarmup),
+      }))
+    : baseTestSuites;
 
   const results = [];
   console.log('\n⏱  Running high-fidelity statistical timing...');
@@ -640,8 +695,8 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
     // === CORRECTNESS VERIFICATION ===
     let correctness = { passed: true, nativeResult: null, obfResult: null, error: null };
     try {
-      const nRes = origFn(...suite.args);
-      const oRes = obfFn(...suite.args);
+      const nRes = withBenchmarkConsoleSilenced(() => origFn(...suite.args));
+      const oRes = withBenchmarkConsoleSilenced(() => obfFn(...suite.args));
       correctness.nativeResult = nRes;
       correctness.obfResult = oRes;
       correctness.passed = deepEqual(nRes, oRes);
@@ -727,7 +782,9 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
       }
     }))
   };
-  fs.writeFileSync('BENCHMARK.json', JSON.stringify(exportData, null, 2), 'utf8');
+  if (writeReports) {
+    fs.writeFileSync('BENCHMARK.json', JSON.stringify(exportData, null, 2), 'utf8');
+  }
 
   // CSV export for spreadsheet analysis
   const csvLines = ['function,workload,native_avg_us,native_median_us,native_p95_us,native_stddev_us,obf_avg_us,obf_median_us,obf_p95_us,obf_stddev_us,slowdown_ratio,ratio_ci_lower,ratio_ci_upper,mannwhitney_p,welch_t,welch_p,cohen_d,cohen_magnitude,thermal_drift_pct,heap_delta_kb,correctness_passed'];
@@ -743,7 +800,9 @@ console.log(`   Obfuscated: ${obfuscatedPath} (${obfSize} bytes)`);
       r.correctness.passed
     ].join(','));
   }
-  fs.writeFileSync('BENCHMARK.csv', csvLines.join('\n'), 'utf8');
+  if (writeReports) {
+    fs.writeFileSync('BENCHMARK.csv', csvLines.join('\n'), 'utf8');
+  }
 
   // === MARKDOWN REPORT ===
   const dateStr = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -779,10 +838,10 @@ This report evaluates the real-world high-precision performance, bundle size exp
 | **Timing Resolution** | Nanosecond precision via \`process.hrtime.bigint()\`, converted to floating-point microseconds |
 | **Warm-up Strategy** | **Adaptive convergence**: warmup continues until coefficient of variation (CV) of trailing 50 samples < 5% (JIT tiering + PIC priming + L1/L2 cache stabilization) |
 | **Outlier Filtering** | Tukey's hinges IQR: \\[[Q_1 - 1.5 \\times IQR, Q_3 + 1.5 \\times IQR]\\] |
-| **Confidence Intervals** | **BCa Bootstrap** (Bias-Corrected and Accelerated) — 3,000 resamples. More accurate than normal approximation for skewed timing distributions (Efron & Tibshirani 1993) |
+| **Confidence Intervals** | **BCa Bootstrap** (Bias-Corrected and Accelerated) — ${bootstrapReps.toLocaleString('en-US')} resamples. More accurate than normal approximation for skewed timing distributions (Efron & Tibshirani 1993) |
 | **Significance Testing** | **Mann-Whitney U** (non-parametric, no normality assumption) + **Welch's t-test** (parametric, unequal variance tolerant) |
 | **Effect Size** | **Cohen's d** with pooled standard deviation, magnitude classification per Cohen (1988): negligible (<0.2), small (0.2–0.5), medium (0.5–0.8), large (0.8–1.2), very large (>1.2) |
-| **Slowdown Ratio CI** | **Bootstrap ratio CI** (3,000 resamples of mean ratios) |
+| **Slowdown Ratio CI** | **Bootstrap ratio CI** (${bootstrapReps.toLocaleString('en-US')} resamples of mean ratios) |
 | **Distribution Shape** | Skewness (Fisher-Pearson), Excess Kurtosis, MAD (Median Absolute Deviation) |
 | **Thermal Drift Detection** | Split-sample test: compares first-half mean vs second-half mean to detect CPU frequency scaling / throttling |
 | **Memory Profiling** | Heap delta (\`heapUsed\`, \`heapTotal\`, \`rss\`, \`external\`) before/after each measurement loop |
@@ -903,21 +962,25 @@ Raw data has been exported for independent verification:
 
 ### Recommended Re-run Command
 \`\`\`bash
-node --expose-gc --no-concurrent-recompilation benchmark.js
+node --expose-gc --no-concurrent-recompilation run-benchmark.js
 \`\`\`
 On Linux, pin the process to a single core and disable frequency scaling for maximal stability:
 \`\`\`bash
 sudo cpupower frequency-set -g performance
-taskset -c 0 node --expose-gc benchmark.js
+taskset -c 0 node --expose-gc run-benchmark.js
 \`\`\`
 `;
 
-  fs.writeFileSync('BENCHMARK.md', markdownReport, 'utf8');
-  fs.writeFileSync('BENCHMARK.json', JSON.stringify(exportData, null, 2), 'utf8');
-  console.log('\n✨ Reports generated:');
-  console.log('   - BENCHMARK.md  (human-readable scientific report)');
-  console.log('   - BENCHMARK.json (full machine-readable dataset)');
-  console.log('   - BENCHMARK.csv  (spreadsheet summary)');
+  if (writeReports) {
+    fs.writeFileSync('BENCHMARK.md', markdownReport, 'utf8');
+    fs.writeFileSync('BENCHMARK.json', JSON.stringify(exportData, null, 2), 'utf8');
+    console.log('\n✨ Reports generated:');
+    console.log('   - BENCHMARK.md  (human-readable scientific report)');
+    console.log('   - BENCHMARK.json (full machine-readable dataset)');
+    console.log('   - BENCHMARK.csv  (spreadsheet summary)');
+  } else {
+    console.log('\n✨ Report writing skipped (--no-report / TSXOBF_BENCHMARK_WRITE_REPORTS=0).');
+  }
   console.log('======================================================================');
 })();
 
