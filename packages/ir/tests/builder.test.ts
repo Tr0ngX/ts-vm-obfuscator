@@ -387,6 +387,5 @@ describe('IR builder', () => {
       expect(opcodes).toContain(OpCode.LoadGlobal);
       expect(opcodes).toContain(OpCode.Call);
     });
-
   });
 });

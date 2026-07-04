@@ -48,9 +48,7 @@ describe('encodeConstantPool', () => {
 
   describe('XorRotate scheme', () => {
     it('encodes string values to different output', () => {
-      const entries: ConstantPoolEntry[] = [
-        { index: 0, kind: ConstantKind.String, value: 'HelloWorld' },
-      ];
+      const entries: ConstantPoolEntry[] = [{ index: 0, kind: ConstantKind.String, value: 'HelloWorld' }];
       const encoded = encodeConstantPool(entries, ConstantEncodingScheme.XorRotate, seed);
       expect(encoded[0]!.value).not.toBe('HelloWorld');
       expect(typeof encoded[0]!.value).toBe('string');
@@ -83,9 +81,7 @@ describe('encodeConstantPool', () => {
     });
 
     it('uses expectedPathHash as decoding key', () => {
-      const entries: ConstantPoolEntry[] = [
-        { index: 0, kind: ConstantKind.String, value: 'secret', expectedPathHash: 0xdeadbeef },
-      ];
+      const entries: ConstantPoolEntry[] = [{ index: 0, kind: ConstantKind.String, value: 'secret', expectedPathHash: 0xdeadbeef }];
       const encoded = encodeConstantPool(entries, ConstantEncodingScheme.XorRotate, seed);
       expect(encoded[0]!.decodingKey).toBe(0xdeadbeef);
       const decoded = decodeConstantPool(encoded, ConstantEncodingScheme.XorRotate, seed);
@@ -93,9 +89,7 @@ describe('encodeConstantPool', () => {
     });
 
     it('produces different encodings for different seeds', () => {
-      const entries: ConstantPoolEntry[] = [
-        { index: 0, kind: ConstantKind.String, value: 'test' },
-      ];
+      const entries: ConstantPoolEntry[] = [{ index: 0, kind: ConstantKind.String, value: 'test' }];
       const a = encodeConstantPool(entries, ConstantEncodingScheme.XorRotate, 1);
       const b = encodeConstantPool(entries, ConstantEncodingScheme.XorRotate, 2);
       expect(a[0]!.value).not.toBe(b[0]!.value);
@@ -116,9 +110,7 @@ describe('encodeConstantPool', () => {
 
   describe('SplitMerge scheme', () => {
     it('passes through all values unchanged (identity fallback)', () => {
-      const entries: ConstantPoolEntry[] = [
-        { index: 0, kind: ConstantKind.String, value: 'test' },
-      ];
+      const entries: ConstantPoolEntry[] = [{ index: 0, kind: ConstantKind.String, value: 'test' }];
       const encoded = encodeConstantPool(entries, ConstantEncodingScheme.SplitMerge, seed);
       expect(encoded[0]!.value).toBe('test');
     });
@@ -168,11 +160,13 @@ describe('encodeBytecode', () => {
     const mapping: OpcodeMapping = {
       seed: 7,
       forward: new Map([[OpCode.Nop, [5, 6, 7]]]),
-      reverse: new Map([[5, OpCode.Nop], [6, OpCode.Nop], [7, OpCode.Nop]]),
+      reverse: new Map([
+        [5, OpCode.Nop],
+        [6, OpCode.Nop],
+        [7, OpCode.Nop],
+      ]),
     };
-    const insts: Instruction[] = [
-      { opcode: OpCode.Nop, operands: [] },
-    ];
+    const insts: Instruction[] = [{ opcode: OpCode.Nop, operands: [] }];
     const bytes = encodeBytecode(insts, mapping, defaultConfig, rng);
     expect(bytes.length).toBe(1);
     expect([5, 6, 7]).toContain(bytes[0]);
@@ -202,9 +196,7 @@ describe('encodeBytecode', () => {
   });
 
   it('applies rolling key XOR', () => {
-    const insts: Instruction[] = [
-      { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-    ];
+    const insts: Instruction[] = [{ opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' }];
     const mapping: OpcodeMapping = { seed: 7, forward: new Map(), reverse: new Map() };
     const plain = encodeBytecode(insts, mapping, { ...defaultConfig, opcodeRemapping: false });
     const rolled = encodeBytecode(insts, mapping, { ...defaultConfig, opcodeRemapping: false, rollingKeys: true });
@@ -217,9 +209,7 @@ describe('encodeBytecode', () => {
   });
 
   it('applies paranoid XOR mask', () => {
-    const insts: Instruction[] = [
-      { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-    ];
+    const insts: Instruction[] = [{ opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' }];
     const mapping: OpcodeMapping = { seed: 7, forward: new Map(), reverse: new Map() };
     const plain = encodeBytecode(insts, mapping, { ...defaultConfig, opcodeRemapping: false });
     const paranoid = encodeBytecode(insts, mapping, { ...defaultConfig, opcodeRemapping: false, runtimeHardening: 'paranoid' });
@@ -239,7 +229,9 @@ describe('encodeBytecode', () => {
   it('throws when junk insertion needs rng but not provided', () => {
     const mapping: OpcodeMapping = { seed: 7, forward: new Map(), reverse: new Map() };
     const insts: Instruction[] = [{ opcode: OpCode.Nop, operands: [] }];
-    expect(() => encodeBytecode(insts, mapping, { ...defaultConfig, junkInsertion: true, opcodeRemapping: false })).toThrow('SeededRandom required');
+    expect(() => encodeBytecode(insts, mapping, { ...defaultConfig, junkInsertion: true, opcodeRemapping: false })).toThrow(
+      'SeededRandom required',
+    );
   });
 
   it('uses mappedOp if set on instruction', () => {

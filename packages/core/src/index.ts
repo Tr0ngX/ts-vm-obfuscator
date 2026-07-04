@@ -378,10 +378,7 @@ export class ObfuscationPipeline {
           this.diagnostics.push(...createReactSafetyDiagnostics(irModule.functions, irModule.sourceFile));
           enforceReactProfile(irModule.functions, irModule.constantPool);
         }
-        this.emit(
-          'react_safety' as PipelineStage,
-          `Applied React safety profile to ${reactComponents.length} React-sensitive functions`,
-        );
+        this.emit('react_safety' as PipelineStage, `Applied React safety profile to ${reactComponents.length} React-sensitive functions`);
       } catch (error: unknown) {
         this.emitError('react_safety' as PipelineStage, 'React safety analysis failed', error);
         return this.failResult(buildId, startTime, { semanticGraph, irModules });
@@ -413,14 +410,14 @@ export class ObfuscationPipeline {
             if (!parentToChildren.has(parentId)) parentToChildren.set(parentId, []);
             parentToChildren.get(parentId)!.push(childId);
           }
-          const queue = irModule.functions.filter(f => !f.isVirtualized).map(f => f.id);
+          const queue = irModule.functions.filter((f) => !f.isVirtualized).map((f) => f.id);
           const visited = new Set(queue);
           while (queue.length > 0) {
             const id = queue.shift()!;
             for (const childId of parentToChildren.get(id) ?? []) {
               if (!visited.has(childId)) {
                 visited.add(childId);
-                const childFn = irModule.functions.find(f => f.id === childId)!;
+                const childFn = irModule.functions.find((f) => f.id === childId)!;
                 (childFn as any).isVirtualized = false;
                 queue.push(childId);
               }

@@ -13,19 +13,47 @@ import {
 } from '@tsvm/shared';
 
 const mockProfile: ObfuscationProfile = {
-  name: 'generic', target: 'generic',
+  name: 'generic',
+  target: 'generic',
   transforms: [],
   virtualization: { mode: 'annotated', annotations: ['@virtualize'], maxFunctionSize: 100, excludePatterns: [] },
-  vm: { opcodeRemapping: true, immediateEncoding: 1, superInstructions: false, handlerLayoutRandom: false, constantPoolEncoding: 0, traceMode: false, deterministicReplay: false, seed: 7 },
-  preservePatterns: [], preserveExports: true, preserveDecorators: false, reactSafe: false, electronHarden: false, deterministic: true, seed: 7,
+  vm: {
+    opcodeRemapping: true,
+    immediateEncoding: 1,
+    superInstructions: false,
+    handlerLayoutRandom: false,
+    constantPoolEncoding: 0,
+    traceMode: false,
+    deterministicReplay: false,
+    seed: 7,
+  },
+  preservePatterns: [],
+  preserveExports: true,
+  preserveDecorators: false,
+  reactSafe: false,
+  electronHarden: false,
+  deterministic: true,
+  seed: 7,
 };
 
 function createCtx(module: IRModule, rng = new SeededRandom(0)): TransformContext {
   return {
     module,
     profile: mockProfile,
-    semanticGraph: { rootDir: '', modules: new Map(), dependencyEdges: [], entryPoints: [], symbolTable: [], aliases: new Map(), compilerOptions: {}, diagnostics: [] } as ProjectSemanticGraph,
-    symbolAliases: new Map(), diagnostics: [], rng, phase: 0,
+    semanticGraph: {
+      rootDir: '',
+      modules: new Map(),
+      dependencyEdges: [],
+      entryPoints: [],
+      symbolTable: [],
+      aliases: new Map(),
+      compilerOptions: {},
+      diagnostics: [],
+    } as ProjectSemanticGraph,
+    symbolAliases: new Map(),
+    diagnostics: [],
+    rng,
+    phase: 0,
   };
 }
 
@@ -35,18 +63,36 @@ describe('PreserveTypeIllusionsPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new PreserveTypeIllusionsPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc',
-        params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
-        returnType: IRType.Void, locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 0, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -63,24 +109,41 @@ describe('PreserveTypeIllusionsPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new PreserveTypeIllusionsPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc',
-        params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
-        returnType: IRType.Void, locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [],
-        }],
-      }],
-      globals: [], imports: [], exports: [],
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
       constantPool: [{ index: 0, kind: ConstantKind.String, value: 'something' }],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 0, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
-    const strings = result.module.constantPool.filter(c => c.kind === ConstantKind.String);
-    expect(strings.some(s => s.value === 'function')).toBe(true);
+    const strings = result.module.constantPool.filter((c) => c.kind === ConstantKind.String);
+    expect(strings.some((s) => s.value === 'function')).toBe(true);
   });
 
   it('skips functions with no parameters', () => {
@@ -88,17 +151,36 @@ describe('PreserveTypeIllusionsPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new PreserveTypeIllusionsPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 0, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -110,18 +192,36 @@ describe('PreserveTypeIllusionsPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new PreserveTypeIllusionsPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc',
-        params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
-        returnType: IRType.Void, locals: [], isVirtualized: false, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: false,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 0, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -133,18 +233,36 @@ describe('PreserveTypeIllusionsPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new PreserveTypeIllusionsPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc',
-        params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
-        returnType: IRType.Void, locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [{ name: 'x', register: 'r0', type: IRType.Number, isRest: false }],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 0, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));

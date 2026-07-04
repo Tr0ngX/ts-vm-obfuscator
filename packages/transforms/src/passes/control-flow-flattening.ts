@@ -73,7 +73,10 @@ export class ControlFlowFlatteningPass implements TransformPass {
         const cached = numberCache.get(val);
         if (cached !== undefined) return cached;
         const idx = constantPool.findIndex((c) => c.kind === ConstantKind.Number && c.value === val);
-        if (idx !== -1) { numberCache.set(val, idx); return idx; }
+        if (idx !== -1) {
+          numberCache.set(val, idx);
+          return idx;
+        }
         const newIdx = constantPool.length;
         constantPool.push({ index: newIdx, kind: ConstantKind.Number, value: val });
         numberCache.set(val, newIdx);
@@ -84,7 +87,10 @@ export class ControlFlowFlatteningPass implements TransformPass {
         const cached = stringCache.get(val);
         if (cached !== undefined) return cached;
         const idx = constantPool.findIndex((c) => c.kind === ConstantKind.String && c.value === val);
-        if (idx !== -1) { stringCache.set(val, idx); return idx; }
+        if (idx !== -1) {
+          stringCache.set(val, idx);
+          return idx;
+        }
         const newIdx = constantPool.length;
         constantPool.push({ index: newIdx, kind: ConstantKind.String, value: val });
         stringCache.set(val, newIdx);

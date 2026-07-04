@@ -119,7 +119,7 @@ describe('SeededRandom', () => {
 
   it('identifier returns string of correct length starting with letter', () => {
     const rng = new SeededRandom(42);
-    for (let len of [1, 4, 8, 16, 32]) {
+    for (const len of [1, 4, 8, 16, 32]) {
       const id = rng.identifier(len);
       expect(id.length).toBe(len);
       expect(id[0]!).toMatch(/[a-zA-Z]/);

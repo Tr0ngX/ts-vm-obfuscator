@@ -55,10 +55,14 @@ export function lowerOptionalChain(self: IASTLowering, objReg: Register, continu
 
   const nullConst = self.emitConstant(ConstantKind.Null, null);
   const isNullOrUndefReg = self.fnBuilder.allocRegister();
-  self.currentBlock.addInstruction(OpCode.Eq, [
-    { kind: OperandKind.Register, value: objReg },
-    { kind: OperandKind.Register, value: nullConst },
-  ], isNullOrUndefReg);
+  self.currentBlock.addInstruction(
+    OpCode.Eq,
+    [
+      { kind: OperandKind.Register, value: objReg },
+      { kind: OperandKind.Register, value: nullConst },
+    ],
+    isNullOrUndefReg,
+  );
 
   const rhsBlock = self.fnBuilder.createBlock('optchain_rhs');
   const endBlock = self.fnBuilder.createBlock('optchain_end');
@@ -428,10 +432,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       const nullConst = self.emitConstant(ConstantKind.Null, null);
       const undefConst = self.emitConstant(ConstantKind.Undefined, null);
       const isNullReg = self.fnBuilder.allocRegister();
-      self.currentBlock.addInstruction(OpCode.StrictEq, [
-        { kind: OperandKind.Register, value: leftReg },
-        { kind: OperandKind.Register, value: nullConst },
-      ], isNullReg);
+      self.currentBlock.addInstruction(
+        OpCode.StrictEq,
+        [
+          { kind: OperandKind.Register, value: leftReg },
+          { kind: OperandKind.Register, value: nullConst },
+        ],
+        isNullReg,
+      );
       const rhsBlock = self.fnBuilder.createBlock('qq_eq_rhs');
       const undefCheckBlock = self.fnBuilder.createBlock('qq_eq_undef');
       const endBlock = self.fnBuilder.createBlock('qq_eq_end');
@@ -441,10 +449,14 @@ export function visitExpression(self: IASTLowering, expr: ts.Expression): Regist
       self.fnBuilder.addBlock(self.currentBlock.build());
       self.currentBlock = undefCheckBlock;
       const isUndefReg = self.fnBuilder.allocRegister();
-      self.currentBlock.addInstruction(OpCode.StrictEq, [
-        { kind: OperandKind.Register, value: self.loadFromLocal(tempReg) },
-        { kind: OperandKind.Register, value: undefConst },
-      ], isUndefReg);
+      self.currentBlock.addInstruction(
+        OpCode.StrictEq,
+        [
+          { kind: OperandKind.Register, value: self.loadFromLocal(tempReg) },
+          { kind: OperandKind.Register, value: undefConst },
+        ],
+        isUndefReg,
+      );
       rhsBlock.addPredecessor(self.currentBlock.id);
       endBlock.addPredecessor(self.currentBlock.id);
       self.currentBlock.setTerminator({ kind: 'branch', condition: isUndefReg, targets: [rhsBlock.id, endBlock.id] });

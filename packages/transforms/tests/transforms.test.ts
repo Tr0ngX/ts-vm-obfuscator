@@ -1581,9 +1581,7 @@ describe('Advanced Transforms', () => {
                 predecessors: [],
                 successors: ['b2', 'b3'],
                 terminator: { kind: 'branch', targets: ['b2', 'b3'], condition: 'r0' },
-                instructions: [
-                  { opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' },
-                ],
+                instructions: [{ opcode: OpCode.LoadConst, operands: [{ kind: OperandKind.ConstantIndex, value: 0 }], result: 'r0' }],
               },
               {
                 id: 'b2',
@@ -1642,16 +1640,12 @@ describe('Advanced Transforms', () => {
       const result = pass.execute(ctx);
 
       // All numeric constants in the result must be unique (no duplicates)
-      const numericValues = result.module.constantPool
-        .filter((c) => c.kind === ConstantKind.Number)
-        .map((c) => c.value as number);
+      const numericValues = result.module.constantPool.filter((c) => c.kind === ConstantKind.Number).map((c) => c.value as number);
       const uniqueValues = new Set(numericValues);
       expect(numericValues.length).toBe(uniqueValues.size);
 
       // All string constants in the result must be unique
-      const stringValues = result.module.constantPool
-        .filter((c) => c.kind === ConstantKind.String)
-        .map((c) => c.value as string);
+      const stringValues = result.module.constantPool.filter((c) => c.kind === ConstantKind.String).map((c) => c.value as string);
       const uniqueStrings = new Set(stringValues);
       expect(stringValues.length).toBe(uniqueStrings.size);
     });

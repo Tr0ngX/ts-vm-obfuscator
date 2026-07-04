@@ -298,7 +298,7 @@ export function decodeConstantPool(encoded: EncodedConstant[], scheme: ConstantE
         const keystreamByte = S[(S[ri]! + S[j]!) & 0xff]!;
         chars.push(entry.value.charCodeAt(i) ^ keystreamByte);
       }
-      let decoded = String.fromCharCode(...chars);
+      const decoded = String.fromCharCode(...chars);
 
       return { index, kind: entry.kind, value: decoded };
     }

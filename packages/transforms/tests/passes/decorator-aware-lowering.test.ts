@@ -12,18 +12,47 @@ import {
 } from '@tsvm/shared';
 
 const mockProfile: ObfuscationProfile = {
-  name: 'generic', target: 'generic',
+  name: 'generic',
+  target: 'generic',
   transforms: [],
   virtualization: { mode: 'annotated', annotations: ['@virtualize'], maxFunctionSize: 100, excludePatterns: [] },
-  vm: { opcodeRemapping: true, immediateEncoding: 1, superInstructions: false, handlerLayoutRandom: false, constantPoolEncoding: 0, traceMode: false, deterministicReplay: false, seed: 7 },
-  preservePatterns: [], preserveExports: true, preserveDecorators: false, reactSafe: false, electronHarden: false, deterministic: true, seed: 7,
+  vm: {
+    opcodeRemapping: true,
+    immediateEncoding: 1,
+    superInstructions: false,
+    handlerLayoutRandom: false,
+    constantPoolEncoding: 0,
+    traceMode: false,
+    deterministicReplay: false,
+    seed: 7,
+  },
+  preservePatterns: [],
+  preserveExports: true,
+  preserveDecorators: false,
+  reactSafe: false,
+  electronHarden: false,
+  deterministic: true,
+  seed: 7,
 };
 
 function createCtx(module: IRModule, rng = new SeededRandom(0)): TransformContext {
   return {
-    module, profile: mockProfile,
-    semanticGraph: { rootDir: '', modules: new Map(), dependencyEdges: [], entryPoints: [], symbolTable: [], aliases: new Map(), compilerOptions: {}, diagnostics: [] } as ProjectSemanticGraph,
-    symbolAliases: new Map(), diagnostics: [], rng, phase: 0,
+    module,
+    profile: mockProfile,
+    semanticGraph: {
+      rootDir: '',
+      modules: new Map(),
+      dependencyEdges: [],
+      entryPoints: [],
+      symbolTable: [],
+      aliases: new Map(),
+      compilerOptions: {},
+      diagnostics: [],
+    } as ProjectSemanticGraph,
+    symbolAliases: new Map(),
+    diagnostics: [],
+    rng,
+    phase: 0,
   };
 }
 
@@ -33,19 +62,36 @@ describe('DecoratorAwareLoweringPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new DecoratorAwareLoweringPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [
-            { opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [{ opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' }],
+            },
           ],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 1, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -62,19 +108,36 @@ describe('DecoratorAwareLoweringPass', () => {
     rng.nextFloat = () => 0.5;
     const pass = new DecoratorAwareLoweringPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [
-            { opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [{ opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' }],
+            },
           ],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 1, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -87,19 +150,45 @@ describe('DecoratorAwareLoweringPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new DecoratorAwareLoweringPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [
-            { opcode: OpCode.CallMethod, operands: [{ kind: OperandKind.Register, value: 'r0' }, { kind: OperandKind.Register, value: 'r1' }], result: 'r2' },
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [
+                {
+                  opcode: OpCode.CallMethod,
+                  operands: [
+                    { kind: OperandKind.Register, value: 'r0' },
+                    { kind: OperandKind.Register, value: 'r1' },
+                  ],
+                  result: 'r2',
+                },
+              ],
+            },
           ],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 1, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -111,19 +200,36 @@ describe('DecoratorAwareLoweringPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new DecoratorAwareLoweringPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: false, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [
-            { opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: false,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [{ opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' }],
+            },
           ],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 1, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));
@@ -135,19 +241,36 @@ describe('DecoratorAwareLoweringPass', () => {
     rng.nextFloat = () => 0.1;
     const pass = new DecoratorAwareLoweringPass();
     const mod: IRModule = {
-      id: 'test', sourceFile: 'test.ts',
-      functions: [{
-        id: 'fn1', name: 'testFunc', params: [], returnType: IRType.Void,
-        locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-        blocks: [{
-          id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [],
-          terminator: { kind: 'return', targets: [] },
-          instructions: [
-            { opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' },
+      id: 'test',
+      sourceFile: 'test.ts',
+      functions: [
+        {
+          id: 'fn1',
+          name: 'testFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [{ opcode: OpCode.Call, operands: [{ kind: OperandKind.Register, value: 'r0' }], result: 'r1' }],
+            },
           ],
-        }],
-      }],
-      globals: [], imports: [], exports: [], constantPool: [],
+        },
+      ],
+      globals: [],
+      imports: [],
+      exports: [],
+      constantPool: [],
       metadata: { sourceFile: 'test.ts', buildTimestamp: 0, blockCount: 1, functionCount: 1, instructionCount: 1, originalByteSize: 100 },
     };
     const result = pass.execute(createCtx(mod, rng));

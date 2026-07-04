@@ -239,29 +239,29 @@ export class InstructionSubstitutionPass implements TransformPass {
                       ],
                       result: temp3,
                     },
-          {
-            opcode: OpCode.Add,
-            operands: [
-              { kind: OperandKind.Register, value: temp1 },
-              { kind: OperandKind.Register, value: temp3 },
-            ],
-            result: inst.result,
-          },
-          {
-            opcode: OpCode.LoadConst,
-            operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(0) }],
-            result: tempConst2,
-          },
-          {
-            opcode: OpCode.BitOr,
-            operands: [
-              { kind: OperandKind.Register, value: inst.result },
-              { kind: OperandKind.Register, value: tempConst2 },
-            ],
-            result: inst.result,
-          },
-        );
-      } else {
+                    {
+                      opcode: OpCode.Add,
+                      operands: [
+                        { kind: OperandKind.Register, value: temp1 },
+                        { kind: OperandKind.Register, value: temp3 },
+                      ],
+                      result: inst.result,
+                    },
+                    {
+                      opcode: OpCode.LoadConst,
+                      operands: [{ kind: OperandKind.ConstantIndex, value: getOrAddNumberConstant(0) }],
+                      result: tempConst2,
+                    },
+                    {
+                      opcode: OpCode.BitOr,
+                      operands: [
+                        { kind: OperandKind.Register, value: inst.result },
+                        { kind: OperandKind.Register, value: tempConst2 },
+                      ],
+                      result: inst.result,
+                    },
+                  );
+                } else {
                   // A + B => 2 * (A | B) - (A ^ B)
                   const temp1 = `r${nextReg++}` as Register;
                   const tempConst2 = `r${nextReg++}` as Register;

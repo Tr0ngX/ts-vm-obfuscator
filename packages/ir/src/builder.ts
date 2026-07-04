@@ -83,7 +83,13 @@ export class ASTLowering {
   private readonly outerCaptureBindings = new Map<string, number>();
   private readonly breakTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
   private readonly continueTargets: { readonly blockId: string; readonly tryDepth: number }[] = [];
-  private readonly labelTargets: Map<string, { readonly break: { readonly blockId: string; readonly tryDepth: number }; continue?: { readonly blockId: string; readonly tryDepth: number } }> = new Map();
+  private readonly labelTargets: Map<
+    string,
+    {
+      readonly break: { readonly blockId: string; readonly tryDepth: number };
+      continue?: { readonly blockId: string; readonly tryDepth: number };
+    }
+  > = new Map();
   private readonly activeLabels: Set<string> = new Set();
   private readonly finallyContexts: FinallyContext[] = [];
   private tryDepth = 0;
@@ -2200,7 +2206,10 @@ export class ASTLowering {
         for (const labelName of this.activeLabels) {
           const labelEntry = this.labelTargets.get(labelName);
           if (labelEntry && !labelEntry.continue) {
-            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: continueBlock.id, tryDepth: this.tryDepth };
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = {
+              blockId: continueBlock.id,
+              tryDepth: this.tryDepth,
+            };
           }
         }
         this.currentBlock = bodyBlock;
@@ -2318,7 +2327,10 @@ export class ASTLowering {
         for (const labelName of this.activeLabels) {
           const labelEntry = this.labelTargets.get(labelName);
           if (labelEntry && !labelEntry.continue) {
-            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = {
+              blockId: condBlock.id,
+              tryDepth: this.tryDepth,
+            };
           }
         }
         this.enterBreakTarget(endBlock.id);
@@ -2359,9 +2371,7 @@ export class ASTLowering {
         // from the full prototype chain (not just own properties like Object.keys())
         const functionReg = this.resolveVar('Function');
         const helperParamReg = this.emitConstant(ConstantKind.String, 'o');
-        const helperBodyReg = this.emitConstant(ConstantKind.String,
-          'var k=[],s={};for(var p in o)if(!s[p]){s[p]=1;k.push(p)}return k',
-        );
+        const helperBodyReg = this.emitConstant(ConstantKind.String, 'var k=[],s={};for(var p in o)if(!s[p]){s[p]=1;k.push(p)}return k');
         const helperCtorReg = this.fnBuilder.allocRegister();
         this.currentBlock.addInstruction(
           OpCode.New,
@@ -2428,7 +2438,10 @@ export class ASTLowering {
         for (const labelName of this.activeLabels) {
           const labelEntry = this.labelTargets.get(labelName);
           if (labelEntry && !labelEntry.continue) {
-            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: continueBlock.id, tryDepth: this.tryDepth };
+            (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = {
+              blockId: continueBlock.id,
+              tryDepth: this.tryDepth,
+            };
           }
         }
         this.enterBreakTarget(endBlock.id);
@@ -2537,7 +2550,10 @@ export class ASTLowering {
       for (const labelName of this.activeLabels) {
         const labelEntry = this.labelTargets.get(labelName);
         if (labelEntry && !labelEntry.continue) {
-          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = {
+            blockId: condBlock.id,
+            tryDepth: this.tryDepth,
+          };
         }
       }
       this.currentBlock = bodyBlock;
@@ -2567,7 +2583,10 @@ export class ASTLowering {
       for (const labelName of this.activeLabels) {
         const labelEntry = this.labelTargets.get(labelName);
         if (labelEntry && !labelEntry.continue) {
-          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = { blockId: condBlock.id, tryDepth: this.tryDepth };
+          (labelEntry as { continue?: { readonly blockId: string; readonly tryDepth: number } }).continue = {
+            blockId: condBlock.id,
+            tryDepth: this.tryDepth,
+          };
         }
       }
       this.currentBlock = bodyBlock;

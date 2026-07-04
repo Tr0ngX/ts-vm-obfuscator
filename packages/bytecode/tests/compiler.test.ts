@@ -376,7 +376,7 @@ describe('Bytecode Compiler', () => {
       const config = makeConfig({ opcodeRemapping: false });
       const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
       // 0xFF is not a valid OpCode; the decoder now validates and throws
-      const invalid = new Uint8Array([0xFF, 0x00, 0x00]);
+      const invalid = new Uint8Array([0xff, 0x00, 0x00]);
       expect(() => decodeBytecode(invalid, mapping, config)).toThrow();
     });
 
@@ -385,7 +385,7 @@ describe('Bytecode Compiler', () => {
       const mapping = { seed: 7, forward: new Map(), reverse: new Map() };
       // Call (0x40) is variable-length; next byte is argCount (255), then operand data
       // With argCount=255 the decoder will read past the buffer and throw
-      const oversized = new Uint8Array([0x40, 0xFF, 0x00, 0x01]);
+      const oversized = new Uint8Array([0x40, 0xff, 0x00, 0x01]);
       expect(() => decodeBytecode(oversized, mapping, config)).toThrow();
     });
 

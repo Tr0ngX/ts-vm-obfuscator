@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildVMRuntime } from '../src/polymorphic-builder.js';
-import {
-  type BytecodeModule,
-  OpCode,
-  ImmediateEncodingScheme,
-  ConstantEncodingScheme,
-} from '@tsvm/shared';
+import { type BytecodeModule, OpCode, ImmediateEncodingScheme, ConstantEncodingScheme } from '@tsvm/shared';
 
 function makeConfig(overrides: Record<string, any> = {}) {
   return {

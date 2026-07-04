@@ -231,7 +231,10 @@ function generateOpaquePredicate(seed: number, varIdx: number): { expr: string; 
 
   switch (choice) {
     case 0:
-      return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar} + ${pVar}) % 2 === 0; })()`, alwaysTrue: true };
+      return {
+        expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar} + ${pVar}) % 2 === 0; })()`,
+        alwaysTrue: true,
+      };
     case 1:
       return { expr: `(function(){ var ${pVar} = ${runtimeVal} | 0; return (${pVar} * ${pVar}) % 4 !== 2; })()`, alwaysTrue: true };
     case 2:
@@ -810,13 +813,15 @@ export function buildVMRuntime(module: BytecodeModule, config: VMBuildConfig): V
       // Replace args and evaluate semantic cloning markers (single pass)
       const markerMap: Record<string, () => string> = {
         '${readArgs}': () => myReadArgs,
-        '__ADD_EXPR__': () => mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
-        '__SUB_EXPR__': () => mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
-        '__AND_EXPR__': () => mutateArithmeticExpression('and', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
-        '__OR_EXPR__': () => mutateArithmeticExpression('or', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
-        '__XOR_EXPR__': () => mutateArithmeticExpression('xor', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        __ADD_EXPR__: () => mutateArithmeticExpression('add', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        __SUB_EXPR__: () => mutateArithmeticExpression('sub', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        __AND_EXPR__: () => mutateArithmeticExpression('and', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        __OR_EXPR__: () => mutateArithmeticExpression('or', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
+        __XOR_EXPR__: () => mutateArithmeticExpression('xor', 'ctx.regs[args[0]]', 'ctx.regs[args[1]]', mySeed),
       };
-      let variantBody = body.replace(/\$\{readArgs\}|__ADD_EXPR__|__SUB_EXPR__|__AND_EXPR__|__OR_EXPR__|__XOR_EXPR__/g, match => markerMap[match]!());
+      let variantBody = body.replace(/\$\{readArgs\}|__ADD_EXPR__|__SUB_EXPR__|__AND_EXPR__|__OR_EXPR__|__XOR_EXPR__/g, (match) =>
+        markerMap[match]!(),
+      );
 
       if (isParanoid) {
         variantBody = variantBody.replace(/\bargs\b/g, argsVar);

@@ -15,7 +15,16 @@ const mockProfile: ObfuscationProfile = {
   target: 'generic',
   transforms: [],
   virtualization: { mode: 'annotated', annotations: ['@virtualize'], maxFunctionSize: 100, excludePatterns: [] },
-  vm: { opcodeRemapping: true, immediateEncoding: 1, superInstructions: false, handlerLayoutRandom: false, constantPoolEncoding: 0, traceMode: false, deterministicReplay: false, seed: 7 },
+  vm: {
+    opcodeRemapping: true,
+    immediateEncoding: 1,
+    superInstructions: false,
+    handlerLayoutRandom: false,
+    constantPoolEncoding: 0,
+    traceMode: false,
+    deterministicReplay: false,
+    seed: 7,
+  },
   preservePatterns: [],
   preserveExports: true,
   preserveDecorators: false,
@@ -66,7 +75,16 @@ function createCtx(module: IRModule, rng = new SeededRandom(42)): TransformConte
   return {
     module,
     profile: mockProfile,
-    semanticGraph: { rootDir: '', modules: new Map(), dependencyEdges: [], entryPoints: [], symbolTable: [], aliases: new Map(), compilerOptions: {}, diagnostics: [] } as ProjectSemanticGraph,
+    semanticGraph: {
+      rootDir: '',
+      modules: new Map(),
+      dependencyEdges: [],
+      entryPoints: [],
+      symbolTable: [],
+      aliases: new Map(),
+      compilerOptions: {},
+      diagnostics: [],
+    } as ProjectSemanticGraph,
     symbolAliases: new Map(),
     diagnostics: [],
     rng,
@@ -89,9 +107,26 @@ describe('SymbolIndirectionPass', () => {
     const mod = createBaseModule({
       functions: [
         {
-          id: 'fn1', name: 'exportedFunc', params: [], returnType: IRType.Void,
-          locals: [], isVirtualized: false, isExported: true, attributes: [], capturedVariables: [],
-          blocks: [{ id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [], terminator: { kind: 'return', targets: [] }, instructions: [] }],
+          id: 'fn1',
+          name: 'exportedFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: false,
+          isExported: true,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
         },
       ],
     });
@@ -105,9 +140,26 @@ describe('SymbolIndirectionPass', () => {
     const mod = createBaseModule({
       functions: [
         {
-          id: 'fn1', name: 'vmFunc', params: [], returnType: IRType.Void,
-          locals: [], isVirtualized: true, isExported: false, attributes: [], capturedVariables: [],
-          blocks: [{ id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [], terminator: { kind: 'return', targets: [] }, instructions: [] }],
+          id: 'fn1',
+          name: 'vmFunc',
+          params: [],
+          returnType: IRType.Void,
+          locals: [],
+          isVirtualized: true,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
         },
       ],
     });
@@ -121,10 +173,26 @@ describe('SymbolIndirectionPass', () => {
     const mod = createBaseModule({
       functions: [
         {
-          id: 'fn1', name: 'useState', params: [], returnType: IRType.Void,
+          id: 'fn1',
+          name: 'useState',
+          params: [],
+          returnType: IRType.Void,
           locals: [{ name: 'x', register: 'r0', type: IRType.Number, isCaptured: false }],
-          isVirtualized: false, isExported: false, attributes: [], capturedVariables: [],
-          blocks: [{ id: 'b1', label: 'entry', phiNodes: [], predecessors: [], successors: [], terminator: { kind: 'return', targets: [] }, instructions: [] }],
+          isVirtualized: false,
+          isExported: false,
+          attributes: [],
+          capturedVariables: [],
+          blocks: [
+            {
+              id: 'b1',
+              label: 'entry',
+              phiNodes: [],
+              predecessors: [],
+              successors: [],
+              terminator: { kind: 'return', targets: [] },
+              instructions: [],
+            },
+          ],
         },
       ],
     });

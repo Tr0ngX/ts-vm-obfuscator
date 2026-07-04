@@ -189,7 +189,8 @@ Output:
     });
 }
 
-const isDirectExecution = typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href.toLowerCase() === import.meta.url.toLowerCase();
+const isDirectExecution =
+  typeof process.argv[1] === 'string' && pathToFileURL(path.resolve(process.argv[1])).href.toLowerCase() === import.meta.url.toLowerCase();
 
 if (isDirectExecution) {
   createProgram().parse(process.argv);
